@@ -1,0 +1,94 @@
+# BTM – Bot Task Manager · cấu hình v1.0
+# Nguồn duy nhất cho mọi thông số vận hành. docs/spec.md chỉ giải thích ý nghĩa.
+# Core kiểm tra file này bằng schema khi khởi động; sai kiểu hoặc thiếu mục là từ chối chạy.
+
+host:
+  run_as_user: agent                   # user Linux chạy BTM và cả 3 CLI
+  projects_root: /srv/agent-projects   # agent chỉ được ghi trong thư mục này
+  dashboard:
+    bind: 127.0.0.1                    # không mở ra mạng; xem qua SSH tunnel
+    port: 8080
+  data_dir: /var/lib/btm               # SQLite và log vận hành
+
+session:
+  max_goals: 3                         # số mục tiêu tối đa mỗi phiên
+  max_turns: 10                        # tổng lượt mỗi phiên (mọi ghế cộng lại)
+  max_turns_per_seat:
+    pm: 5
+    dev: 6
+    qc: 4
+  require_task_approval: true          # dừng cho anh duyệt thẻ task trước khi giao Dev
+  auto_schedule: false                 # KHÔNG có chế độ tự chạy; giữ false
+
+turn:
+  timeout_minutes:
+    pm: 10
+    dev: 25
+    qc: 20
+  max_parallel_agents: 1               # v1.0 tuần tự; v2.0 nâng lên 2–3
+  commit_before_dev_turn: true
+  max_fix_rounds: 2                    # quá số vòng sửa thì dừng hỏi anh
+
+seats:                                 # ghế -> agent đang ngồi; anh đổi được trên dashboard
+  pm:  david
+  dev: vic
+  qc:  qeen
+
+agents:
+  david:
+    tool: claude-code
+    command: claude
+    can_sit: [pm, qc]                  # ghế agent này được phép ngồi
+  vic:
+    tool: antigravity-cli
+    command: agy
+    needs_pty: true                    # agy không in output khi không phải TTY
+    can_sit: [dev]
+  qeen:
+    tool: codex-cli
+    command: codex
+    can_sit: [qc, dev]
+
+rules:
+  coder_cannot_qc_same_task: true
+  auto_handoff_on_failure: false       # v1.0: anh tự quyết người thay
+  auto_switch_accounts: false          # không xoay vòng nhiều tài khoản
+
+energy:
+  read_on: [session_open, before_turn] # chỉ đọc vào các thời điểm này
+  cache_seconds: 180                   # không đọc lại hạn mức trong khoảng này
+  min_remaining_percent: 20            # dưới mức này thì không giao lượt cho ghế đó
+  reserve_turns_for_pm: 2              # giữ lượt dự phòng để PM điều phối
+
+login:
+  check_on: [session_open, before_turn]
+  warn_expiry_days: 5
+  forbidden_env:                       # có các biến này thì báo đỏ, không chạy
+    - ANTHROPIC_API_KEY
+    - ANTHROPIC_AUTH_TOKEN
+    - OPENAI_API_KEY
+    - GEMINI_API_KEY
+    - GOOGLE_API_KEY
+
+gate:                                  # cổng kiểm tra tự động trước khi tới QC (không tốn token AI)
+  require_report_schema: true
+  require_commit: true
+  reject_empty_diff: true
+  enforce_task_scope: true
+  commands:                            # điền theo stack của từng project
+    build: ""
+    lint: ""
+    test: ""
+
+git:
+  protected_branch: main
+  task_branch_prefix: task/
+  merge_by: owner                      # owner (anh) | pm  — câu hỏi mở số 1
+
+plugins:                               # "đồ nghề theo ghế"; bật dần, ghim phiên bản
+  project: [openspec]
+  per_seat:
+    pm:  [openspec]
+    dev: [openspec, ponytail]
+    qc:  [openspec, ponytail-review]
+  later: [ui-ux-pro-max, superpowers]  # chưa bật ở v1.0
