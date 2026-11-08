@@ -1,0 +1,4 @@
+- Bug: `src/energy/login.ts:92,177,231` chỉ chờ `deps.run`, không bảo đảm timeout ≤60s; Promise treo làm treo kiểm tra. Cần deadline và test run không resolve.
+- Bug: `src/energy/login.ts:167,212,262` trả nguyên exception vào `detail`; thử lỗi chứa `token=FAKE_SECRET` thấy lọt ra kết quả, vi phạm Global Constraints. Cần thông báo cố định và test không lộ credential.
+- Bug: `src/energy/login.ts:120` nhận `loginExpiresAt: true` thành ngày năm 1970, trả `expiring` thay vì `unknown`. Cần kiểm tra kiểu và test boolean/number/object.
+- Cần sửa: nhánh agy tự gọi lại `/quota` khi thiếu output, kể cả `agyQuotaOk:false`; lệch yêu cầu dùng kết quả Task 1, thêm lần đọc ngoài cache. Nên chỉ phân loại kết quả được truyền vào và test không gọi CLI lại.
