@@ -1,4 +1,4 @@
-import { existsSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { existsSync, statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Config, Seat, Tool } from '../config.ts';
 import type { Store, BoardState, QueueItem } from '../store/db.ts';
@@ -15,6 +15,15 @@ export interface SeatCard {
   lastLine: string;
   energy: '—';
   login: '—';
+}
+
+export interface SnapshotNote {
+  id: number;
+  text: string;
+  image: string | null;
+  status: string;
+  at: string;
+  report: string;
 }
 
 export interface Snapshot {
@@ -40,6 +49,11 @@ export interface Snapshot {
     text: string;
   }[];
   queue: QueueItem[];
+  settings: {
+    autoApprove: boolean;
+  };
+  members: string[];
+  notes: SnapshotNote[];
 }
 
 const ANSI_REGEX = /(?:\x1B\]|\u009D)[\s\S]*?(?:\x07|\x1B\\|\u009C)|(?:\x1B\[|\u009B)[0-?]*[ -/]*[@-~]|[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]|\x1B[@-Z\\-_]/g;
@@ -92,7 +106,7 @@ export function lastLogLine(file: string | null): string {
 }
 
 function createDefaultSeats(cfg: Config): SeatCard[] {
-  const seats: Seat[] = ['pm', 'dev', 'qc'];
+  const seats = Object.keys(cfg.seats) as Seat[];
   return seats.map((seat) => {
     const agent = cfg.seats[seat];
     const tool = cfg.agents[agent].tool;
@@ -114,6 +128,46 @@ function createDefaultSeats(cfg: Config): SeatCard[] {
 export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const project = store.getActiveProject();
   const queue = store.listQueue(50);
+  const autoApproveVal = store.getSetting('auto_approve');
+  const autoApprove = autoApproveVal !== null ? autoApproveVal === 'true' : !cfg.session.require_task_approval;
+  const settings = { autoApprove };
+  const members = Object.keys(cfg.agents);
+
+  const rawNotes = project ? store.listNotes(project, 10) : [];
+  let allCards: ReturnType<typeof loadTaskCards> = [];
+  if (project) {
+    try {
+      allCards = loadTaskCards(join(project, 'team', 'tasks'), project);
+    } catch {}
+  }
+
+  const notes = rawNotes.map((n) => {
+    let reportLines: string[] = [];
+    if (project) {
+      const matchingCards = allCards.filter(
+        (c) => c.note === `N-${n.id}` || c.note === String(n.id)
+      );
+      for (const card of matchingCards) {
+        const reportFile = join(project, 'team', 'reports', `${card.id}-dev.md`);
+        if (existsSync(reportFile)) {
+          try {
+            const content = readFileSync(reportFile, 'utf8');
+            const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
+            reportLines.push(...lines);
+          } catch {}
+        }
+      }
+    }
+    const report = reportLines.slice(0, 10).join('\n');
+    return {
+      id: n.id,
+      text: n.text,
+      image: n.image,
+      status: n.status,
+      at: n.created_at,
+      report,
+    };
+  });
 
   if (!project) {
     return {
@@ -124,6 +178,9 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       tasks: [],
       log: [],
       queue,
+      settings,
+      members,
+      notes,
     };
   }
 
@@ -144,6 +201,9 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       tasks: [],
       log: [],
       queue,
+      settings,
+      members,
+      notes,
     };
   }
 
@@ -157,6 +217,9 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       tasks: [],
       log: [],
       queue,
+      settings,
+      members,
+      notes,
     };
   }
 
@@ -164,7 +227,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const runningTurn = turns.find((t) => t.ended_at === null);
   const holder: Seat | null = runningTurn ? runningTurn.seat : null;
 
-  const seatKeys: Seat[] = ['pm', 'dev', 'qc'];
+  const seatKeys = Object.keys(cfg.seats) as Seat[];
   const seats: SeatCard[] = seatKeys.map((seat) => {
     const agent = cfg.seats[seat];
     const tool = cfg.agents[agent].tool;
@@ -277,5 +340,8 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     tasks,
     log,
     queue,
+    settings,
+    members,
+    notes,
   };
 }

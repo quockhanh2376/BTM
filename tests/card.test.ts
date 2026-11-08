@@ -35,6 +35,7 @@ done_when: '1 commit "T-001: rename seats", chỉ đụng 2 file trong scope'
       const markdown = `---
 id: T-015
 openspec_change: add-otp-login
+note: N-001
 goal: API xác thực mã OTP
 context: [docs/spec.md#otp, team/memory/conventions.md]
 scope: [src/auth/otp.service.ts, src/auth/otp.controller.ts, tests/auth/]
@@ -52,6 +53,7 @@ Some detailed design notes here.
       const card = parseTaskCard(markdown);
       expect(card.id).toBe('T-015');
       expect(card.openspec_change).toBe('add-otp-login');
+      expect(card.note).toBe('N-001');
       expect(card.context).toEqual(['docs/spec.md#otp', 'team/memory/conventions.md']);
       expect(card.scope).toEqual(['src/auth/otp.service.ts', 'src/auth/otp.controller.ts', 'tests/auth/']);
       expect(card.out_of_scope).toEqual(['giao diện', 'gửi email']);

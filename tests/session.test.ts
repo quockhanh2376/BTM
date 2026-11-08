@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { writeFileSync, readFileSync, mkdirSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { writeFileSync, readFileSync, mkdirSync, realpathSync, chmodSync, existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { loadConfig, type Config, type Seat } from '../src/config.ts';
 import { openStore, type Store } from '../src/store/db.ts';
 import { tmpRepo } from './helpers.ts';
-import { git } from '../src/git.ts';
+import * as gitModule from '../src/git.ts';
+import { git, commitAll, headSha } from '../src/git.ts';
 import {
   pmPrompt,
   devPrompt,
@@ -163,6 +164,34 @@ describe('Prompts', () => {
     expect(prompt).toContain('file trong team/reports/ luôn được phép');
     expect(prompt).toContain('bỏ qua mọi tiêu chí về git/commit');
     expect(prompt).toContain('chỉ chấm sản phẩm theo acceptance');
+  });
+
+  it('pmPrompt with notes instructs reading note and image and writing note: N-<id> in front matter', () => {
+    const prompt = pmPrompt(['Xử lý ghi chú team N-1: Thêm nút'], [
+      { notePath: 'team/inbox/N-1.md', imagePath: 'team/inbox/N-1.png', id: 'N-1' },
+    ]);
+    expect(prompt).toContain('team/inbox/N-1.md');
+    expect(prompt).toContain('team/inbox/N-1.png');
+    expect(prompt).toContain('note: N-1');
+    expect(prompt).toContain('báo cáo ≤ 5 dòng');
+  });
+
+  it('devPrompt and qcPrompt with card having note include note path and image instructions', () => {
+    const card: TaskCard = {
+      id: 'T-001',
+      goal: 'Thêm nút',
+      scope: ['src/a.ts'],
+      acceptance: ['nút xuất hiện'],
+      done_when: 'test pass',
+      note: 'N-1',
+    };
+    const devP = devPrompt(card, [], ['cat', 'ls']);
+    expect(devP).toContain('Đọc team/inbox/N-1.md và ảnh đính kèm; làm/chấm theo ảnh');
+    expect(devP).toContain('báo cáo ≤ 5 dòng');
+
+    const qcP = qcPrompt(card, 'base123');
+    expect(qcP).toContain('Đọc team/inbox/N-1.md và ảnh đính kèm; làm/chấm theo ảnh');
+    expect(qcP).toContain('báo cáo ≤ 5 dòng');
   });
 });
 
@@ -1506,6 +1535,7 @@ done_when: done
       deps.runner = runner;
 
       const outcome = await runSession(deps, ['Goal'], { approved: true });
+      expect(outcome.notes).toEqual([]);
       expect(outcome.status).toBe('done');
       expect(devPromptReceived).toContain('cat, git status, npx vitest');
       expect(devPromptReceived).toContain('mỗi lệnh chạy riêng lẻ');
@@ -1562,6 +1592,7 @@ done_when: done
 
       const outcome = await runSession(deps, ['Goal'], { approved: true });
 
+      expect(outcome.notes).toEqual([]);
       expect(outcome.status).toBe('done');
       expect(outcome.tasks['T-001']).toBe('passed');
       expect(calls.length).toBe(4); // PM, Dev r1, Dev r2, QC
@@ -1618,6 +1649,7 @@ done_when: done
 
       const outcome = await runSession(deps, ['Goal'], { approved: true });
 
+      expect(outcome.notes).toEqual([]);
       expect(outcome.status).toBe('done');
       expect(outcome.tasks['T-001']).toBe('passed');
       expect(recordSpy).toHaveBeenCalledWith(1, 'T-001', 'command_denied');
@@ -1676,6 +1708,7 @@ done_when: done
       deps.runner = runner;
 
       const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+      expect(outcome.notes).toEqual([]);
       expect(outcome.status).toBe('done');
 
       expect(taskStateTransitions).toEqual([
@@ -1759,6 +1792,7 @@ done_when: done
       deps.runner = runner;
 
       const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+      expect(outcome.notes).toEqual([]);
       expect(outcome.status).toBe('done');
 
       expect(taskStateTransitions).toEqual([
@@ -1850,6 +1884,7 @@ done_when: done
       deps.runner = runner;
 
       const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+      expect(outcome.notes).toEqual([]);
       expect(outcome.status).toBe('done');
 
       // Verify that all 3 runner calls observed valid log files registered before call
@@ -1998,6 +2033,1007 @@ done_when: done
       await runSession(depsExceed, ['Goal 1'], { approved: true });
       expect(exceedTransitions).toContainEqual({ taskId: 'T-001', state: 'failed', fixRounds: 1 });
       storeExceed.close();
+    });
+
+    it('P2-T8 A: thẻ T-001 cũ có sẵn + PM tạo T-002 → chỉ T-002 được làm', async () => {
+      // Create repo with existing T-001.md on main
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+        'team/tasks/T-001.md': `---
+id: T-001
+goal: Old task
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`,
+      });
+
+      const { deps, store } = makeDeps(repo);
+      const devTasks: string[] = [];
+
+      const { runner } = createFakeRunner([
+        // PM creates T-002
+        (_s, _a, _p, cwd) => {
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-002.md'),
+            `---
+id: T-002
+goal: New task 2
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev for T-002
+        (_s, _a, prompt, cwd) => {
+          devTasks.push(prompt);
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-002-dev.md'), 'OK');
+        },
+        // QC for T-002
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runner;
+      const outcome = await runSession(deps, ['Goal 2'], { approved: true });
+
+      expect(outcome.notes).toEqual([]);
+      expect(outcome.status).toBe('done');
+      // Only T-002 should be in outcome.tasks
+      expect(Object.keys(outcome.tasks)).toEqual(['T-002']);
+      expect(outcome.tasks['T-002']).toBe('passed');
+      expect(outcome.tasks['T-001']).toBeUndefined();
+
+      // Dev prompt was only called once, for T-002
+      expect(devTasks).toHaveLength(1);
+      expect(devTasks[0]).toContain('T-002');
+      expect(devTasks[0]).not.toContain('T-001');
+
+      // Verify session_tasks in DB
+      expect(store.getSessionTasks(outcome.sessionId!)).toEqual(['T-002']);
+      store.close();
+    });
+
+    it('P2-T8 A: resumeSession dùng đúng tập thẻ của commit PM của phiên đó (session_tasks)', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+        'team/tasks/T-001.md': `---
+id: T-001
+goal: Old task
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`,
+      });
+
+      const { deps, store } = makeDeps(repo, {
+        session: {
+          ...loadConfig('btm.config.yaml').session,
+          require_task_approval: true,
+        },
+      });
+
+      const { runner: runnerPm } = createFakeRunner([
+        // PM creates T-002
+        (_s, _a, _p, cwd) => {
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-002.md'),
+            `---
+id: T-002
+goal: New task 2
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+      ]);
+
+      deps.runner = runnerPm;
+      const initialOutcome = await runSession(deps, ['Goal 2'], { approved: false });
+      expect(initialOutcome.status).toBe('awaiting_approval');
+      expect(Object.keys(initialOutcome.tasks)).toEqual(['T-002']);
+      expect(store.getSessionTasks(initialOutcome.sessionId!)).toEqual(['T-002']);
+
+      // Now resume the session
+      const devTasks: string[] = [];
+      const { runner: runnerResume } = createFakeRunner([
+        // Dev for T-002
+        (_s, _a, prompt, cwd) => {
+          devTasks.push(prompt);
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-002-dev.md'), 'OK');
+        },
+        // QC for T-002
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runnerResume;
+      const resumeOutcome = await resumeSession(deps, initialOutcome.sessionId!);
+      expect(resumeOutcome.status).toBe('done');
+      expect(Object.keys(resumeOutcome.tasks)).toEqual(['T-002']);
+      expect(resumeOutcome.tasks['T-002']).toBe('passed');
+      expect(devTasks).toHaveLength(1);
+      expect(devTasks[0]).toContain('T-002');
+      store.close();
+    });
+
+    it('P2-T8 A: khi PM bị abort hoặc timeout: commitAll WIP trên nhánh phiên để working tree sạch', async () => {
+      // Subtest 1: Abort
+      const repoAbort = tmpRepo({ 'src/app.ts': '1' });
+      const { deps: depsAbort, store: storeAbort } = makeDeps(repoAbort);
+      const abortCtrl = new AbortController();
+      depsAbort.signal = abortCtrl.signal;
+
+      depsAbort.runner = async (_seat, _agent, _prompt, cwd) => {
+        mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+        writeFileSync(join(cwd, 'team', 'tasks', 'draft.md'), 'draft card');
+        abortCtrl.abort();
+        const err = new Error('aborted');
+        err.name = 'AbortError';
+        throw err;
+      };
+
+      const outcomeAbort = await runSession(depsAbort, ['Goal 1'], { approved: true });
+      expect(outcomeAbort.status).toBe('stopped');
+      // Working tree must be clean
+      expect(git(repoAbort, 'status', '--porcelain').trim()).toBe('');
+      // Last commit on session branch is WIP
+      const lastCommitAbort = git(repoAbort, 'log', '-1', '--pretty=%B').trim();
+      expect(lastCommitAbort).toMatch(/^WIP pm: aborted/);
+      storeAbort.close();
+
+      // Subtest 2: Timeout
+      const repoTimeout = tmpRepo({ 'src/app.ts': '1' });
+      const { deps: depsTimeout, store: storeTimeout } = makeDeps(repoTimeout);
+      depsTimeout.runner = async (_seat, _agent, _prompt, cwd) => {
+        mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+        writeFileSync(join(cwd, 'team', 'tasks', 'draft.md'), 'draft timeout');
+        return {
+          exitCode: null,
+          timedOut: true,
+          durationMs: 1000,
+          output: '',
+          lastMessage: '',
+        };
+      };
+
+      const outcomeTimeout = await runSession(depsTimeout, ['Goal 1'], { approved: true });
+      expect(outcomeTimeout.status).toBe('needs_owner');
+      // Working tree must be clean
+      expect(git(repoTimeout, 'status', '--porcelain').trim()).toBe('');
+      const lastCommitTimeout = git(repoTimeout, 'log', '-1', '--pretty=%B').trim();
+      expect(lastCommitTimeout).toMatch(/^WIP pm: timeout/);
+      storeTimeout.close();
+    });
+
+    it('P2-T8 A: đầu phiên working tree bẩn → commitAll "checkpoint before session <id>" trước khi checkout nhánh mới', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'initial' });
+      // Make working tree dirty on main before runSession
+      writeFileSync(join(repo, 'src', 'app.ts'), 'dirty before session');
+      writeFileSync(join(repo, 'dirty-untracked.txt'), 'hello');
+
+      const { deps, store } = makeDeps(repo);
+      const { runner } = createFakeRunner([
+        // PM creates T-001
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'fixed in session');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runner;
+      const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+      expect(outcome.notes).toEqual([]);
+      expect(outcome.status).toBe('done');
+
+      // Check commit log on base branch (main) for checkpoint commit
+      const baseBranch = deps.cfg.git.protected_branch || 'main';
+      const mainLog = git(repo, 'log', baseBranch, '-n', '2', '--pretty=%s');
+      expect(mainLog).toContain(`checkpoint before session ${outcome.sessionId}`);
+      store.close();
+    });
+
+    it('P2-T8: config require_task_approval=false nhưng approved=false → awaiting_approval', async () => {
+      const repo = tmpRepo({});
+      const { deps, store } = makeDeps(repo, {
+        session: {
+          ...loadConfig('btm.config.yaml').session,
+          require_task_approval: false,
+        },
+      });
+
+      const { runner, calls } = createFakeRunner([
+        (_seat, _agent, _prompt, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - file.txt
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal 1'], { approved: false });
+
+      expect(outcome.status).toBe('awaiting_approval');
+      expect(outcome.sessionId).toBe(1);
+      expect(calls.length).toBe(1);
+      expect(calls[0].seat).toBe('pm');
+      expect(store.countTurns(1)).toBe(1);
+
+      store.close();
+    });
+
+    it('P2-T8: chỉ parse thẻ trong diff PM; thẻ cũ hỏng + PM tạo T-002 hợp lệ → chạy được cả runSession và resumeSession', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+        'team/tasks/T-001.md': 'corrupted yaml content ::: invalid\n',
+      });
+
+      const { deps, store } = makeDeps(repo);
+      let devCalledFor = '';
+
+      const { runner } = createFakeRunner([
+        // PM creates valid T-002
+        (_s, _a, _p, cwd) => {
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-002.md'),
+            `---
+id: T-002
+goal: Feature 2
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, prompt, cwd) => {
+          devCalledFor = prompt;
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-002-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runner;
+      const outcome = await runSession(deps, ['Goal 2'], { approved: true });
+
+      expect(outcome.notes).toEqual([]);
+      expect(outcome.status).toBe('done');
+      expect(outcome.tasks['T-002']).toBe('passed');
+      expect(outcome.tasks['T-001']).toBeUndefined();
+      expect(devCalledFor).toContain('T-002');
+      expect(devCalledFor).not.toContain('T-001');
+
+      // Test resumeSession when T-001 is broken and session_tasks has ['T-002']
+      const sId = store.createSession(['Resume test'], repo);
+      store.setSessionTasks(sId, ['T-002']);
+      store.setSessionStatus(sId, 'awaiting_approval');
+
+      git(repo, 'checkout', '-b', `session/${sId}`);
+
+      const { runner: runnerResume } = createFakeRunner([
+        // Dev
+        (_s, _a, prompt, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 3;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-002-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+      deps.runner = runnerResume;
+
+      const resumeOutcome = await resumeSession(deps, sId);
+      expect(resumeOutcome.status).toBe('done');
+      expect(resumeOutcome.tasks['T-002']).toBe('passed');
+      expect(resumeOutcome.tasks['T-001']).toBeUndefined();
+
+      store.close();
+    });
+
+    it('P2-T8: resume với session_tasks rỗng → needs_owner "no_session_tasks", không lấy thẻ khác', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+        'team/tasks/T-001.md': `---
+id: T-001
+goal: Existing task
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`,
+      });
+
+      const { deps, store } = makeDeps(repo);
+      const sId = store.createSession(['Goal empty'], repo);
+      expect(store.getSessionTasks(sId)).toEqual([]);
+      store.setSessionStatus(sId, 'awaiting_approval');
+      git(repo, 'checkout', '-b', `session/${sId}`);
+
+      let devOrQcCalled = false;
+      deps.runner = async () => {
+        devOrQcCalled = true;
+        return { exitCode: 0, timedOut: false, durationMs: 0, output: '', lastMessage: '' };
+      };
+
+      const outcome = await resumeSession(deps, sId);
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('no_session_tasks');
+      expect(devOrQcCalled).toBe(false);
+      expect(outcome.tasks['T-001']).toBeUndefined();
+
+      store.close();
+    });
+
+    it('Task 10a: phiên done + thẻ passed → note done; khác → needs_owner, note open', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      mkdirSync(join(repo, 'team', 'inbox'), { recursive: true });
+      writeFileSync(
+        join(repo, 'team', 'inbox', 'N-1.md'),
+        `---
+id: N-1
+from: owner
+status: open
+at: 2026-11-08T08:00:00.000Z
+image: N-1.png
+---
+Yêu cầu cập nhật nút
+`
+      );
+      writeFileSync(join(repo, 'team', 'inbox', 'N-1.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      commitAll(repo, 'inbox N-1', { name: 'owner', email: 'owner@btm.local' });
+
+      const { deps, store } = makeDeps(repo);
+      const noteId = store.createNote(repo, 'Yêu cầu cập nhật nút', 'N-1.png');
+
+      const { runner } = createFakeRunner([
+        // PM creates card with note: N-1
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Cập nhật nút
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+note: N-1
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC passes
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(
+        deps,
+        ['Xử lý ghi chú team N-1: Yêu cầu cập nhật nút'],
+        { approved: true, noteId }
+      );
+
+      expect(outcome.notes).toEqual([]);
+      expect(outcome.status).toBe('done');
+      expect(outcome.tasks['T-001']).toBe('passed');
+
+      // Note in DB must be done
+      const noteAfter = store.getNote(noteId);
+      expect(noteAfter?.status).toBe('done');
+
+      // Note in file must be done
+      const fileContent = readFileSync(join(repo, 'team', 'inbox', 'N-1.md'), 'utf8');
+      expect(fileContent).toContain('status: done');
+
+      store.close();
+    });
+
+    it('lỗi ghi/commit khi đóng note → note giữ open trong DB, phiên needs_owner với lý do, không nuốt lỗi', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      mkdirSync(join(repo, 'team', 'inbox'), { recursive: true });
+      const notePath = join(repo, 'team', 'inbox', 'N-1.md');
+      writeFileSync(
+        notePath,
+        `---
+id: N-1
+from: owner
+status: open
+at: 2026-11-08T08:00:00.000Z
+---
+Yêu cầu cập nhật nút
+`
+      );
+      commitAll(repo, 'inbox N-1', { name: 'owner', email: 'owner@btm.local' });
+
+      const { deps, store } = makeDeps(repo);
+      const noteId = store.createNote(repo, 'Yêu cầu cập nhật nút');
+
+      const { runner } = createFakeRunner([
+        // PM creates card with note: N-1
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Cập nhật nút
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+note: N-1
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC passes, but right before closing note we make notePath read-only
+        () => {
+          chmodSync(notePath, 0o444);
+          return {
+            lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+          };
+        },
+      ]);
+      deps.runner = runner;
+
+      try {
+        const outcome = await runSession(
+          deps,
+          ['Xử lý ghi chú team N-1: Yêu cầu cập nhật nút'],
+          { approved: true, noteId }
+        );
+
+        // Outcome must be needs_owner because closing note failed!
+        expect(outcome.status).toBe('needs_owner');
+        expect(outcome.notes.some((n) => n.includes('close') || n.includes('EACCES'))).toBe(true);
+
+        // Note in DB must remain open
+        const noteAfter = store.getNote(noteId);
+        expect(noteAfter?.status).toBe('open');
+      } finally {
+        chmodSync(notePath, 0o644);
+        store.close();
+      }
+    });
+
+    it('Task 10a: commit đóng note lỗi → khôi phục file về status: open (git checkout file) rồi needs_owner', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      mkdirSync(join(repo, 'team', 'inbox'), { recursive: true });
+      const notePath = join(repo, 'team', 'inbox', 'N-1.md');
+      writeFileSync(
+        notePath,
+        `---
+id: N-1
+from: owner
+status: open
+at: 2026-11-08T08:00:00.000Z
+---
+Yêu cầu đóng note nhưng commit lỗi
+`
+      );
+      commitAll(repo, 'inbox N-1', { name: 'owner', email: 'owner@btm.local' });
+
+      const { deps, store } = makeDeps(repo);
+      const noteId = store.createNote(repo, 'Yêu cầu đóng note nhưng commit lỗi');
+
+      const origCommitAll = gitModule.commitAll;
+      const commitSpy = vi.spyOn(gitModule, 'commitAll').mockImplementation((repoArg, msg, author) => {
+        if (msg.startsWith('close note')) {
+          // Giả lập commit lỗi SAU khi đã stage (git add -A)
+          git(repoArg, 'add', '-A');
+          throw new Error('Simulated git commit error on close note after stage');
+        }
+        return origCommitAll(repoArg, msg, author);
+      });
+
+      const { runner } = createFakeRunner([
+        // PM creates card with note: N-1
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Test commit failure
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+note: N-1
+---
+Do task
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC -> passed
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runner;
+
+      try {
+        const outcome = await runSession(deps, ['Mục tiêu test commit close note fail'], {
+          approved: true,
+          noteId,
+        });
+
+        expect(outcome.status).toBe('needs_owner');
+        expect(outcome.notes.some((n) => n.includes('close note N-1 error'))).toBe(true);
+
+        // Verify file is restored to status: open via git checkout
+        const fileContent = readFileSync(notePath, 'utf8');
+        expect(fileContent).toContain('status: open');
+        expect(fileContent).not.toContain('status: done');
+
+        // Verify git index is reset for note file
+        const diffCached = git(repo, 'diff', '--cached', '--name-only');
+        expect(diffCached).not.toContain('team/inbox/N-1.md');
+
+        // Verify DB note status is not done
+        const noteRow = store.getNote(noteId);
+        expect(noteRow?.status).toBe('open');
+      } finally {
+        commitSpy.mockRestore();
+        store.close();
+      }
+    });
+
+    it('passes card note image absolute path to QC runner options', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      const { deps, store } = makeDeps(repo);
+
+      // Create note with image
+      const noteId = store.createNote(repo, 'Fix UI bug with image', 'N-1.png');
+      const inboxDir = join(repo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      writeFileSync(join(inboxDir, 'N-1.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      writeFileSync(
+        join(inboxDir, 'N-1.md'),
+        `---\nid: N-1\nfrom: owner\nstatus: open\nat: 2026-11-08T08:00:00.000Z\nimage: N-1.png\n---\nFix UI bug with image\n`
+      );
+      commitAll(repo, 'inbox N-1', { name: 'owner', email: 'owner@btm.local' });
+
+      // Card content
+      const cardContent = `---
+id: T-001
+goal: Update button color
+scope:
+  - src/app.ts
+acceptance:
+  - Button color updated
+done_when: tests pass
+note: N-${noteId}
+---
+Details here.
+`;
+
+      let capturedQcOptions: any;
+
+      deps.runner = async (seat, agentId, prompt, cwd, logFile, options) => {
+        if (seat === 'pm') {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'tasks', 'T-001.md'), cardContent, 'utf8');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'dev') {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'qc') {
+          capturedQcOptions = options;
+          return {
+            exitCode: 0,
+            timedOut: false,
+            durationMs: 10,
+            output: '',
+            lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+          };
+        }
+        return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: '' };
+      };
+
+      const outcome = await runSession(deps, ['Work on T-001'], { approved: true, noteId });
+      expect(outcome.notes).toEqual([]);
+      expect(outcome.notes).toEqual([]);
+      expect(outcome.status).toBe('done');
+      expect(capturedQcOptions?.images).toBeDefined();
+      expect(capturedQcOptions.images).toEqual([resolve(repo, 'team', 'inbox', 'N-1.png')]);
+
+      store.close();
+    });
+
+    it('noteId chỉ truyền tường minh qua opts (không suy từ chuỗi goal) và chỉ gắn note cùng project', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      const otherRepo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      const { deps, store } = makeDeps(repo);
+
+      // Note 1: belongs to current repo
+      const note1 = store.createNote(repo, 'Note for current repo');
+      const inboxDir = join(repo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      writeFileSync(
+        join(inboxDir, `N-${note1}.md`),
+        `---\nid: N-${note1}\nfrom: owner\nstatus: open\nat: 2026-11-08T08:00:00.000Z\n---\nNote for current repo\n`
+      );
+      commitAll(repo, 'inbox note 1', { name: 'owner', email: 'owner@btm.local' });
+
+      // Note 2: belongs to other repo
+      const note2 = store.createNote(otherRepo, 'Note for other repo');
+
+      const cardContent = (nId?: number) => `---
+id: T-001
+goal: Update button color
+scope:
+  - src/app.ts
+acceptance:
+  - Button color updated
+done_when: tests pass
+${nId ? `note: N-${nId}\n` : ''}---
+`;
+
+      let currentNoteForPm: number | undefined;
+
+      deps.runner = async (seat, _agentId, _prompt, cwd) => {
+        if (seat === 'pm') {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'tasks', 'T-001.md'), cardContent(currentNoteForPm), 'utf8');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'dev') {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'qc') {
+          return {
+            exitCode: 0,
+            timedOut: false,
+            durationMs: 10,
+            output: '',
+            lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+          };
+        }
+        return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: '' };
+      };
+
+      // 1. Goal contains N-1, but opts does not pass noteId -> MUST NOT attach note 1!
+      currentNoteForPm = undefined;
+      const outcome1 = await runSession(deps, [`Xử lý ghi chú team N-${note1}: Lỗi`], { approved: true });
+      expect(outcome1.status).toBe('done');
+      const session1Notes = store.getNotesBySession(outcome1.sessionId!);
+      expect(session1Notes.length).toBe(0);
+
+      // 2. Opts passes note2 from another repo -> MUST NOT attach note 2!
+      currentNoteForPm = undefined;
+      const outcome2 = await runSession(deps, ['Fix task with note2'], { approved: true, noteId: note2 });
+      expect(outcome2.status).toBe('done');
+      const session2Notes = store.getNotesBySession(outcome2.sessionId!);
+      expect(session2Notes.length).toBe(0);
+
+      // 3. Opts passes note1 from same repo -> MUST attach note 1!
+      currentNoteForPm = note1;
+      const outcome3 = await runSession(deps, ['Fix task with note1'], { approved: true, noteId: note1 });
+      expect(outcome3.status).toBe('done');
+      const session3Notes = store.getNotesBySession(outcome3.sessionId!);
+      expect(session3Notes.length).toBe(1);
+      expect(session3Notes[0].id).toBe(note1);
+
+      store.close();
+    });
+
+    it('P2-T10c: repo đang ở nhánh session cũ có commit lạ; gửi note → nhánh phiên mới chứa team/inbox/N-x.md và ảnh, nhánh cũ không bị đổi; runner giả của lượt PM thấy file tồn tại', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      const { deps, store } = makeDeps(repo);
+
+      // Create an old session branch with an extra commit
+      git(repo, 'checkout', '-b', 'session/old-8');
+      writeFileSync(join(repo, 'strange.txt'), 'commit lạ trên nhánh cũ\n');
+      commitAll(repo, 'strange commit on old session', { name: 'dev', email: 'dev@btm.local' });
+      const oldSha = headSha(repo);
+
+      // Verify we are on session/old-8
+      const currentBranch = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+      expect(currentBranch).toBe('session/old-8');
+
+      // Create note in DB
+      const noteId = store.createNote(repo, 'Lỗi hiển thị banner cần sửa', null);
+      const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+
+      let pmSawNoteMd = false;
+      let pmSawImage = false;
+      let pmSawCorrectBranch = false;
+      let pmSawNoteContent = '';
+
+      const cardContent = `---
+id: T-001
+goal: Sửa lỗi banner
+scope:
+  - src/app.ts
+acceptance:
+  - Banner hiển thị đúng
+done_when: tests pass
+note: N-${noteId}
+---
+`;
+
+      deps.runner = async (seat, _agentId, _prompt, cwd) => {
+        if (seat === 'pm') {
+          const pmBranch = git(cwd, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+          pmSawCorrectBranch = pmBranch === 'session/1';
+
+          const mdFile = join(cwd, 'team', 'inbox', `N-${noteId}.md`);
+          const imgFile = join(cwd, 'team', 'inbox', `N-${noteId}.png`);
+          pmSawNoteMd = existsSync(mdFile);
+          pmSawImage = existsSync(imgFile);
+          if (pmSawNoteMd) {
+            pmSawNoteContent = readFileSync(mdFile, 'utf8');
+          }
+
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'tasks', 'T-001.md'), cardContent, 'utf8');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'dev') {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'qc') {
+          return {
+            exitCode: 0,
+            timedOut: false,
+            durationMs: 10,
+            output: '',
+            lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+          };
+        }
+        return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: '' };
+      };
+
+      const outcome = await runSession(
+        deps,
+        [`Xử lý ghi chú team N-${noteId}: Lỗi hiển thị banner cần sửa`],
+        {
+          approved: true,
+          noteId,
+          text: 'Lỗi hiển thị banner cần sửa',
+          image: { ext: 'png', bytes: pngBuf },
+        }
+      );
+
+      expect(outcome.notes).toEqual([]);
+      expect(outcome.status).toBe('done');
+      expect(pmSawCorrectBranch).toBe(true);
+      expect(pmSawNoteMd).toBe(true);
+      expect(pmSawImage).toBe(true);
+      expect(pmSawNoteContent).toContain(`id: N-${noteId}`);
+      expect(pmSawNoteContent).toContain(`image: N-${noteId}.png`);
+      expect(pmSawNoteContent).toContain('Lỗi hiển thị banner cần sửa');
+
+      // Check new session branch contains inbox files and commit
+      git(repo, 'checkout', 'session/1');
+      expect(existsSync(join(repo, 'team', 'inbox', `N-${noteId}.md`))).toBe(true);
+      expect(existsSync(join(repo, 'team', 'inbox', `N-${noteId}.png`))).toBe(true);
+      const newLog = git(repo, 'log', '-n', '5', '--pretty=format:%s %an');
+      expect(newLog).toContain(`inbox N-${noteId} owner`);
+
+      // Check old session branch is completely unchanged
+      git(repo, 'checkout', 'session/old-8');
+      expect(headSha(repo)).toBe(oldSha);
+      expect(existsSync(join(repo, 'team', 'inbox', `N-${noteId}.md`))).toBe(false);
+      expect(existsSync(join(repo, 'team', 'inbox', `N-${noteId}.png`))).toBe(false);
+      const oldLog = git(repo, 'log', '-n', '1', '--pretty=format:%s');
+      expect(oldLog).toBe('strange commit on old session');
+
+      store.close();
+    });
+
+    it('P2-T10c: lỗi ghi note/ảnh trong runSession → xóa file vừa ghi, xóa bản ghi note, phiên needs_owner', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      const { deps, store } = makeDeps(repo);
+
+      // Pre-create N-1.md on main branch so that write in session/<id> fails with collision
+      const inboxDir = join(repo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      writeFileSync(join(inboxDir, 'N-1.md'), 'existing note file on main');
+      commitAll(repo, 'pre-existing N-1.md', { name: 'owner', email: 'owner@btm.local' });
+
+      const noteId = store.createNote(repo, 'Lỗi va chạm file', null);
+      expect(noteId).toBe(1);
+
+      let pmCalled = false;
+      deps.runner = async (seat) => {
+        if (seat === 'pm') {
+          pmCalled = true;
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: '' };
+      };
+
+      const outcome = await runSession(
+        deps,
+        [`Xử lý ghi chú team N-${noteId}: Lỗi va chạm file`],
+        {
+          approved: true,
+          noteId,
+          text: 'Lỗi va chạm file',
+        }
+      );
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(pmCalled).toBe(false);
+
+      // Verify DB note record is deleted
+      expect(store.getNote(noteId)).toBeNull();
+
+      store.close();
+    });
+
+    it('P2-T10c: lỗi commitAll inbox note trong runSession → xóa file vừa ghi, xóa bản ghi note, phiên needs_owner', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      const { deps, store } = makeDeps(repo);
+
+      const noteId = store.createNote(repo, 'Test commit error', null);
+      const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+
+      const origCommitAll = gitModule.commitAll;
+      const commitSpy = vi.spyOn(gitModule, 'commitAll').mockImplementation((repoArg, msg, author) => {
+        if (msg.startsWith('inbox N-')) {
+          throw new Error('Simulated git commit error on inbox note');
+        }
+        return origCommitAll(repoArg, msg, author);
+      });
+
+      let pmCalled = false;
+      deps.runner = async (seat) => {
+        if (seat === 'pm') {
+          pmCalled = true;
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: '' };
+      };
+
+      try {
+        const outcome = await runSession(
+          deps,
+          [`Xử lý ghi chú team N-${noteId}: Test commit error`],
+          {
+            approved: true,
+            noteId,
+            text: 'Test commit error',
+            image: { ext: 'png', bytes: pngBuf },
+          }
+        );
+
+        expect(outcome.status).toBe('needs_owner');
+        expect(pmCalled).toBe(false);
+
+        // Verify written files are deleted
+        const mdPath = join(repo, 'team', 'inbox', `N-${noteId}.md`);
+        const imgPath = join(repo, 'team', 'inbox', `N-${noteId}.png`);
+        expect(existsSync(mdPath)).toBe(false);
+        expect(existsSync(imgPath)).toBe(false);
+
+        // Verify DB note record is deleted
+        expect(store.getNote(noteId)).toBeNull();
+      } finally {
+        commitSpy.mockRestore();
+        store.close();
+      }
     });
   });
 });

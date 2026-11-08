@@ -371,5 +371,23 @@ echo '{"verdict":"pass"}' > "$outFile"
         rmSync(expectedAbsLogDir, { recursive: true, force: true });
       }
     });
+
+    it('makeRunner transmits images to buildArgv and includes -i absolutePath without fake commands', async () => {
+      const cfg = loadConfig('btm.config.yaml');
+      let capturedArgv: string[] = [];
+      const mockRunProc = async (argv: string[], _o: any) => {
+        capturedArgv = argv;
+        return { exitCode: 0, timedOut: false, durationMs: 0, output: '' };
+      };
+
+      const runner = makeRunner(cfg, undefined, mockRunProc as any);
+      const absImg = '/srv/agent-projects/btm/team/inbox/N-1.png';
+      await runner('qc', 'jenny', 'Verify with screenshot', tmpDir, join(tmpDir, 'turn-1.log'), {
+        images: [absImg],
+      });
+
+      expect(capturedArgv).toContain('-i');
+      expect(capturedArgv).toContain(absImg);
+    });
   });
 });

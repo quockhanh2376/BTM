@@ -1,0 +1,2 @@
+Bug: [session.ts:526](/srv/agent-projects/btm/src/core/session.ts:526) — checkout thất bại hoặc validation từ chối trước khối ghi note sẽ để sót bản ghi note; host vẫn trả `ok: true`, không cleanup.
+Bug: [session.ts:587](/srv/agent-projects/btm/src/core/session.ts:587) — commit thất bại sau `git add -A`: chỉ xóa file, vẫn giữ note/ảnh trong index; checkpoint phiên sau có thể commit lại note đã xóa. Cần dọn cả index.

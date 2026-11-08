@@ -1,0 +1,143 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, symlinkSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { inboxPath, detectImage } from '../src/server/inbox.js';
+
+describe('inboxPath', () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), 'btm-inbox-test-'));
+  });
+
+  afterEach(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it('accepts valid note and image names and returns absolute path', () => {
+    const p1 = inboxPath(projectDir, 'N-1.md');
+    expect(p1).toBe(join(projectDir, 'team', 'inbox', 'N-1.md'));
+
+    const p2 = inboxPath(projectDir, 'N-42.png');
+    expect(p2).toBe(join(projectDir, 'team', 'inbox', 'N-42.png'));
+
+    const p3 = inboxPath(projectDir, 'N-100.jpg');
+    expect(p3).toBe(join(projectDir, 'team', 'inbox', 'N-100.jpg'));
+
+    const p4 = inboxPath(projectDir, 'N-999.webp');
+    expect(p4).toBe(join(projectDir, 'team', 'inbox', 'N-999.webp'));
+
+    const p5 = inboxPath(projectDir, 'N-12');
+    expect(p5).toBe(join(projectDir, 'team', 'inbox', 'N-12'));
+  });
+
+  it('rejects strange or invalid names', () => {
+    const invalidNames = [
+      'bad.txt',
+      'N-abc.md',
+      'N-1.jpeg',
+      '../N-1.md',
+      'N-1.gif',
+      'N-.md',
+      '',
+      'N-1.md.bak',
+      '1.md',
+      'team/inbox/N-1.md',
+      'N-1/image.png',
+    ];
+
+    for (const name of invalidNames) {
+      expect(() => inboxPath(projectDir, name)).toThrow();
+    }
+  });
+
+  it('rejects when team/inbox is a symlink pointing outside project', () => {
+    const outsideDir = mkdtempSync(join(tmpdir(), 'btm-outside-'));
+    try {
+      mkdirSync(join(projectDir, 'team'), { recursive: true });
+      symlinkSync(outsideDir, join(projectDir, 'team', 'inbox'));
+      expect(() => inboxPath(projectDir, 'N-1.md')).toThrow(/inside project/i);
+    } finally {
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects and does not create outside directory when team is a symlink pointing outside project and inbox does not exist', () => {
+    const outsideDir = mkdtempSync(join(tmpdir(), 'btm-outside-'));
+    try {
+      symlinkSync(outsideDir, join(projectDir, 'team'));
+      expect(() => inboxPath(projectDir, 'N-1.md')).toThrow(/inside project/i);
+      expect(existsSync(join(outsideDir, 'inbox'))).toBe(false);
+    } finally {
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects when target file exists and is a symlink', () => {
+    const inboxDir = join(projectDir, 'team', 'inbox');
+    mkdirSync(inboxDir, { recursive: true });
+    const outsideFile = join(tmpdir(), `btm-dummy-${Date.now()}.txt`);
+    writeFileSync(outsideFile, 'dummy');
+
+    try {
+      const symlinkTarget = join(inboxDir, 'N-1.md');
+      symlinkSync(outsideFile, symlinkTarget);
+      expect(() => inboxPath(projectDir, 'N-1.md')).toThrow(/symlink/i);
+    } finally {
+      rmSync(outsideFile, { force: true });
+    }
+  });
+
+  it('allows existing regular file', () => {
+    const inboxDir = join(projectDir, 'team', 'inbox');
+    mkdirSync(inboxDir, { recursive: true });
+    const file = join(inboxDir, 'N-1.md');
+    writeFileSync(file, 'hello');
+
+    const result = inboxPath(projectDir, 'N-1.md');
+    expect(result).toBe(file);
+  });
+});
+
+describe('detectImage', () => {
+  it('detects PNG with exactly 8 magic bytes (89 50 4E 47 0D 0A 1A 0A)', () => {
+    const validPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+    expect(detectImage(validPng)).toEqual({ ext: 'png', mime: 'image/png' });
+
+    // Only 4 bytes -> not valid
+    const truncatedPng = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    expect(detectImage(truncatedPng)).toBeNull();
+
+    // 8 bytes with corrupt last byte
+    const corruptPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0b]);
+    expect(detectImage(corruptPng)).toBeNull();
+  });
+
+  it('detects JPEG (FF D8 FF) and always returns ext jpg', () => {
+    const validJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    expect(detectImage(validJpeg)).toEqual({ ext: 'jpg', mime: 'image/jpeg' });
+  });
+
+  it('detects WebP (RIFF....WEBP)', () => {
+    const validWebp = Buffer.from([
+      0x52, 0x49, 0x46, 0x46, // RIFF
+      0x20, 0x00, 0x00, 0x00, // file size
+      0x57, 0x45, 0x42, 0x50, // WEBP
+    ]);
+    expect(detectImage(validWebp)).toEqual({ ext: 'webp', mime: 'image/webp' });
+
+    // Missing WEBP
+    const invalidWebp = Buffer.from([
+      0x52, 0x49, 0x46, 0x46,
+      0x20, 0x00, 0x00, 0x00,
+      0x41, 0x42, 0x43, 0x44,
+    ]);
+    expect(detectImage(invalidWebp)).toBeNull();
+  });
+
+  it('returns null for unknown buffer', () => {
+    expect(detectImage(Buffer.from('not an image'))).toBeNull();
+    expect(detectImage(Buffer.alloc(0))).toBeNull();
+  });
+});

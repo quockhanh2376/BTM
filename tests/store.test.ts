@@ -653,5 +653,85 @@ describe('Store SQLite', () => {
 
       store.close();
     });
+
+    it('manages settings with getSetting and setSetting (table settings)', () => {
+      const store = openStore(':memory:');
+      expect(store.getSetting('auto_approve')).toBeNull();
+      expect(store.getSetting('nonexistent')).toBeNull();
+
+      store.setSetting('auto_approve', 'true');
+      expect(store.getSetting('auto_approve')).toBe('true');
+
+      store.setSetting('auto_approve', 'false');
+      expect(store.getSetting('auto_approve')).toBe('false');
+
+      store.setSetting('custom_key', 'some_value');
+      expect(store.getSetting('custom_key')).toBe('some_value');
+      store.close();
+    });
+
+    it('manages session tasks with setSessionTasks and getSessionTasks (table session_tasks)', () => {
+      const store = openStore(':memory:');
+      const s1 = store.createSession(['Goal 1']);
+      const s2 = store.createSession(['Goal 2']);
+
+      expect(store.getSessionTasks(s1)).toEqual([]);
+      expect(store.getSessionTasks(s2)).toEqual([]);
+
+      store.setSessionTasks(s1, ['T-001', 'T-002']);
+      store.setSessionTasks(s2, ['T-003']);
+
+      expect(store.getSessionTasks(s1)).toEqual(['T-001', 'T-002']);
+      expect(store.getSessionTasks(s2)).toEqual(['T-003']);
+
+      store.close();
+    });
+
+    it('manages notes with createNote, getNote, setNoteSession, setNoteStatus, setNoteImage, listNotes, getNotesBySession', () => {
+      const store = openStore(':memory:');
+      const id1 = store.createNote('/srv/agent-projects/proj-a', 'Ghi chú 1', 'N-1.png');
+      expect(id1).toBe(1);
+
+      const note1 = store.getNote(id1);
+      expect(note1).toEqual({
+        id: 1,
+        project: '/srv/agent-projects/proj-a',
+        text: 'Ghi chú 1',
+        image: 'N-1.png',
+        status: 'open',
+        created_at: expect.any(String),
+        session_id: null,
+      });
+
+      const id2 = store.createNote('/srv/agent-projects/proj-a', 'Ghi chú 2');
+      expect(id2).toBe(2);
+
+      store.setNoteImage(id2, 'N-2.jpg');
+      expect(store.getNote(id2)?.image).toBe('N-2.jpg');
+
+      store.setNoteSession(id1, 101);
+      expect(store.getNote(id1)?.session_id).toBe(101);
+
+      store.setNoteStatus(id1, 'done');
+      expect(store.getNote(id1)?.status).toBe('done');
+
+      // Notes by session
+      expect(store.getNotesBySession(101)).toHaveLength(1);
+      expect(store.getNotesBySession(101)[0].id).toBe(1);
+      expect(store.getNotesBySession(999)).toHaveLength(0);
+
+      // List notes by project
+      const listA = store.listNotes('/srv/agent-projects/proj-a');
+      expect(listA).toHaveLength(2);
+      expect(listA[0].id).toBe(2); // newest first
+      expect(listA[1].id).toBe(1);
+
+      // deleteNote
+      store.deleteNote(id1);
+      expect(store.getNote(id1)).toBeNull();
+      expect(store.listNotes('/srv/agent-projects/proj-a')).toHaveLength(1);
+
+      store.close();
+    });
   });
 });

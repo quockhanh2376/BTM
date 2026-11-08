@@ -199,3 +199,30 @@ Theme: biến CSS trên `:root` cho sáng, `[data-theme=dark]` cho tối; mặc 
 ## Kế hoạch tiếp theo
 
 - **Kế hoạch 3 – Energy, Tài khoản, plugin:** đọc hạn mức (agy `/quota`, Claude, Codex – chỉ đọc) điền `energy` ở thẻ ghế, đèn đăng nhập (`login`), trang Tài khoản, đổi ghế trên dashboard + biên bản bàn giao, `openspec init`.
+
+---
+
+## Bổ sung sau demo (anh Zon, 2026-11-08)
+
+### Task 10a: Hộp thư team + ảnh + báo cáo ngắn (backend)
+
+**Files:** `src/store/db.ts`, `src/server/host.ts`, `src/server/http.ts`, `src/server/snapshot.ts`, `src/core/prompts.ts`, `src/core/session.ts`, `src/gate/gate.ts`, tests tương ứng.
+
+- **Gửi Cả team:** `POST /api/team-note {text: string (1–2000), image?: {name: string, base64: string}}` (riêng route này body ≤ 7 MB; guard x-btm/Origin giữ nguyên). Ảnh: giải base64, ≤ 5 MB, nhận diện bằng magic bytes PNG `89 50 4E 47`, JPEG `FF D8 FF`, WebP `RIFF....WEBP`; sai → 415. Lưu vào project active: `team/inbox/N-<id>.md` (front matter `id: N-<id>`, `from: owner`, `status: open`, `at`, `image: N-<id>.<ext>` nếu có; thân = text) và `team/inbox/N-<id>.<ext>`; commit `inbox N-<id>` (author `owner`). Store: bảng `notes(id, project, text, image, status, created_at, session_id)`. Sau đó `host.start(["Xử lý ghi chú team N-<id>: <text 200 ký tự đầu>"], {noteId})`.
+- **Prompt:** `pmPrompt` nhận `notes` (đường dẫn file note + ảnh): yêu cầu đọc note và ảnh, mỗi thẻ ghi `note: N-<id>` trong front matter (card schema: trường tuỳ chọn `note`). `devPrompt`/`qcPrompt`: nếu thẻ có `note`, thêm dòng "Đọc team/inbox/N-<id>.md và ảnh đính kèm; làm/chấm theo ảnh". Codex QC: thêm `-i <ảnh>` vào argv khi thẻ có ảnh (argv nhận `images?: string[]`).
+- **Đóng note:** phiên kết thúc `done` và mọi thẻ có `note` đều `passed` → note `status: done` (cập nhật file + DB, commit). Khác → `needs_owner`, note giữ `open`.
+- **Báo cáo ngắn:** gate: `team/reports/<id>-dev.md` dài quá 5 dòng không rỗng → `report_too_long`. Prompt cả 3 ghế: kết thúc bằng báo cáo ≤ 5 dòng chỉ Bug / Cần sửa / Cần xác nhận, ổn ghi OK.
+- **Thành viên theo config:** snapshot `seats` sinh từ `cfg.seats` (giữ thứ tự khai báo), thêm `snapshot.members = Object.keys(cfg.agents)`; `/api/command.to` chấp nhận mọi ghế có trong `cfg.seats` hoặc `team`.
+- **Snapshot:** `notes: {id, text, image, status, at, report: string}[]` (10 mới nhất; `report` = nội dung các báo cáo ngắn của các thẻ thuộc note, tối đa 10 dòng).
+
+**Test:** ảnh PNG giả (magic bytes) lưu đúng chỗ + commit; ảnh `.png` nhưng nội dung là text → 415; 6 MB → 413; note mở phiên với goal chứa N-id; thẻ có `note` → prompt Dev/QC chứa đường dẫn note; codex argv có `-i`; báo cáo 6 dòng → `report_too_long`; phiên done + thẻ passed → note done; snapshot.members từ config.
+
+### Task 10b: Giao diện Cả team
+
+**Files:** `web/index.html`, `tests/web.test.ts`.
+
+- Người nhận sinh từ snapshot: các ghế (PM, Dev, QC… theo config) + **Cả team** (mặc định).
+- Khi chọn Cả team: nút **Đính kèm ảnh** (`<input type=file accept="image/png,image/jpeg,image/webp">` có label) + dán ảnh (Ctrl+V vào ô lệnh) → xem trước thumbnail, nút bỏ ảnh; gửi `POST /api/team-note`.
+- Khu **Hộp thư team**: danh sách note (id, giờ, trạng thái Mở/Xong, text, ảnh thu nhỏ qua `GET /api/notes/<id>/image` — route mới chỉ phục vụ ảnh của note thuộc project active, content-type theo magic bytes), báo cáo ngắn bên dưới.
+- Không `innerHTML` với dữ liệu; ảnh hiển thị bằng `<img alt="Ảnh đính kèm N-<id>">`.
+- **Sửa theo anh Zon (gộp vào 10b):** icon vòng xoay **luôn quay** kể cả khi `prefers-reduced-motion: reduce` (anh quyết định: phải nhìn thấy ai đang chạy) — bỏ media query tắt quay, cập nhật test. Nút **Duyệt thẻ luôn hiển thị**, `disabled` + `title="Không có thẻ chờ duyệt"` khi phiên không ở `awaiting_approval`.

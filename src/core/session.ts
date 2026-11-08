@@ -1,14 +1,15 @@
-import { realpathSync, mkdirSync, writeFileSync } from 'node:fs';
-import { relative, isAbsolute, join } from 'node:path';
+import { realpathSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatSync, rmSync } from 'node:fs';
+import { relative, isAbsolute, join, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { checkForbiddenEnv } from '../config.ts';
 import type { Store, TurnResult } from '../store/db.ts';
 import type { Runner } from '../runner/run.ts';
-import { loadTaskCards, CardError, type TaskCard } from '../task/card.ts';
+import { parseTaskCard, CardError, type TaskCard } from '../task/card.ts';
 import { runGate } from '../gate/gate.ts';
 import { git, commitAll, headSha } from '../git.ts';
 import { parseQcResult } from '../qc/result.ts';
 import { pmPrompt, devPrompt, qcPrompt } from './prompts.ts';
+import { inboxPath } from '../server/inbox.ts';
 
 export type TaskState = 'pending' | 'passed' | 'failed' | 'blocked';
 
@@ -88,13 +89,28 @@ function authorForAgent(agentId: string): { name: string; email: string } {
   };
 }
 
-function loadCards(repo: string): TaskCard[] {
-  const tasksDir = join(repo, 'team', 'tasks');
-  const cards = loadTaskCards(tasksDir, repo);
-  if (cards.length === 0) {
-    throw new CardError('No task cards created by PM');
+function loadCardFromPath(repo: string, relPath: string): TaskCard {
+  const filePath = join(repo, relPath);
+  let content: string;
+  try {
+    content = readFileSync(filePath, 'utf8');
+  } catch (err) {
+    throw new CardError(`Cannot read task card file "${filePath}": ${(err as Error).message}`);
   }
-  return cards;
+  try {
+    const card = parseTaskCard(content);
+    const fileName = relPath.split('/').pop() ?? relPath;
+    const expectedId = fileName.replace(/\.md$/, '');
+    if (card.id !== expectedId) {
+      throw new CardError(`Task card id "${card.id}" does not match filename "${fileName}"`);
+    }
+    return card;
+  } catch (err) {
+    if (err instanceof CardError) {
+      throw new CardError(`Error loading "${filePath}": ${err.message}`);
+    }
+    throw err;
+  }
 }
 
 async function workOnCards(
@@ -108,6 +124,23 @@ async function workOnCards(
     let fixNotes: string[] = [];
     let fixRounds = 0;
     const coders = new Set<string>();
+
+    let cardImages: string[] | undefined;
+    if (card.note) {
+      const rawId = card.note.replace(/^N-/, '');
+      const noteId = Number(rawId);
+      if (!isNaN(noteId)) {
+        const note = d.store.getNote(noteId);
+        if (note?.image) {
+          try {
+            const imgPath = inboxPath(d.repo, note.image);
+            if (existsSync(imgPath)) {
+              cardImages = [imgPath];
+            }
+          } catch {}
+        }
+      }
+    }
 
     while (true) {
       const devAgent = d.cfg.seats.dev;
@@ -125,7 +158,10 @@ async function workOnCards(
       const devPromptText = devPrompt(card, fixNotes, d.cfg.runner.agy_allow_commands);
       let devOutput;
       try {
-        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, { signal: d.signal });
+        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
+          signal: d.signal,
+          images: cardImages,
+        });
       } catch (err) {
         const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
@@ -256,7 +292,10 @@ async function workOnCards(
       const preQcHead = headSha(d.repo);
       let qcOutput;
       try {
-        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo, qcLogFile, { signal: d.signal });
+        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo, qcLogFile, {
+          signal: d.signal,
+          images: cardImages,
+        });
       } catch (err) {
         const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
@@ -352,10 +391,81 @@ async function workOnCards(
   };
 }
 
+function closeNoteIfEligible(
+  d: SessionDeps,
+  sessionId: number,
+  cards: TaskCard[],
+  tasks: Record<string, TaskState>,
+  outcome: SessionOutcome
+): void {
+  const sessionNotes = d.store.getNotesBySession(sessionId);
+  if (sessionNotes.length === 0) return;
+
+  for (const note of sessionNotes) {
+    if (note.status === 'done') continue;
+    const cardsForNote = cards.filter(
+      (c) => c.note === `N-${note.id}` || c.note === String(note.id)
+    );
+    const allPassed =
+      cardsForNote.length > 0 &&
+      cardsForNote.every((c) => tasks[c.id] === 'passed');
+
+    if (outcome.status === 'done' && allPassed) {
+      let notePath: string;
+      try {
+        notePath = inboxPath(d.repo, `N-${note.id}.md`);
+      } catch (err: any) {
+        outcome.status = 'needs_owner';
+        outcome.notes.push(`inboxPath error: ${err?.message || String(err)}`);
+        continue;
+      }
+
+      try {
+        if (!existsSync(notePath)) {
+          throw new Error(`Note file not found: ${notePath}`);
+        }
+        const content = readFileSync(notePath, 'utf8');
+        const updated = content.replace(/^status:\s*open$/m, 'status: done');
+        writeFileSync(notePath, updated, 'utf8');
+        try {
+          commitAll(d.repo, `close note N-${note.id}`, {
+            name: 'owner',
+            email: 'owner@btm.local',
+          });
+          d.store.setNoteStatus(note.id, 'done');
+        } catch (commitErr: any) {
+          try {
+            git(d.repo, 'checkout', 'HEAD', '--', notePath);
+            git(d.repo, 'reset', 'HEAD', '--', notePath);
+          } catch {}
+          throw commitErr;
+        }
+      } catch (err: any) {
+        outcome.status = 'needs_owner';
+        outcome.notes.push(`close note N-${note.id} error: ${err?.message || String(err)}`);
+      }
+    } else if (outcome.status === 'done' && !allPassed) {
+      outcome.status = 'needs_owner';
+    }
+  }
+}
+
+export interface RunSessionOpts {
+  approved: boolean;
+  noteId?: number;
+  text?: string;
+  image?: { ext: string; bytes: Buffer };
+  note?: {
+    noteId: number;
+    text: string;
+    image?: { ext: string; bytes: Buffer };
+  };
+}
+
 export async function runSession(
   d: SessionDeps,
   goals: string[],
-  o: { approved: boolean }
+  o: RunSessionOpts
 ): Promise<SessionOutcome> {
   // 1. Validate environment, repo path, goals
   const forbidden = checkForbiddenEnv(d.env, d.cfg.login.forbidden_env);
@@ -391,14 +501,110 @@ export async function runSession(
   let sessionStatus: SessionOutcome['status'] = 'needs_owner';
   const tasks: Record<string, TaskState> = {};
 
-  try {
-    const baseBranch = d.cfg.git.protected_branch || 'main';
-    git(d.repo, 'checkout', '-b', `session/${sessionId}`, baseBranch);
+  const noteId = o.note?.noteId ?? o.noteId;
+  const noteText = o.note?.text ?? o.text;
+  const noteImage = o.note?.image ?? o.image;
 
-    // 3. PM Turn
+  let attachedNote: ReturnType<typeof d.store.getNote> = null;
+  if (noteId) {
+    const note = d.store.getNote(noteId);
+    if (note && note.project === d.repo) {
+      attachedNote = note;
+      d.store.setNoteSession(noteId, sessionId);
+    }
+  }
+
+  try {
     const pmAgent = d.cfg.seats.pm;
     const pmAuthor = authorForAgent(pmAgent);
 
+    const dirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
+    if (dirty) {
+      commitAll(d.repo, `checkpoint before session ${sessionId}`, pmAuthor);
+    }
+
+    const baseBranch = d.cfg.git.protected_branch || 'main';
+    git(d.repo, 'checkout', '-b', `session/${sessionId}`, baseBranch);
+    let sessionBaseSha = headSha(d.repo);
+
+    // Write note and image to branch if provided, before PM turn
+    if (noteId && (noteText !== undefined || noteImage !== undefined)) {
+      let createdMdPath: string | null = null;
+      let createdImgPath: string | null = null;
+      try {
+        const ownerAuthor = { name: 'owner', email: 'owner@btm.local' };
+        let imageName: string | null = null;
+        if (noteImage?.ext && noteImage?.bytes) {
+          imageName = `N-${noteId}.${noteImage.ext}`;
+          if (!attachedNote?.image) {
+            d.store.setNoteImage(noteId, imageName);
+          }
+          const imgPath = inboxPath(d.repo, imageName);
+          try {
+            lstatSync(imgPath);
+            throw new Error(`Target image file already exists: ${imageName}`);
+          } catch (err: any) {
+            if (err?.code !== 'ENOENT') throw err;
+          }
+          writeFileSync(imgPath, noteImage.bytes, { flag: 'wx' });
+          createdImgPath = imgPath;
+        } else if (attachedNote?.image) {
+          imageName = attachedNote.image;
+        }
+
+        const rawText = noteText ?? attachedNote?.text ?? '';
+        const now = new Date().toISOString();
+        const noteMdLines = [
+          '---',
+          `id: N-${noteId}`,
+          'from: owner',
+          'status: open',
+          `at: ${now}`,
+        ];
+        if (imageName) {
+          noteMdLines.push(`image: ${imageName}`);
+        }
+        noteMdLines.push('---', rawText, '');
+
+        const mdPath = inboxPath(d.repo, `N-${noteId}.md`);
+        try {
+          lstatSync(mdPath);
+          throw new Error(`Target note file already exists: N-${noteId}.md`);
+        } catch (err: any) {
+          if (err?.code !== 'ENOENT') throw err;
+        }
+        writeFileSync(mdPath, noteMdLines.join('\n'), { flag: 'wx', encoding: 'utf8' });
+        createdMdPath = mdPath;
+
+        try {
+          commitAll(d.repo, `inbox N-${noteId}`, ownerAuthor);
+        } catch (err: any) {
+          throw new Error(`Commit note failed: ${err?.message || String(err)}`);
+        }
+
+        sessionBaseSha = headSha(d.repo);
+        attachedNote = d.store.getNote(noteId);
+      } catch (err: any) {
+        if (createdMdPath) {
+          try { rmSync(createdMdPath, { force: true }); } catch {}
+        }
+        if (createdImgPath) {
+          try { rmSync(createdImgPath, { force: true }); } catch {}
+        }
+        try {
+          d.store.deleteNote(noteId);
+        } catch {}
+        sessionStatus = 'needs_owner';
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: [err?.message || String(err)],
+        };
+      }
+    }
+
+    // 3. PM Turn
     if (isOutOfTurns(d.store, sessionId, d.cfg, 'pm')) {
       sessionStatus = 'out_of_turns';
       return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns for PM'] };
@@ -407,7 +613,18 @@ export async function runSession(
     const pmTurnId = d.store.startTurn(sessionId, 'pm', pmAgent, null);
     const pmLogFile = join(d.logDir, `turn-${pmTurnId}.log`);
     d.store.setTurnLog(pmTurnId, pmLogFile);
-    const pmPromptText = pmPrompt(goals);
+
+    let promptNotes: Array<{ notePath: string; imagePath?: string; id?: string }> | undefined;
+    if (attachedNote) {
+      promptNotes = [
+        {
+          notePath: `team/inbox/N-${attachedNote.id}.md`,
+          imagePath: attachedNote.image ? `team/inbox/${attachedNote.image}` : undefined,
+          id: `N-${attachedNote.id}`,
+        },
+      ];
+    }
+    const pmPromptText = pmPrompt(goals, promptNotes);
     const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
     let pmOutput;
     try {
@@ -416,14 +633,14 @@ export async function runSession(
       const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
       const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
       d.store.endTurn(pmTurnId, 'error', reason);
-      if (isAbort) {
-        sessionStatus = 'stopped';
-        return { status: 'stopped', sessionId, tasks, notes: [reason] };
-      }
       try {
         commitAll(d.repo, `WIP pm: ${reason}`, pmAuthor);
       } catch {
         // commitAll error: keep needs_owner, do not throw
+      }
+      if (isAbort) {
+        sessionStatus = 'stopped';
+        return { status: 'stopped', sessionId, tasks, notes: [reason] };
       }
       sessionStatus = 'needs_owner';
       return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
@@ -477,9 +694,28 @@ export async function runSession(
       return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
     }
 
-    let cards: TaskCard[];
+    let cards: TaskCard[] = [];
     try {
-      cards = loadCards(d.repo);
+      const diffOut = git(d.repo, 'diff', '--name-only', '--diff-filter=AMCR', `${sessionBaseSha}..HEAD`, '--', 'team/tasks');
+      const changedFiles = diffOut
+        .split(/\r?\n/)
+        .map((s) => s.trim().replace(/\\/g, '/'))
+        .filter((s) => s.length > 0 && /^team\/tasks\/T-[^/]+\.md$/.test(s));
+
+      if (changedFiles.length === 0) {
+        throw new CardError('No task cards created by PM');
+      }
+
+      const seenIds = new Set<string>();
+      for (const relPath of changedFiles) {
+        const card = loadCardFromPath(d.repo, relPath);
+        if (seenIds.has(card.id)) {
+          throw new CardError(`Duplicate task card id "${card.id}"`);
+        }
+        seenIds.add(card.id);
+        cards.push(card);
+      }
+      cards.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     } catch (err) {
       if (err instanceof CardError) {
         sessionStatus = 'needs_owner';
@@ -493,13 +729,15 @@ export async function runSession(
       throw err;
     }
 
+    d.store.setSessionTasks(sessionId, cards.map((c) => c.id));
+
     for (const card of cards) {
       tasks[card.id] = 'pending';
       d.store.setTaskState(sessionId, card.id, 'pending', 0);
     }
 
     // 4. Require approval check
-    if (d.cfg.session.require_task_approval && !o.approved) {
+    if (!o.approved) {
       sessionStatus = 'awaiting_approval';
       return {
         status: 'awaiting_approval',
@@ -511,6 +749,7 @@ export async function runSession(
 
     // 5. Work on cards
     const outcome = await workOnCards(d, sessionId, cards, tasks);
+    closeNoteIfEligible(d, sessionId, cards, tasks, outcome);
     sessionStatus = outcome.status;
     return outcome;
   } finally {
@@ -559,11 +798,34 @@ export async function resumeSession(
   const tasks: Record<string, TaskState> = {};
 
   try {
+    const sessionTasks = d.store.getSessionTasks(sessionId);
+    if (sessionTasks.length === 0) {
+      sessionStatus = 'needs_owner';
+      return {
+        status: 'needs_owner',
+        sessionId,
+        tasks: {},
+        notes: ['no_session_tasks'],
+      };
+    }
+
     git(d.repo, 'checkout', `session/${sessionId}`);
 
-    let cards: TaskCard[];
+    let cards: TaskCard[] = [];
     try {
-      cards = loadCards(d.repo);
+      const seenIds = new Set<string>();
+      for (const taskId of sessionTasks) {
+        const relPath = `team/tasks/${taskId}.md`;
+        const card = loadCardFromPath(d.repo, relPath);
+        if (seenIds.has(card.id)) {
+          throw new CardError(`Duplicate task card id "${card.id}"`);
+        }
+        seenIds.add(card.id);
+        cards.push(card);
+      }
+      if (cards.length === 0) {
+        throw new CardError('No task cards created by PM');
+      }
     } catch (err) {
       if (err instanceof CardError) {
         sessionStatus = 'needs_owner';
@@ -583,6 +845,7 @@ export async function resumeSession(
     }
 
     const outcome = await workOnCards(d, sessionId, cards, tasks);
+    closeNoteIfEligible(d, sessionId, cards, tasks, outcome);
     sessionStatus = outcome.status;
     return outcome;
   } finally {

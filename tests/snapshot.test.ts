@@ -399,5 +399,68 @@ done_when: secret
       expect(snap.holder).toBeNull();
       expect(snap.seats.map((s) => s.status)).toEqual(['idle', 'idle', 'idle']);
     });
+
+    it('P2-T8 B: snapshot includes settings: { autoApprove: boolean }', () => {
+      // 1. Without active project or session, default from cfg (!require_task_approval)
+      cfg.session.require_task_approval = true;
+      const snap1 = buildSnapshot(store, cfg);
+      expect(snap1.settings).toEqual({ autoApprove: false });
+
+      cfg.session.require_task_approval = false;
+      const snap2 = buildSnapshot(store, cfg);
+      expect(snap2.settings).toEqual({ autoApprove: true });
+
+      // 2. Overridden by store.setSetting('auto_approve', 'true')
+      store.setSetting('auto_approve', 'true');
+      const snap3 = buildSnapshot(store, cfg);
+      expect(snap3.settings).toEqual({ autoApprove: true });
+
+      // 3. Overridden by store.setSetting('auto_approve', 'false')
+      store.setSetting('auto_approve', 'false');
+      const snap4 = buildSnapshot(store, cfg);
+      expect(snap4.settings).toEqual({ autoApprove: false });
+    });
+
+    it('includes members from cfg.agents and notes with reports', () => {
+      const projDir = join(tmpDir, 'notes-proj');
+      mkdirSync(join(projDir, 'team', 'tasks'), { recursive: true });
+      mkdirSync(join(projDir, 'team', 'reports'), { recursive: true });
+      store.setActiveProject(projDir);
+
+      // Create card T-001 with note N-1
+      writeFileSync(
+        join(projDir, 'team', 'tasks', 'T-001.md'),
+        `---
+id: T-001
+goal: Goal 1
+scope: [src/]
+acceptance: [ok]
+done_when: done
+note: N-1
+---
+`
+      );
+
+      // Create report for T-001
+      writeFileSync(
+        join(projDir, 'team', 'reports', 'T-001-dev.md'),
+        '## Bug\n- Bug 1\n## Cần sửa\n- Fix 1\nOK'
+      );
+
+      // Create note 1
+      const noteId = store.createNote(projDir, 'Ghi chú quan trọng', 'N-1.png');
+
+      const snap = buildSnapshot(store, cfg);
+      expect(snap.members).toEqual(Object.keys(cfg.agents));
+      expect(snap.notes).toHaveLength(1);
+      expect(snap.notes[0]).toEqual({
+        id: noteId,
+        text: 'Ghi chú quan trọng',
+        image: 'N-1.png',
+        status: 'open',
+        at: expect.any(String),
+        report: '## Bug\n- Bug 1\n## Cần sửa\n- Fix 1\nOK',
+      });
+    });
   });
 });

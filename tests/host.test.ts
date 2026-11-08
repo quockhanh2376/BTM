@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openStore, type Store } from '../src/store/db.ts';
@@ -1197,5 +1197,166 @@ done_when: done
     expect(idleResolved).toBe(true);
     expect(runnerAbortedAndSettled).toBe(true);
     expect(host.busy()).toBe(false);
+  });
+
+  describe('P2-T8 B: Auto duyệt thẻ (host)', () => {
+    it('mặc định đọc auto_approve = !cfg.session.require_task_approval và truyền vào runSession', async () => {
+      let passedApproved: boolean | undefined;
+      const mockRunSession = vi.fn().mockImplementation(async (_deps, _goals, opts) => {
+        passedApproved = opts.approved;
+        return { status: 'done', sessionId: 1, tasks: {}, notes: [] };
+      });
+
+      // Case 1: require_task_approval is true -> auto_approve default is false
+      cfg.session.require_task_approval = true;
+      const host1 = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+        runSession: mockRunSession,
+      });
+
+      await host1.start(['Goal 1']);
+      await host1.whenIdle();
+      expect(passedApproved).toBe(false);
+
+      // Case 2: require_task_approval is false -> auto_approve default is true
+      cfg.session.require_task_approval = false;
+      const host2 = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+        runSession: mockRunSession,
+      });
+
+      await host2.start(['Goal 2']);
+      await host2.whenIdle();
+      expect(passedApproved).toBe(true);
+    });
+
+    it('host.setAutoApprove thay đổi setting trong DB và truyền approved vào runSession', async () => {
+      let passedApproved: boolean | undefined;
+      const mockRunSession = vi.fn().mockImplementation(async (_deps, _goals, opts) => {
+        passedApproved = opts.approved;
+        return { status: 'done', sessionId: 1, tasks: {}, notes: [] };
+      });
+
+      cfg.session.require_task_approval = true; // default would be false
+      const host = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+        runSession: mockRunSession,
+      });
+
+      // Enable auto approve
+      host.setAutoApprove(true);
+      expect(store.getSetting('auto_approve')).toBe('true');
+
+      await host.start(['Goal Auto Approve']);
+      await host.whenIdle();
+      expect(passedApproved).toBe(true);
+
+      // Disable auto approve
+      host.setAutoApprove(false);
+      expect(store.getSetting('auto_approve')).toBe('false');
+
+      await host.start(['Goal Manual Approve']);
+      await host.whenIdle();
+      expect(passedApproved).toBe(false);
+    });
+
+    it('command accepts team recipient and starts session with team note', async () => {
+      let passedGoals: string[] | undefined;
+      let passedOpts: any;
+      const mockRunSession = vi.fn().mockImplementation(async (_deps, goals, opts) => {
+        passedGoals = goals;
+        passedOpts = opts;
+        return { status: 'done', sessionId: 1, tasks: {}, notes: [] };
+      });
+
+      const host = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+        runSession: mockRunSession,
+      });
+
+      const res = await host.command('team' as any, 'Yêu cầu cả team làm việc này');
+      expect(res.ok).toBe(true);
+      await host.whenIdle();
+      expect(passedGoals?.[0]).toContain('Xử lý ghi chú team N-1');
+      expect(passedOpts.noteId).toBe(1);
+    });
+
+    it('deletes DB note and cleans up file if postNote fails on commit', async () => {
+      const origCommitAll = gitModule.commitAll;
+      const commitSpy = vi.spyOn(gitModule, 'commitAll').mockImplementation((repoArg, msg, author) => {
+        if (msg.startsWith('inbox N-')) {
+          throw new Error('Simulated git commit error on postNote');
+        }
+        return origCommitAll(repoArg, msg, author);
+      });
+
+      const host = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+      });
+
+      try {
+        const res = await host.command('team' as any, 'Ghi chú test commit fail');
+        expect(res.ok).toBe(true);
+        await host.whenIdle();
+
+        // Verify DB note record is deleted
+        const notes = store.listNotes(repoDir);
+        expect(notes.length).toBe(0);
+
+        // Verify md file is deleted
+        const inboxDir = join(repoDir, 'team', 'inbox');
+        expect(existsSync(join(inboxDir, 'N-1.md'))).toBe(false);
+      } finally {
+        commitSpy.mockRestore();
+      }
+    });
+
+    it('deletes DB note if postNote fails on writing md', async () => {
+      const inboxDir = join(repoDir, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      writeFileSync(join(inboxDir, 'N-1.md'), 'pre-existing file');
+
+      const host = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+      });
+
+      const res = await host.command('team' as any, 'Ghi chú test collision');
+      expect(res.ok).toBe(true);
+      await host.whenIdle();
+
+      // Verify DB note record is deleted
+      const notes = store.listNotes(repoDir);
+      expect(notes.length).toBe(0);
+    });
   });
 });

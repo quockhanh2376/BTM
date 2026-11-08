@@ -12,6 +12,7 @@ export interface TaskCard {
   out_of_scope?: string[];
   context?: string[];
   openspec_change?: string;
+  note?: string;
 }
 
 export class CardError extends Error {
@@ -45,6 +46,7 @@ export const TaskCardSchema = z.object({
   out_of_scope: z.array(z.string()).nullish().transform((v) => v ?? undefined),
   context: z.array(z.string()).nullish().transform((v) => v ?? undefined),
   openspec_change: z.string().nullish().transform((v) => v ?? undefined),
+  note: z.string().nullish().transform((v) => v ?? undefined),
 });
 
 function extractFrontMatter(markdown: string): string {
@@ -100,6 +102,9 @@ export function parseTaskCard(markdown: string): TaskCard {
   }
   if (result.data.openspec_change !== undefined) {
     card.openspec_change = result.data.openspec_change;
+  }
+  if (result.data.note !== undefined) {
+    card.note = result.data.note;
   }
 
   return card;

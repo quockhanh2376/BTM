@@ -350,7 +350,7 @@ describe('runGate', () => {
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
     writeFileSync(
       join(repo, 'team/reports/T-001-dev.md'),
-      '## Bug\n- Phát hiện bug nhỏ ở controller\n\n## Cần sửa\n- Cần refactor helper\n\n## Cần xác nhận\n- Format ngày tháng'
+      '## Bug\n- Phát hiện bug nhỏ ở controller\n## Cần sửa\n- Cần refactor helper'
     );
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
@@ -486,5 +486,53 @@ describe('runGate', () => {
       ok: true,
       reasons: [],
     });
+  });
+
+  it('fails with report_too_long when dev report has more than 5 non-empty lines', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+
+    writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    // 6 non-empty lines
+    writeFileSync(
+      join(repo, 'team/reports/T-001-dev.md'),
+      ['## Bug', 'Line 1', 'Line 2', 'Line 3', 'Line 4', 'Line 5'].join('\n')
+    );
+
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a and report'], { cwd: repo });
+
+    const card = makeCard({ scope: ['src/'] });
+    const result = runGate(repo, card, base, emptyCmds);
+
+    expect(result.ok).toBe(false);
+    expect(result.reasons).toContain('report_too_long');
+  });
+
+  it('passes when dev report has 5 non-empty lines', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+
+    writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    // Exactly 5 non-empty lines with empty lines interspersed
+    writeFileSync(
+      join(repo, 'team/reports/T-001-dev.md'),
+      ['## Bug', '', 'Line 1', '', 'Line 2', 'Line 3', 'Line 4'].join('\n')
+    );
+
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a and report'], { cwd: repo });
+
+    const card = makeCard({ scope: ['src/'] });
+    const result = runGate(repo, card, base, emptyCmds);
+
+    expect(result.reasons).not.toContain('report_too_long');
+    expect(result.ok).toBe(true);
   });
 });

@@ -1,0 +1,6 @@
+- Bug: `http.ts:394–413`, `host.ts:532–536` ghi theo symlink; `team/inbox` hoặc file đích có thể trỏ ra ngoài project. Cần kiểm tra đường dẫn thực trước khi ghi.
+- Bug: `http.ts:152–174` phục vụ `note.image` không kiểm tra containment/tên file hay symlink; có thể đọc file ngoài note, kể cả nội dung không phải ảnh (`application/octet-stream`).
+- Bug: `session.ts:274` chỉ truyền `signal`; `makeRunner` không truyền `images` vào `buildArgv`, nên Codex QC thực tế không nhận `-i` dù argv unit test có.
+- Bug: `http.ts:416`, `host.ts:538` gọi `commitAll` trước khi lấy khóa/kiểm tra busy; gửi note giữa lượt Dev/QC có thể commit cả thay đổi đang làm, khiến QC báo `qc_modified_repo` và reset mất commit inbox.
+- Bug: `session.ts:392–403` nuốt lỗi ghi/commit rồi vẫn đánh dấu DB `done`; note có thể đóng dù file còn `open`, mất file hoặc chưa commit.
+- Bug: `session.ts:448–456` suy ra noteId từ goal và gắn session không kiểm tra project; goal nhắc N-id của project khác có thể chuyển liên kết và đóng nhầm note.

@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, rmSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import http, { type Server } from 'node:http';
 import { openStore, type Store } from '../src/store/db.ts';
 import { loadConfig, type Config } from '../src/config.ts';
 import { createServer, type HostApi } from '../src/server/http.ts';
+import * as gitModule from '../src/git.ts';
+import { readdirSync } from 'node:fs';
+import { tmpRepo } from './helpers.ts';
 
 function startServer(server: Server): Promise<number> {
   return new Promise((res, rej) => {
@@ -34,9 +39,11 @@ describe('HTTP Server & SSE', () => {
 
   let host: HostApi & {
     startCalls: string[][];
+    startOpts: any[];
     approveCalls: number;
     stopCalls: number;
     commandCalls: { to: string; text: string }[];
+    autoApproveCalls: boolean[];
   };
 
   beforeEach(async () => {
@@ -46,11 +53,24 @@ describe('HTTP Server & SSE', () => {
 
     host = {
       startCalls: [],
+      startOpts: [],
       approveCalls: 0,
       stopCalls: 0,
       commandCalls: [],
-      async start(goals: string[]) {
+      autoApproveCalls: [],
+      async start(goals: string[], opts?: any) {
+        if (opts?.prepare) {
+          try {
+            const res = await opts.prepare();
+            if (res?.noteId) {
+              goals = goals.map((g) => g.replace('N-?', `N-${res.noteId}`));
+            }
+          } catch (err: any) {
+            return { ok: false, error: err?.message || String(err) };
+          }
+        }
         host.startCalls.push(goals);
+        host.startOpts.push(opts);
         return { ok: true };
       },
       async approve() {
@@ -64,6 +84,9 @@ describe('HTTP Server & SSE', () => {
       command(to, text) {
         host.commandCalls.push({ to, text });
         return { ok: true, id: 1 };
+      },
+      setAutoApprove(autoApprove: boolean) {
+        host.autoApproveCalls.push(autoApprove);
       },
     };
 
@@ -670,6 +693,440 @@ describe('HTTP Server & SSE', () => {
       const data = await res.json();
       expect(data).toEqual({ ok: true, id: 1 });
       expect(host.commandCalls).toEqual([{ to: 'dev', text: 'Fix bug in login' }]);
+    });
+  });
+
+  describe('POST /api/settings', () => {
+    it('rejects without x-btm header (403)', async () => {
+      const res = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ autoApprove: true }),
+      });
+      expect(res.status).toBe(403);
+      expect(host.autoApproveCalls.length).toBe(0);
+    });
+
+    it('rejects invalid Origin (403)', async () => {
+      const res = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: 'http://malicious.example.com',
+        },
+        body: JSON.stringify({ autoApprove: true }),
+      });
+      expect(res.status).toBe(403);
+      expect(host.autoApproveCalls.length).toBe(0);
+    });
+
+    it('rejects invalid body schema (400)', async () => {
+      const res = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ autoApprove: 'not-a-boolean' }),
+      });
+      expect(res.status).toBe(400);
+      expect(host.autoApproveCalls.length).toBe(0);
+    });
+
+    it('calls host.setAutoApprove and returns 200 on valid input', async () => {
+      const res1 = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ autoApprove: true }),
+      });
+      expect(res1.status).toBe(200);
+      const data1 = await res1.json();
+      expect(data1).toMatchObject({ ok: true });
+      expect(host.autoApproveCalls).toEqual([true]);
+
+      const res2 = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ autoApprove: false }),
+      });
+      expect(res2.status).toBe(200);
+      const data2 = await res2.json();
+      expect(data2).toMatchObject({ ok: true });
+      expect(host.autoApproveCalls).toEqual([true, false]);
+    });
+  });
+
+  describe('Task 10a & 10b: Team Note & Note Image', () => {
+    let testRepo: string;
+
+    beforeEach(() => {
+      testRepo = tmpRepo({
+        'README.md': '# Project\n',
+      });
+      store.setActiveProject(testRepo);
+    });
+
+    it('rejects POST /api/team-note missing x-btm or invalid Origin', async () => {
+      const res1 = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ text: 'Hello' }),
+      });
+      expect(res1.status).toBe(403);
+
+      const res2 = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: 'https://evil.example.com',
+        },
+        body: JSON.stringify({ text: 'Hello' }),
+      });
+      expect(res2.status).toBe(403);
+    });
+
+    it('accepts valid PNG image: creates note in DB, does not write file directly, and calls host.start with goal containing N-id and note opts', async () => {
+      // Fake PNG magic bytes 89 50 4E 47 followed by some dummy bytes
+      const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
+      const base64 = pngBuf.toString('base64');
+
+      const res = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({
+          text: 'Vui lòng kiểm tra lỗi giao diện theo ảnh',
+          image: {
+            name: 'screenshot.png',
+            base64,
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.id).toBe(1);
+
+      // Verify files in repo are NOT written yet (runSession will write them on session branch)
+      const mdPath = join(testRepo, 'team', 'inbox', 'N-1.md');
+      const imgPath = join(testRepo, 'team', 'inbox', 'N-1.png');
+      expect(existsSync(mdPath)).toBe(false);
+      expect(existsSync(imgPath)).toBe(false);
+
+      // Verify host.start called
+      expect(host.startCalls.length).toBe(1);
+      expect(host.startCalls[0][0]).toContain('Xử lý ghi chú team N-1: Vui lòng kiểm tra lỗi');
+      expect(host.startOpts[0]?.noteId).toBe(1);
+      expect(host.startOpts[0]?.text).toBe('Vui lòng kiểm tra lỗi giao diện theo ảnh');
+      expect(host.startOpts[0]?.image?.ext).toBe('png');
+      expect(host.startOpts[0]?.image?.bytes).toEqual(pngBuf);
+
+      // Simulate runSession placing the image on disk, and verify GET /api/notes/1/image serves it
+      const inboxDir = join(testRepo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      writeFileSync(imgPath, pngBuf);
+
+      const getImgRes = await fetch(`${baseUrl}/api/notes/1/image`);
+      expect(getImgRes.status).toBe(200);
+      expect(getImgRes.headers.get('content-type')).toBe('image/png');
+      const getImgBuf = Buffer.from(await getImgRes.arrayBuffer());
+      expect(getImgBuf).toEqual(pngBuf);
+
+      // GET /api/notes/N-1/image also works
+      const getN1Res = await fetch(`${baseUrl}/api/notes/N-1/image`);
+      expect(getN1Res.status).toBe(200);
+      expect(getN1Res.headers.get('content-type')).toBe('image/png');
+    });
+
+    it('returns 415 when image has .png name but text content', async () => {
+      const textBase64 = Buffer.from('this is not a valid image').toString('base64');
+      const res = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({
+          text: 'Note with fake png',
+          image: {
+            name: 'fake.png',
+            base64: textBase64,
+          },
+        }),
+      });
+
+      expect(res.status).toBe(415);
+    });
+
+    it('returns 413 when image exceeds 5 MB limit', async () => {
+      // 6 MB of dummy bytes
+      const bigBuf = Buffer.alloc(6 * 1024 * 1024);
+      bigBuf[0] = 0x89;
+      bigBuf[1] = 0x50;
+      bigBuf[2] = 0x4e;
+      bigBuf[3] = 0x47;
+      const bigBase64 = bigBuf.toString('base64');
+
+      const res = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({
+          text: 'Note with 6MB image',
+          image: {
+            name: 'huge.png',
+            base64: bigBase64,
+          },
+        }),
+      });
+
+      expect(res.status).toBe(413);
+    });
+
+    it('rejects POST /api/team-note when team/inbox is a symlink pointing outside project', async () => {
+      const outsideDir = mkdtempSync(join(tmpdir(), 'btm-outside-'));
+      mkdirSync(join(testRepo, 'team'), { recursive: true });
+      symlinkSync(outsideDir, join(testRepo, 'team', 'inbox'));
+
+      try {
+        const res = await fetch(`${baseUrl}/api/team-note`, {
+          method: 'POST',
+          headers: {
+            'x-btm': '1',
+            'content-type': 'application/json',
+            Origin: `http://127.0.0.1:${port}`,
+          },
+          body: JSON.stringify({
+            text: 'Symlink outside test',
+          }),
+        });
+
+        expect(res.status).toBe(400);
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it('deletes DB note and returns error when host.start fails', async () => {
+      host.start = async () => ({ ok: false, error: 'Failed to start session' });
+
+      const res = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({
+          text: 'Pre-existing file collision test',
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBe('Failed to start session');
+      expect(store.listNotes(testRepo).length).toBe(0);
+    });
+
+    it('returns 409 "Đang có phiên chạy" when host is busy, without writing file or committing note', async () => {
+      host.busy = () => true;
+
+      const res = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({
+          text: 'Note while host is busy',
+        }),
+      });
+
+      expect(res.status).toBe(409);
+      const data = await res.json();
+      expect(data.error).toBe('Đang có phiên chạy');
+
+      // Verify no note in DB
+      const notes = store.listNotes(testRepo);
+      expect(notes.length).toBe(0);
+
+      // Verify no file written
+      const inboxDir = join(testRepo, 'team', 'inbox');
+      expect(existsSync(join(inboxDir, 'N-1.md'))).toBe(false);
+    });
+
+    it('returns 404 for GET /api/notes/<id>/image when note does not exist or has no image', async () => {
+      const res1 = await fetch(`${baseUrl}/api/notes/999/image`);
+      expect(res1.status).toBe(404);
+
+      // Create note without image
+      const noteNoImg = store.createNote(testRepo, 'Note without image');
+      const res2 = await fetch(`${baseUrl}/api/notes/${noteNoImg}/image`);
+      expect(res2.status).toBe(404);
+    });
+
+    it('returns 404 for GET /api/notes/<id>/image when image is a symlink or has mismatched magic bytes', async () => {
+      const noteId = store.createNote(testRepo, 'Note with symlink image');
+      store.setNoteImage(noteId, `N-${noteId}.png`);
+      const inboxDir = join(testRepo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+
+      // 1. Symlink image
+      const outsideFile = join(tmpdir(), `btm-symlink-target-${Date.now()}.png`);
+      const validPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      writeFileSync(outsideFile, validPng);
+      symlinkSync(outsideFile, join(inboxDir, `N-${noteId}.png`));
+
+      try {
+        const symlinkRes = await fetch(`${baseUrl}/api/notes/${noteId}/image`);
+        expect(symlinkRes.status).toBe(404);
+      } finally {
+        rmSync(join(inboxDir, `N-${noteId}.png`), { force: true });
+        rmSync(outsideFile, { force: true });
+      }
+
+      // 2. Corrupt / mismatched magic bytes
+      writeFileSync(join(inboxDir, `N-${noteId}.png`), Buffer.from('not a real png header'));
+      try {
+        const corruptRes = await fetch(`${baseUrl}/api/notes/${noteId}/image`);
+        expect(corruptRes.status).toBe(404);
+      } finally {
+        rmSync(join(inboxDir, `N-${noteId}.png`), { force: true });
+      }
+    });
+
+    it('always saves JPEG with .jpg extension even if upload name ends with .jpeg', async () => {
+      const jpegBuf = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+      const res = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({
+          text: 'Note with jpeg photo',
+          image: {
+            name: 'photo.jpeg',
+            base64: jpegBuf.toString('base64'),
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      const noteId = data.id;
+
+      const note = store.getNote(noteId);
+      expect(note?.image).toBe(`N-${noteId}.jpg`);
+      expect(host.startOpts[0]?.image?.ext).toBe('jpg');
+
+      const inboxDir = join(testRepo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      const jpgPath = join(inboxDir, `N-${noteId}.jpg`);
+      writeFileSync(jpgPath, jpegBuf);
+
+      const getRes = await fetch(`${baseUrl}/api/notes/${noteId}/image`);
+      expect(getRes.status).toBe(200);
+      expect(getRes.headers.get('content-type')).toBe('image/jpeg');
+    });
+
+    it('rejects PNG image when it has only 4 magic bytes instead of 8 bytes', async () => {
+      const fourBytePng = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      const res = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({
+          text: 'Note with truncated png header',
+          image: {
+            name: 'short.png',
+            base64: fourBytePng.toString('base64'),
+          },
+        }),
+      });
+
+      expect(res.status).toBe(415);
+    });
+
+    it('deletes DB note and returns 400 when host.start throws', async () => {
+      host.start = async () => {
+        throw new Error('Host start crashed');
+      };
+
+      const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+      const res = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({
+          text: 'Note that fails to start',
+          image: {
+            name: 'test.png',
+            base64: pngBuf.toString('base64'),
+          },
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toContain('Host start crashed');
+
+      // Verify DB note was deleted
+      expect(store.listNotes(testRepo).length).toBe(0);
+    });
+
+    it('returns 409 when host.start reports session already running', async () => {
+      host.start = async () => ({ ok: false, error: 'Đang có phiên chạy' });
+
+      const res = await fetch(`${baseUrl}/api/team-note`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({
+          text: 'Note when session running',
+        }),
+      });
+
+      expect(res.status).toBe(409);
+      const data = await res.json();
+      expect(data.error).toBe('Đang có phiên chạy');
+      expect(store.listNotes(testRepo).length).toBe(0);
     });
   });
 

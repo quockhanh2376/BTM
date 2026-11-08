@@ -1,0 +1,5 @@
+- Bug: [session.ts:516](/srv/agent-projects/btm/src/core/session.ts:516) — Khi config `require_task_approval=false`, tắt `auto_approve` vẫn chạy Dev/QC ngay; setting không thực sự buộc duyệt thủ công.
+- Bug: [session.ts:488](/srv/agent-projects/btm/src/core/session.ts:488) — Parse toàn bộ thẻ trước khi lọc; một thẻ cũ sai định dạng khiến phiên mới `needs_owner` dù PM tạo thẻ hợp lệ. Resume cũng mắc lỗi này.
+- Bug: [session.ts:586](/srv/agent-projects/btm/src/core/session.ts:586) — Khi `session_tasks` rỗng, resume lấy toàn bộ thẻ trong repo, vi phạm yêu cầu chỉ xử lý thẻ thuộc phiên; cần suy ra tập thẻ phiên cũ hoặc dừng an toàn.
+- Cần xác nhận: [session.ts:400](/srv/agent-projects/btm/src/core/session.ts:400) — Checkpoint trên nhánh hiện tại rồi checkout từ protected branch; nếu đang ở nhánh phiên trước, phiên mới không chứa checkpoint và các thay đổi vừa lưu.
+- Cần xác nhận: Chưa chạy toàn bộ Vitest và TypeScript trong môi trường chỉ đọc; chưa xác nhận điều kiện kiểm thử của Global Constraints.

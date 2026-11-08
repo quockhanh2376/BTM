@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, appendFileSync, mkdirSync, writeFileSync, realpathSync, lstatSync, rmSync } from 'node:fs';
+import { join, relative, isAbsolute } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import type { Store } from '../store/db.ts';
 import type { Runner } from '../runner/run.ts';
@@ -9,6 +9,7 @@ import { devPrompt, directPrompt } from '../core/prompts.ts';
 import type { TaskCard } from '../task/card.ts';
 import { commitAll } from '../git.ts';
 import { acquireLock } from '../cli.ts';
+import { inboxPath } from './inbox.ts';
 
 export interface HostDeps {
   cfg: Config;
@@ -25,6 +26,7 @@ export function createHost(d: HostDeps): HostApi & {
   busy(): boolean;
   tick(): Promise<void>;
   whenIdle(): Promise<void>;
+  setAutoApprove(enabled: boolean): void;
 } {
   let isBusy = false;
   let isStopping = false;
@@ -276,7 +278,28 @@ export function createHost(d: HostDeps): HostApi & {
     }
   }
 
-  async function start(goals: string[]): Promise<{ ok: boolean; error?: string }> {
+  function getAutoApprove(): boolean {
+    const setting = d.store.getSetting('auto_approve');
+    if (setting !== null) {
+      return setting === 'true';
+    }
+    return !d.cfg.session.require_task_approval;
+  }
+
+  function setAutoApprove(enabled: boolean): void {
+    d.store.setSetting('auto_approve', String(enabled));
+  }
+
+  async function start(
+    goals: string[],
+    opts?: {
+      noteId?: number;
+      text?: string;
+      image?: { ext: string; bytes: Buffer };
+      note?: { noteId: number; text: string; image?: { ext: string; bytes: Buffer } };
+      prepare?: () => Promise<{ noteId?: number } | void> | { noteId?: number } | void;
+    }
+  ): Promise<{ ok: boolean; error?: string }> {
     if (isStopping) {
       return { ok: false, error: 'Đang dừng phiên' };
     }
@@ -296,6 +319,26 @@ export function createHost(d: HostDeps): HostApi & {
 
     isBusy = true;
     activeReleaseLock = release;
+
+    let effectiveNoteId = opts?.noteId ?? opts?.note?.noteId;
+    if (opts?.prepare) {
+      try {
+        const prepResult = await opts.prepare();
+        if (prepResult && typeof prepResult === 'object' && prepResult.noteId) {
+          effectiveNoteId = prepResult.noteId;
+          goals = goals.map((g) => g.replace('N-?', `N-${prepResult.noteId}`));
+        }
+      } catch (err: any) {
+        if (activeReleaseLock === release) {
+          release();
+          activeReleaseLock = null;
+        }
+        isBusy = false;
+        notifyIfIdle();
+        return { ok: false, error: err?.message || String(err) };
+      }
+    }
+
     const abortController = new AbortController();
     currentAbortController = abortController;
 
@@ -316,6 +359,10 @@ export function createHost(d: HostDeps): HostApi & {
       return { ok: false, error: err?.message || String(err) };
     }
 
+    const approved = getAutoApprove();
+    const effectiveText = opts?.note?.text ?? opts?.text;
+    const effectiveImage = opts?.note?.image ?? opts?.image;
+
     (async () => {
       try {
         await sessionFn(
@@ -329,7 +376,19 @@ export function createHost(d: HostDeps): HostApi & {
             signal: abortController.signal,
           },
           goals,
-          { approved: false }
+          {
+            approved,
+            noteId: effectiveNoteId,
+            text: effectiveText,
+            image: effectiveImage,
+            note: effectiveNoteId
+              ? {
+                  noteId: effectiveNoteId,
+                  text: effectiveText ?? '',
+                  image: effectiveImage,
+                }
+              : undefined,
+          }
         );
       } catch {
         // Any error is captured by session outcome
@@ -487,14 +546,15 @@ export function createHost(d: HostDeps): HostApi & {
   }
 
   async function command(
-    to: Seat,
+    to: Seat | 'team',
     text: string
   ): Promise<{ ok: boolean; id?: number; error?: string }> {
     if (isStopping) {
       return { ok: false, error: 'Đang dừng' };
     }
 
-    if (to !== 'pm' && to !== 'dev' && to !== 'qc') {
+    const validSeats = [...Object.keys(d.cfg.seats), 'team'];
+    if (!validSeats.includes(to)) {
       return { ok: false, error: 'Người nhận không hợp lệ' };
     }
 
@@ -507,7 +567,37 @@ export function createHost(d: HostDeps): HostApi & {
       return await start([trimmed]);
     }
 
-    const id = d.store.enqueue(to, trimmed);
+    if (to === 'team') {
+      const activeProject = d.store.getActiveProject();
+      if (!activeProject) {
+        return { ok: false, error: 'Chưa có dự án active' };
+      }
+      if (busy()) {
+        return { ok: false, error: 'Đang có phiên chạy' };
+      }
+
+      try {
+        inboxPath(activeProject, 'N-0');
+      } catch (err: any) {
+        return { ok: false, error: err?.message || 'team/inbox must be inside project' };
+      }
+
+      const createdNoteId = d.store.createNote(activeProject, trimmed, null);
+      const goal = `Xử lý ghi chú team N-${createdNoteId}: ${trimmed.slice(0, 200)}`;
+      const result = await start([goal], {
+        noteId: createdNoteId,
+        text: trimmed,
+        note: { noteId: createdNoteId, text: trimmed },
+      });
+      if (!result.ok) {
+        try {
+          d.store.deleteNote(createdNoteId);
+        } catch {}
+      }
+      return result;
+    }
+
+    const id = d.store.enqueue(to as Seat, trimmed);
     void tick();
     return { ok: true, id };
   }
@@ -527,5 +617,6 @@ export function createHost(d: HostDeps): HostApi & {
     busy,
     tick,
     whenIdle,
+    setAutoApprove,
   };
 }
