@@ -92,3 +92,6 @@ plugins:                               # "đồ nghề theo ghế"; bật dần,
     dev: [openspec, ponytail]
     qc:  [openspec, ponytail-review]
   later: [ui-ux-pro-max, superpowers]  # chưa bật ở v1.0
+
+runner:
+  agy_allow_commands: [cat, ls, grep, head, tail, wc, git status, git diff, git log, git ls-files, npm test, npx vitest, npx tsc]
