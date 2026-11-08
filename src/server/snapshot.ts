@@ -1,0 +1,281 @@
+import { existsSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { join } from 'node:path';
+import type { Config, Seat, Tool } from '../config.ts';
+import type { Store, BoardState, QueueItem } from '../store/db.ts';
+import { loadTaskCards } from '../task/card.ts';
+
+export interface SeatCard {
+  seat: Seat;
+  agent: string;
+  tool: Tool;
+  status: 'running' | 'waiting' | 'idle';
+  taskId: string | null;
+  since: string | null;
+  turns: number;
+  lastLine: string;
+  energy: '—';
+  login: '—';
+}
+
+export interface Snapshot {
+  project: string | null;
+  session: {
+    id: number;
+    status: string;
+    goals: string[];
+    turnsUsed: number;
+    maxTurns: number;
+  } | null;
+  holder: Seat | null;
+  seats: SeatCard[];
+  tasks: {
+    id: string;
+    goal: string;
+    state: BoardState;
+    fixRounds: number;
+  }[];
+  log: {
+    at: string;
+    who: string;
+    text: string;
+  }[];
+  queue: QueueItem[];
+}
+
+const ANSI_REGEX = /(?:\x1B\]|\u009D)[\s\S]*?(?:\x07|\x1B\\|\u009C)|(?:\x1B\[|\u009B)[0-?]*[ -/]*[@-~]|[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]|\x1B[@-Z\\-_]/g;
+
+export function lastLogLine(file: string | null): string {
+  if (!file || typeof file !== 'string') {
+    return '';
+  }
+  try {
+    if (!existsSync(file)) {
+      return '';
+    }
+    const stat = statSync(file);
+    if (!stat.isFile() || stat.size === 0) {
+      return '';
+    }
+
+    const CHUNK_SIZE = 64 * 1024;
+    const MAX_READ = 1024 * 1024;
+
+    const fd = openSync(file, 'r');
+    try {
+      let readSize = 0;
+      while (readSize < stat.size && readSize < MAX_READ) {
+        readSize = Math.min(readSize + CHUNK_SIZE, stat.size, MAX_READ);
+        const offset = stat.size - readSize;
+        const buffer = Buffer.alloc(readSize);
+        readSync(fd, buffer, 0, readSize, offset);
+        const content = buffer.toString('utf8');
+        const cleaned = content.replace(ANSI_REGEX, '');
+        const lines = cleaned.split(/\r?\n/);
+        const startIndex = offset > 0 ? 1 : 0;
+        for (let i = lines.length - 1; i >= startIndex; i--) {
+          const trimmed = lines[i].trim();
+          if (trimmed.length > 0) {
+            return trimmed.length > 200 ? trimmed.slice(0, 200) : trimmed;
+          }
+        }
+        if (readSize >= stat.size || readSize >= MAX_READ) {
+          break;
+        }
+      }
+      return '';
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return '';
+  }
+}
+
+function createDefaultSeats(cfg: Config): SeatCard[] {
+  const seats: Seat[] = ['pm', 'dev', 'qc'];
+  return seats.map((seat) => {
+    const agent = cfg.seats[seat];
+    const tool = cfg.agents[agent].tool;
+    return {
+      seat,
+      agent,
+      tool,
+      status: 'idle',
+      taskId: null,
+      since: null,
+      turns: 0,
+      lastLine: '',
+      energy: '—',
+      login: '—',
+    };
+  });
+}
+
+export function buildSnapshot(store: Store, cfg: Config): Snapshot {
+  const project = store.getActiveProject();
+  const queue = store.listQueue(50);
+
+  if (!project) {
+    return {
+      project: null,
+      session: null,
+      holder: null,
+      seats: createDefaultSeats(cfg),
+      tasks: [],
+      log: [],
+      queue,
+    };
+  }
+
+  let latestSessionRow = store.getLatestSession(undefined, project);
+  if (!latestSessionRow) {
+    const anyLatest = store.getLatestSession();
+    if (anyLatest && (!anyLatest.project || anyLatest.project === project)) {
+      latestSessionRow = anyLatest;
+    }
+  }
+
+  if (!latestSessionRow) {
+    return {
+      project,
+      session: null,
+      holder: null,
+      seats: createDefaultSeats(cfg),
+      tasks: [],
+      log: [],
+      queue,
+    };
+  }
+
+  const s = store.getSession(latestSessionRow.id);
+  if (!s) {
+    return {
+      project,
+      session: null,
+      holder: null,
+      seats: createDefaultSeats(cfg),
+      tasks: [],
+      log: [],
+      queue,
+    };
+  }
+
+  const turns = store.listTurns(s.id);
+  const runningTurn = turns.find((t) => t.ended_at === null);
+  const holder: Seat | null = runningTurn ? runningTurn.seat : null;
+
+  const seatKeys: Seat[] = ['pm', 'dev', 'qc'];
+  const seats: SeatCard[] = seatKeys.map((seat) => {
+    const agent = cfg.seats[seat];
+    const tool = cfg.agents[agent].tool;
+
+    let status: 'running' | 'waiting' | 'idle' = 'idle';
+    if (holder === seat) {
+      status = 'running';
+    } else if (s.status === 'running' && holder !== null) {
+      status = 'waiting';
+    } else {
+      status = 'idle';
+    }
+
+    const seatTurns = turns.filter((t) => t.seat === seat);
+    const lastTurn = seatTurns.length > 0 ? seatTurns[seatTurns.length - 1] : null;
+
+    const taskId = lastTurn?.task_id ?? null;
+    const since = lastTurn?.started_at ?? null;
+    const turnsCount = store.countTurns(s.id, seat);
+    const lastLine = lastLogLine(lastTurn?.log_file ?? null);
+
+    return {
+      seat,
+      agent,
+      tool,
+      status,
+      taskId,
+      since,
+      turns: turnsCount,
+      lastLine,
+      energy: '—',
+      login: '—',
+    };
+  });
+
+  const taskStates = store.listTaskStates(s.id);
+  const taskGoals = new Map<string, string>();
+  try {
+    const cards = loadTaskCards(join(project, 'team', 'tasks'), project);
+    for (const card of cards) {
+      taskGoals.set(card.id, card.goal);
+    }
+  } catch {}
+
+  const tasks = taskStates.map((ts) => {
+    return {
+      id: ts.task_id,
+      goal: taskGoals.get(ts.task_id) ?? '',
+      state: ts.state,
+      fixRounds: ts.fix_rounds,
+    };
+  });
+
+  const logEntries: { at: string; who: string; text: string }[] = [];
+
+  if (s.started_at) {
+    logEntries.push({
+      at: s.started_at,
+      who: 'session',
+      text: 'started',
+    });
+  }
+
+  if (s.ended_at) {
+    logEntries.push({
+      at: s.ended_at,
+      who: 'session',
+      text: s.status,
+    });
+  }
+
+  for (const turn of turns) {
+    logEntries.push({
+      at: turn.started_at,
+      who: turn.agent,
+      text: turn.task_id ? `bắt đầu ${turn.task_id}` : 'bắt đầu',
+    });
+    if (turn.ended_at) {
+      logEntries.push({
+        at: turn.ended_at,
+        who: turn.agent,
+        text: turn.error ? `${turn.result ?? 'error'}: ${turn.error}` : (turn.result ?? 'ok'),
+      });
+    }
+  }
+
+  const failures = store.listHandoffFailures(s.id);
+  for (const f of failures) {
+    logEntries.push({
+      at: f.at,
+      who: 'gate',
+      text: f.reason,
+    });
+  }
+
+  logEntries.sort((a, b) => b.at.localeCompare(a.at));
+  const log = logEntries.slice(0, 50);
+
+  return {
+    project,
+    session: {
+      id: s.id,
+      status: s.status,
+      goals: s.goals,
+      turnsUsed: store.countTurns(s.id),
+      maxTurns: cfg.session.max_turns,
+    },
+    holder,
+    seats,
+    tasks,
+    log,
+    queue,
+  };
+}
