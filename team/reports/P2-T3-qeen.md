@@ -1,0 +1,4 @@
+- **Bug:** [snapshot.ts:211](/srv/agent-projects/btm/src/server/snapshot.ts:211) fallback đọc thẻ bỏ qua bảo vệ của `loadTaskCards`: symlink ra ngoài project vẫn bị đọc và lộ `goal`. Bỏ fallback; thêm test symlink file/thư mục và task ID chứa `../`.
+- **Bug:** [snapshot.ts:45](/srv/agent-projects/btm/src/server/snapshot.ts:45) regex xử lý sai OSC: `\x1b]0;secret-title\x07OK` trả `0;secret-title\x07OK`, chưa sạch ANSI. Thêm test OSC kết thúc bằng BEL/ST.
+- **Bug:** [snapshot.ts:68](/srv/agent-projects/btm/src/server/snapshot.ts:68) cắt cố định 64 KB có thể lấy giữa dòng/chuỗi ANSI hoặc trả `''` khi đuôi có >64 KB dòng trống dù trước đó có `OK`. Cần đọc lùi đến ranh giới phù hợp và thêm test.
+- **Cần sửa:** Test nhật ký ghi “max 50” nhưng chỉ tạo vài sự kiện; thêm >50 sự kiện và kiểm tra đúng 50 mục mới nhất.

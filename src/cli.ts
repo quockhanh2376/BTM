@@ -2,13 +2,17 @@
 import { parseArgs } from 'node:util';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openSync, writeSync, closeSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import fs, { openSync, writeSync, closeSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, linkSync } from 'node:fs';
+import type http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import Database from 'better-sqlite3';
-import { loadConfig, checkForbiddenEnv } from './config.ts';
+import { loadConfig, checkForbiddenEnv, type Config } from './config.ts';
 import { openStore } from './store/db.ts';
 import { initProject } from './project/init.ts';
 import { runSession, resumeSession, type SessionOutcome } from './core/session.ts';
 import { makeRunner, type Runner } from './runner/run.ts';
+import { createHost } from './server/host.ts';
+import { createServer } from './server/http.ts';
 
 export interface CliDeps {
   runSession?: typeof runSession;
@@ -16,19 +20,255 @@ export interface CliDeps {
   runner?: Runner;
   env?: NodeJS.ProcessEnv;
   abortController?: AbortController;
+  createHost?: typeof createHost;
+  createServer?: typeof createServer;
+}
+
+export interface ServeOptions {
+  configPath?: string;
+  config?: Config;
+  env?: NodeJS.ProcessEnv;
+  deps?: CliDeps;
+  port?: number;
+  bind?: string;
+}
+
+export async function serve(
+  configOrOptions?: string | ServeOptions,
+  deps?: CliDeps
+): Promise<http.Server> {
+  let configPath = './btm.config.yaml';
+  let cfg: Config | undefined;
+  let effectiveEnv: NodeJS.ProcessEnv = process.env;
+  let effectiveDeps: CliDeps | undefined = deps;
+  let portOverride: number | undefined;
+  let bindOverride: string | undefined;
+
+  if (typeof configOrOptions === 'string') {
+    configPath = configOrOptions;
+    effectiveDeps = deps;
+    effectiveEnv = deps?.env ?? process.env;
+  } else if (configOrOptions && typeof configOrOptions === 'object') {
+    configPath = configOrOptions.configPath ?? configPath;
+    cfg = configOrOptions.config;
+    effectiveDeps = configOrOptions.deps ?? deps;
+    effectiveEnv = configOrOptions.env ?? effectiveDeps?.env ?? process.env;
+    portOverride = configOrOptions.port;
+    bindOverride = configOrOptions.bind;
+  } else {
+    effectiveDeps = deps;
+    effectiveEnv = deps?.env ?? process.env;
+  }
+
+  if (!cfg) {
+    cfg = loadConfig(configPath);
+  }
+
+  const forbidden = checkForbiddenEnv(effectiveEnv, cfg.login.forbidden_env);
+  if (forbidden.length > 0) {
+    throw new Error(`Forbidden environment variables present: ${forbidden.join(', ')}`);
+  }
+
+  const dbPath = join(cfg.host.data_dir, 'btm.db');
+  const store = openStore(dbPath);
+
+  const runner = effectiveDeps?.runner ?? makeRunner(cfg);
+  const hostFactory = effectiveDeps?.createHost ?? createHost;
+  const serverFactory = effectiveDeps?.createServer ?? createServer;
+
+  const host = hostFactory({
+    cfg,
+    store,
+    runner,
+    logDir: join(cfg.host.data_dir, 'logs'),
+    dataDir: cfg.host.data_dir,
+    env: effectiveEnv,
+    runSession: effectiveDeps?.runSession,
+    resumeSession: effectiveDeps?.resumeSession,
+  });
+
+  const btmRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const webFile = join(btmRoot, 'web', 'index.html');
+
+  const server = serverFactory({
+    cfg,
+    store,
+    host,
+    webFile,
+  });
+
+  const bind = bindOverride ?? cfg.host.dashboard.bind ?? '127.0.0.1';
+  const port = portOverride ?? cfg.host.dashboard.port;
+
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    server.once('error', rejectPromise);
+    server.listen(port, bind, () => {
+      server.removeListener('error', rejectPromise);
+      resolvePromise();
+    });
+  });
+
+  const addr = server.address() as AddressInfo | null;
+  const actualPort = addr ? addr.port : port;
+  console.log(`BTM dashboard: http://127.0.0.1:${actualPort}`);
+
+  const tickTimer = setInterval(() => {
+    void host.tick();
+  }, 2000);
+
+  let storeClosed = false;
+  const closeStore = () => {
+    if (storeClosed) return;
+    storeClosed = true;
+    try {
+      store.close();
+    } catch {}
+  };
+
+  let isShuttingDown = false;
+  const shutdown = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    clearInterval(tickTimer);
+    process.removeListener('SIGINT', sigListener);
+    process.removeListener('SIGTERM', sigListener);
+
+    const closeServerPromise = new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+
+    try {
+      await host.stop();
+    } catch {}
+
+    if ('whenIdle' in host && typeof (host as any).whenIdle === 'function') {
+      try {
+        await (host as any).whenIdle();
+      } catch {}
+    }
+
+    await closeServerPromise;
+    closeStore();
+    process.exit(0);
+  };
+
+  const sigListener = () => {
+    void shutdown();
+  };
+
+  process.on('SIGINT', sigListener);
+  process.on('SIGTERM', sigListener);
+
+  server.on('close', () => {
+    clearInterval(tickTimer);
+    process.removeListener('SIGINT', sigListener);
+    process.removeListener('SIGTERM', sigListener);
+    if (!isShuttingDown) {
+      closeStore();
+    }
+  });
+
+  return server;
+}
+
+export function acquireLock(dataDir: string): (() => void) | null {
+  const lockPath = join(dataDir, 'btm.lock');
+  mkdirSync(dataDir, { recursive: true });
+
+  const tryCreateLock = (): boolean => {
+    const tmpPath = join(
+      dataDir,
+      `btm.lock.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`
+    );
+    try {
+      writeFileSync(tmpPath, String(process.pid));
+      fs.linkSync(tmpPath, lockPath);
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {}
+      return true;
+    } catch (err: any) {
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {}
+      if (err?.code === 'EEXIST') {
+        return false;
+      }
+      throw err;
+    }
+  };
+
+  if (tryCreateLock()) {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      try {
+        fs.unlinkSync(lockPath);
+      } catch {}
+    };
+  }
+
+  let isAlive = false;
+  let existingPid: number | null = null;
+  try {
+    const content = readFileSync(lockPath, 'utf8').trim();
+    existingPid = parseInt(content, 10);
+    if (!isNaN(existingPid)) {
+      process.kill(existingPid, 0);
+      isAlive = true;
+    }
+  } catch (killErr: any) {
+    if (killErr?.code === 'EPERM') {
+      isAlive = true;
+    } else if (killErr?.code === 'ESRCH') {
+      isAlive = false;
+    }
+  }
+
+  if (isAlive) {
+    return null;
+  }
+
+  // pid chết → unlink rồi thử link lại một lần
+  try {
+    fs.unlinkSync(lockPath);
+  } catch {}
+
+  if (tryCreateLock()) {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      try {
+        fs.unlinkSync(lockPath);
+      } catch {}
+    };
+  }
+
+  return null;
 }
 
 export async function main(
   argv?: string[],
   env?: NodeJS.ProcessEnv | CliDeps,
   deps?: CliDeps
-): Promise<number> {
+): Promise<number | http.Server> {
   const rawArgs = argv ?? process.argv.slice(2);
 
   let effectiveEnv: NodeJS.ProcessEnv;
   let effectiveDeps: CliDeps | undefined;
 
-  if (env && ('runSession' in env || 'resumeSession' in env || 'runner' in env || 'abortController' in env)) {
+  if (
+    env &&
+    ('runSession' in env ||
+      'resumeSession' in env ||
+      'runner' in env ||
+      'abortController' in env ||
+      'createHost' in env ||
+      'createServer' in env)
+  ) {
     effectiveDeps = env as CliDeps;
     effectiveEnv = effectiveDeps.env ?? process.env;
   } else {
@@ -92,6 +332,7 @@ Usage:
   btm init <name>                               Initialize a new project and set active
   btm run --goal "<g>" [--goal …] [--approved]  Run a session on the active project
   btm status                                    Show active project and latest session status
+  btm serve                                     Start dashboard HTTP server and host
 
 Options:
   --config <path>   Config file path (default: ./btm.config.yaml)
@@ -104,7 +345,7 @@ Options:
     return 0;
   }
 
-  if (['init', 'run', 'status'].includes(command)) {
+  if (['init', 'run', 'status', 'serve'].includes(command)) {
     let cfg;
     try {
       cfg = loadConfig(configPath);
@@ -153,54 +394,13 @@ Options:
     }
 
     if (command === 'run') {
-      const lockPath = join(cfg.host.data_dir, 'btm.lock');
-      mkdirSync(cfg.host.data_dir, { recursive: true });
-
-      let releaseLock: (() => void) | null = null;
+      let releaseLock = acquireLock(cfg.host.data_dir);
+      if (!releaseLock) {
+        console.error('Error: Another btm process is running.');
+        process.exitCode = 1;
+        return 1;
+      }
       try {
-        let fd: number | null = null;
-        try {
-          fd = openSync(lockPath, 'wx');
-          writeSync(fd, String(process.pid));
-          closeSync(fd);
-          fd = null;
-        } catch (err: any) {
-          if (err?.code === 'EEXIST') {
-            let isAlive = false;
-            let existingPid: number | null = null;
-            try {
-              const content = readFileSync(lockPath, 'utf8').trim();
-              existingPid = parseInt(content, 10);
-              if (!isNaN(existingPid)) {
-                process.kill(existingPid, 0);
-                isAlive = true;
-              }
-            } catch (killErr: any) {
-              if (killErr?.code === 'EPERM') {
-                isAlive = true;
-              } else if (killErr?.code === 'ESRCH') {
-                isAlive = false;
-              }
-            }
-
-            if (isAlive) {
-              console.error(`Error: Another btm process (PID ${existingPid}) is running.`);
-              process.exitCode = 1;
-              return 1;
-            }
-
-            // pid chết → ghi đè
-            writeFileSync(lockPath, String(process.pid));
-          } else {
-            throw err;
-          }
-        }
-
-        releaseLock = () => {
-          try {
-            unlinkSync(lockPath);
-          } catch {}
-        };
 
         const goals = (values.goal as string[] | undefined) ?? [];
         const approved = Boolean(values.approved);
@@ -312,7 +512,7 @@ Options:
             }
 
             activeSessionId = latestAwaiting.id;
-            const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'), abortController.signal);
+            const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal);
             const resumeFn = effectiveDeps?.resumeSession ?? resumeSession;
 
             const outcome = await resumeFn(
@@ -322,6 +522,7 @@ Options:
                 runner,
                 repo: activeProject,
                 env: effectiveEnv,
+                logDir: join(cfg.host.data_dir, 'logs'),
                 signal: abortController.signal,
               },
               latestAwaiting.id
@@ -348,7 +549,7 @@ Options:
             return exitCode;
           }
 
-          const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'), abortController.signal);
+          const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal);
           const sessionFn = effectiveDeps?.runSession ?? runSession;
 
           const outcome = await sessionFn(
@@ -358,6 +559,7 @@ Options:
               runner,
               repo: activeProject,
               env: effectiveEnv,
+              logDir: join(cfg.host.data_dir, 'logs'),
               signal: abortController.signal,
             },
             goals,
@@ -469,6 +671,25 @@ Options:
         return 1;
       } finally {
         store.close();
+      }
+    }
+
+    if (command === 'serve') {
+      try {
+        const server = await serve(
+          {
+            config: cfg,
+            configPath,
+            env: effectiveEnv,
+            deps: effectiveDeps,
+          },
+          effectiveDeps
+        );
+        return server;
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+        return 1;
       }
     }
   }

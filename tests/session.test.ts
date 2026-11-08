@@ -31,19 +31,20 @@ type StepHandler = (
   seat: Seat,
   agentId: string,
   prompt: string,
-  cwd: string
+  cwd: string,
+  logFile?: string
 ) => void | HandlerOutput | Promise<void | HandlerOutput>;
 
 function createFakeRunner(steps: StepHandler[]) {
-  const calls: Array<{ seat: Seat; agentId: string; prompt: string; cwd: string }> = [];
+  const calls: Array<{ seat: Seat; agentId: string; prompt: string; cwd: string; logFile?: string }> = [];
   let index = 0;
-  const runner = async (seat: Seat, agentId: string, prompt: string, cwd: string) => {
-    calls.push({ seat, agentId, prompt, cwd });
+  const runner = async (seat: Seat, agentId: string, prompt: string, cwd: string, logFile?: string) => {
+    calls.push({ seat, agentId, prompt, cwd, logFile });
     if (index >= steps.length) {
       throw new Error(`Unexpected runner call #${index + 1} (${seat}/${agentId})`);
     }
     const handler = steps[index++];
-    const res = await handler(seat, agentId, prompt, cwd);
+    const res = await handler(seat, agentId, prompt, cwd, logFile);
     return {
       exitCode: 0,
       timedOut: false,
@@ -80,6 +81,7 @@ function makeDeps(repo: string, customCfg?: Partial<Config>): { deps: SessionDep
     }),
     repo,
     env: { ...process.env, OPENAI_API_KEY: undefined, ANTHROPIC_API_KEY: undefined },
+    logDir: join(dirname(realRepo), 'logs'),
   };
   return { deps, store, cfg };
 }
@@ -1622,6 +1624,380 @@ done_when: done
       expect(devRound2Prompt).toContain('command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ');
 
       store.close();
+    });
+  });
+
+  describe('Plan 2 Task 2: Session board states + per-turn logs', () => {
+    it('happy path ghi đúng chuỗi pending → in_dev → awaiting_qc → passed', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
+      const { deps, store } = makeDeps(repo);
+
+      const taskStateTransitions: Array<{ taskId: string; state: string; fixRounds: number }> = [];
+      const origSetTaskState = store.setTaskState.bind(store);
+      store.setTaskState = (sessionId, taskId, state, fixRounds) => {
+        taskStateTransitions.push({ taskId, state, fixRounds });
+        origSetTaskState(sessionId, taskId, state, fixRounds);
+      };
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), '// dev\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'pass',
+            bugs: [],
+            fix: [],
+            confirm: [],
+          }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+      expect(outcome.status).toBe('done');
+
+      expect(taskStateTransitions).toEqual([
+        { taskId: 'T-001', state: 'pending', fixRounds: 0 },
+        { taskId: 'T-001', state: 'in_dev', fixRounds: 0 },
+        { taskId: 'T-001', state: 'awaiting_qc', fixRounds: 0 },
+        { taskId: 'T-001', state: 'passed', fixRounds: 0 },
+      ]);
+
+      const finalStates = store.listTaskStates(outcome.sessionId!);
+      expect(finalStates).toEqual([
+        expect.objectContaining({
+          task_id: 'T-001',
+          state: 'passed',
+          fix_rounds: 0,
+        }),
+      ]);
+
+      store.close();
+    });
+
+    it('QC rớt một lần → có returned với fix_rounds: 1 rồi passed', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
+      const { deps, store } = makeDeps(repo);
+
+      const taskStateTransitions: Array<{ taskId: string; state: string; fixRounds: number }> = [];
+      const origSetTaskState = store.setTaskState.bind(store);
+      store.setTaskState = (sessionId, taskId, state, fixRounds) => {
+        taskStateTransitions.push({ taskId, state, fixRounds });
+        origSetTaskState(sessionId, taskId, state, fixRounds);
+      };
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev 1
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), '// dev 1\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC 1: fail
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'fail',
+            bugs: ['bug 1'],
+            fix: ['fix 1'],
+            confirm: [],
+          }),
+        }),
+        // Dev 2
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), '// dev 2\n');
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC 2: pass
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'pass',
+            bugs: [],
+            fix: [],
+            confirm: [],
+          }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+      expect(outcome.status).toBe('done');
+
+      expect(taskStateTransitions).toEqual([
+        { taskId: 'T-001', state: 'pending', fixRounds: 0 },
+        { taskId: 'T-001', state: 'in_dev', fixRounds: 0 },
+        { taskId: 'T-001', state: 'awaiting_qc', fixRounds: 0 },
+        { taskId: 'T-001', state: 'returned', fixRounds: 1 },
+        { taskId: 'T-001', state: 'in_dev', fixRounds: 1 },
+        { taskId: 'T-001', state: 'awaiting_qc', fixRounds: 1 },
+        { taskId: 'T-001', state: 'passed', fixRounds: 1 },
+      ]);
+
+      const finalStates = store.listTaskStates(outcome.sessionId!);
+      expect(finalStates).toEqual([
+        expect.objectContaining({
+          task_id: 'T-001',
+          state: 'passed',
+          fix_rounds: 1,
+        }),
+      ]);
+
+      store.close();
+    });
+
+    it('mỗi lượt có log_file = <logDir>/turn-<id>.log trước khi runner được gọi (runner giả đọc listTurns thấy đã có)', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
+      const { deps, store } = makeDeps(repo);
+
+      const observedLogFilesDuringRunnerCalls: string[] = [];
+      const runnerLogFileArgs: string[] = [];
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd, logFile) => {
+          runnerLogFileArgs.push(logFile || '');
+          const turns = store.listTurns(1);
+          expect(turns.length).toBe(1);
+          const currentTurn = turns[0];
+          expect(currentTurn.log_file).toBe(join(deps.logDir, `turn-${currentTurn.id}.log`));
+          observedLogFilesDuringRunnerCalls.push(currentTurn.log_file!);
+
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd, logFile) => {
+          runnerLogFileArgs.push(logFile || '');
+          const turns = store.listTurns(1);
+          expect(turns.length).toBe(2);
+          const currentTurn = turns[1];
+          expect(currentTurn.log_file).toBe(join(deps.logDir, `turn-${currentTurn.id}.log`));
+          observedLogFilesDuringRunnerCalls.push(currentTurn.log_file!);
+
+          writeFileSync(join(cwd, 'src', 'app.ts'), '// dev\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC
+        (_s, _a, _p, _cwd, logFile) => {
+          runnerLogFileArgs.push(logFile || '');
+          const turns = store.listTurns(1);
+          expect(turns.length).toBe(3);
+          const currentTurn = turns[2];
+          expect(currentTurn.log_file).toBe(join(deps.logDir, `turn-${currentTurn.id}.log`));
+          observedLogFilesDuringRunnerCalls.push(currentTurn.log_file!);
+
+          return {
+            lastMessage: JSON.stringify({
+              verdict: 'pass',
+              bugs: [],
+              fix: [],
+              confirm: [],
+            }),
+          };
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+      expect(outcome.status).toBe('done');
+
+      // Verify that all 3 runner calls observed valid log files registered before call
+      expect(observedLogFilesDuringRunnerCalls).toEqual([
+        join(deps.logDir, 'turn-1.log'),
+        join(deps.logDir, 'turn-2.log'),
+        join(deps.logDir, 'turn-3.log'),
+      ]);
+      expect(runnerLogFileArgs).toEqual([
+        join(deps.logDir, 'turn-1.log'),
+        join(deps.logDir, 'turn-2.log'),
+        join(deps.logDir, 'turn-3.log'),
+      ]);
+
+      const allTurns = store.listTurns(1);
+      expect(allTurns.map((t) => t.log_file)).toEqual([
+        join(deps.logDir, 'turn-1.log'),
+        join(deps.logDir, 'turn-2.log'),
+        join(deps.logDir, 'turn-3.log'),
+      ]);
+
+      store.close();
+    });
+
+    it('gate rớt còn vòng → returned (fix_rounds: 1); hết vòng → failed; BLOCKED → blocked', async () => {
+      // 1. BLOCKED -> blocked
+      const repoBlocked = tmpRepo({ 'src/app.ts': '1' });
+      const { deps: depsBlocked, store: storeBlocked } = makeDeps(repoBlocked);
+      const blockedTransitions: Array<{ taskId: string; state: string; fixRounds: number }> = [];
+      storeBlocked.setTaskState = (sessionId, taskId, state, fixRounds) => {
+        blockedTransitions.push({ taskId, state, fixRounds });
+      };
+      const { runner: runnerBlocked } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev: reports BLOCKED
+        () => ({
+          lastMessage: 'BLOCKED: dependencies missing',
+        }),
+      ]);
+      depsBlocked.runner = runnerBlocked;
+      await runSession(depsBlocked, ['Goal 1'], { approved: true });
+      expect(blockedTransitions).toContainEqual({ taskId: 'T-001', state: 'blocked', fixRounds: 0 });
+      storeBlocked.close();
+
+      // 2. gate fails -> returned with fixRounds: 1
+      const repoGate = tmpRepo({ 'src/app.ts': '1' });
+      const { deps: depsGate, store: storeGate } = makeDeps(repoGate);
+      const gateTransitions: Array<{ taskId: string; state: string; fixRounds: number }> = [];
+      storeGate.setTaskState = (sessionId, taskId, state, fixRounds) => {
+        gateTransitions.push({ taskId, state, fixRounds });
+      };
+      const { runner: runnerGate } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev 1: out of scope
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'out.txt'), 'bad');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // Dev 2: fixed
+        (_s, _a, _p, cwd) => {
+          git(cwd, 'rm', 'out.txt');
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'fixed');
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+      depsGate.runner = runnerGate;
+      await runSession(depsGate, ['Goal 1'], { approved: true });
+      expect(gateTransitions).toContainEqual({ taskId: 'T-001', state: 'returned', fixRounds: 1 });
+      storeGate.close();
+
+      // 3. gate exceeds max_fix_rounds -> failed
+      const repoExceed = tmpRepo({ 'src/app.ts': '1' });
+      const { deps: depsExceed, store: storeExceed } = makeDeps(repoExceed, {
+        turn: {
+          ...loadConfig('btm.config.yaml').turn,
+          max_fix_rounds: 0,
+        },
+      });
+      const exceedTransitions: Array<{ taskId: string; state: string; fixRounds: number }> = [];
+      storeExceed.setTaskState = (sessionId, taskId, state, fixRounds) => {
+        exceedTransitions.push({ taskId, state, fixRounds });
+      };
+      const { runner: runnerExceed } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev: out of scope -> gate fails immediately exceeding max_fix_rounds (0)
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'out.txt'), 'bad');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+      ]);
+      depsExceed.runner = runnerExceed;
+      await runSession(depsExceed, ['Goal 1'], { approved: true });
+      expect(exceedTransitions).toContainEqual({ taskId: 'T-001', state: 'failed', fixRounds: 1 });
+      storeExceed.close();
     });
   });
 });

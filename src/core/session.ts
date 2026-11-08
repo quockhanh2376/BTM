@@ -25,6 +25,7 @@ export interface SessionDeps {
   runner: Runner;
   repo: string;
   env: NodeJS.ProcessEnv;
+  logDir: string;
   signal?: AbortSignal;
 }
 
@@ -117,11 +118,14 @@ async function workOnCards(
         return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
       }
 
+      d.store.setTaskState(sessionId, card.id, 'in_dev', fixRounds);
       const devTurnId = d.store.startTurn(sessionId, 'dev', devAgent, card.id);
+      const devLogFile = join(d.logDir, `turn-${devTurnId}.log`);
+      d.store.setTurnLog(devTurnId, devLogFile);
       const devPromptText = devPrompt(card, fixNotes, d.cfg.runner.agy_allow_commands);
       let devOutput;
       try {
-        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, { signal: d.signal });
+        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, { signal: d.signal });
       } catch (err) {
         const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
@@ -174,6 +178,7 @@ async function workOnCards(
           // commitAll error: keep needs_owner, do not throw
         }
         tasks[card.id] = 'blocked';
+        d.store.setTaskState(sessionId, card.id, 'blocked', fixRounds);
         return { status: 'needs_owner', sessionId, tasks, notes: ['Dev reported BLOCKED'] };
       }
 
@@ -212,6 +217,7 @@ async function workOnCards(
         fixRounds++;
         if (fixRounds > d.cfg.turn.max_fix_rounds) {
           tasks[card.id] = 'failed';
+          d.store.setTaskState(sessionId, card.id, 'failed', fixRounds);
           return {
             status: 'needs_owner',
             sessionId,
@@ -221,8 +227,11 @@ async function workOnCards(
             ],
           };
         }
+        d.store.setTaskState(sessionId, card.id, 'returned', fixRounds);
         continue;
       }
+
+      d.store.setTaskState(sessionId, card.id, 'awaiting_qc', fixRounds);
 
       // Rule 8: coder_cannot_qc_same_task
       const qcAgent = d.cfg.seats.qc;
@@ -241,11 +250,13 @@ async function workOnCards(
 
       const qcAuthor = authorForAgent(qcAgent);
       const qcTurnId = d.store.startTurn(sessionId, 'qc', qcAgent, card.id);
+      const qcLogFile = join(d.logDir, `turn-${qcTurnId}.log`);
+      d.store.setTurnLog(qcTurnId, qcLogFile);
       const qcPromptText = qcPrompt(card, base);
       const preQcHead = headSha(d.repo);
       let qcOutput;
       try {
-        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo, { signal: d.signal });
+        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo, qcLogFile, { signal: d.signal });
       } catch (err) {
         const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
@@ -313,6 +324,7 @@ async function workOnCards(
 
       if (qcResult.verdict === 'pass') {
         tasks[card.id] = 'passed';
+        d.store.setTaskState(sessionId, card.id, 'passed', fixRounds);
         break;
       }
 
@@ -320,6 +332,7 @@ async function workOnCards(
       fixNotes = [...qcResult.bugs, ...qcResult.fix];
       if (fixRounds > d.cfg.turn.max_fix_rounds) {
         tasks[card.id] = 'failed';
+        d.store.setTaskState(sessionId, card.id, 'failed', fixRounds);
         return {
           status: 'needs_owner',
           sessionId,
@@ -327,6 +340,7 @@ async function workOnCards(
           notes: [`Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${fixNotes.join(', ')}`],
         };
       }
+      d.store.setTaskState(sessionId, card.id, 'returned', fixRounds);
     }
   }
 
@@ -391,11 +405,13 @@ export async function runSession(
     }
 
     const pmTurnId = d.store.startTurn(sessionId, 'pm', pmAgent, null);
+    const pmLogFile = join(d.logDir, `turn-${pmTurnId}.log`);
+    d.store.setTurnLog(pmTurnId, pmLogFile);
     const pmPromptText = pmPrompt(goals);
     const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
     let pmOutput;
     try {
-      pmOutput = await d.runner('pm', pmAgent, pmPromptText, d.repo, { signal: d.signal });
+      pmOutput = await d.runner('pm', pmAgent, pmPromptText, d.repo, pmLogFile, { signal: d.signal });
     } catch (err) {
       const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
       const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
@@ -479,6 +495,7 @@ export async function runSession(
 
     for (const card of cards) {
       tasks[card.id] = 'pending';
+      d.store.setTaskState(sessionId, card.id, 'pending', 0);
     }
 
     // 4. Require approval check
@@ -562,6 +579,7 @@ export async function resumeSession(
 
     for (const card of cards) {
       tasks[card.id] = 'pending';
+      d.store.setTaskState(sessionId, card.id, 'pending', 0);
     }
 
     const outcome = await workOnCards(d, sessionId, cards, tasks);
