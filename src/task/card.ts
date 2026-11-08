@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, lstatSync, Dirent } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, readFileSync, lstatSync, realpathSync, Dirent } from 'node:fs';
+import { join, relative, isAbsolute } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
@@ -105,7 +105,22 @@ export function parseTaskCard(markdown: string): TaskCard {
   return card;
 }
 
-export function loadTaskCards(dir: string): TaskCard[] {
+export function loadTaskCards(dir: string, repo?: string): TaskCard[] {
+  if (repo !== undefined) {
+    let realDir: string;
+    let realRepo: string;
+    try {
+      realDir = realpathSync(dir);
+      realRepo = realpathSync(repo);
+    } catch (err) {
+      throw new CardError(`Cannot resolve path: ${(err as Error).message}`);
+    }
+    const rel = relative(realRepo, realDir);
+    if (rel.startsWith('..') || isAbsolute(rel)) {
+      throw new CardError(`Tasks directory "${dir}" is outside repository "${repo}"`);
+    }
+  }
+
   let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -114,6 +129,7 @@ export function loadTaskCards(dir: string): TaskCard[] {
   }
 
   const cards: TaskCard[] = [];
+  const seenIds = new Set<string>();
   for (const entry of entries) {
     if (!/^T-.*\.md$/.test(entry.name)) {
       continue;
@@ -136,6 +152,14 @@ export function loadTaskCards(dir: string): TaskCard[] {
     }
     try {
       const card = parseTaskCard(content);
+      const expectedId = entry.name.replace(/\.md$/, '');
+      if (card.id !== expectedId) {
+        throw new CardError(`Task card id "${card.id}" does not match filename "${entry.name}"`);
+      }
+      if (seenIds.has(card.id)) {
+        throw new CardError(`Duplicate task card id "${card.id}"`);
+      }
+      seenIds.add(card.id);
       cards.push(card);
     } catch (err) {
       if (err instanceof CardError) {

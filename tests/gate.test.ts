@@ -203,6 +203,24 @@ describe('runGate', () => {
     expect(result.reasons).toContain('empty_diff');
   });
 
+  it('changes only in team/reports/ still count as empty_diff', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+    const card = makeCard();
+
+    // Dev only adds report file, no changes to product files
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'only add report'], { cwd: repo });
+
+    const result = runGate(repo, card, base, emptyCmds);
+    expect(result.ok).toBe(false);
+    expect(result.reasons).toContain('empty_diff');
+  });
+
   it('delete outside scope fails with out_of_scope:<file>', () => {
     const repo = tmpRepo({
       'README.md': '# Intro',
@@ -282,6 +300,89 @@ describe('runGate', () => {
     expect(result.reasons).toContain('missing_report');
   });
 
+  it('empty report fails with bad_report when require_report_schema is active', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+
+    writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), '   \n\n  ');
+
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'empty report'], { cwd: repo });
+
+    const card = makeCard({ scope: ['src/'] });
+    const result = runGate(repo, card, base, emptyCmds);
+
+    expect(result.ok).toBe(false);
+    expect(result.reasons).toContain('bad_report');
+  });
+
+  it('report without OK or valid heading fails with bad_report', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+
+    writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), '# Summary\nEverything done.');
+
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'bad report schema'], { cwd: repo });
+
+    const card = makeCard({ scope: ['src/'] });
+    const result = runGate(repo, card, base, emptyCmds);
+
+    expect(result.ok).toBe(false);
+    expect(result.reasons).toContain('bad_report');
+  });
+
+  it('report with ## Bug / ## Cần sửa / ## Cần xác nhận passes schema check', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+
+    writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    writeFileSync(
+      join(repo, 'team/reports/T-001-dev.md'),
+      '## Bug\n- Phát hiện bug nhỏ ở controller\n\n## Cần sửa\n- Cần refactor helper\n\n## Cần xác nhận\n- Format ngày tháng'
+    );
+
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'report with issues'], { cwd: repo });
+
+    const card = makeCard({ scope: ['src/'] });
+    const result = runGate(repo, card, base, emptyCmds);
+
+    expect(result.reasons).not.toContain('bad_report');
+    expect(result.ok).toBe(true);
+  });
+
+  it('allows disabling require_report_schema via option', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+
+    writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'arbitrary non-conforming content');
+
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'skip schema report'], { cwd: repo });
+
+    const card = makeCard({ scope: ['src/'] });
+    const result = runGate(repo, card, base, emptyCmds, { require_report_schema: false });
+
+    expect(result.reasons).not.toContain('bad_report');
+    expect(result.ok).toBe(true);
+  });
+
   it('always allows files in team/reports/', () => {
     const repo = tmpRepo({
       'src/a.ts': 'export const a = 1;',
@@ -328,6 +429,37 @@ describe('runGate', () => {
     expect(result.reasons).toContain('cmd_failed:build');
     expect(result.reasons).toContain('cmd_failed:lint');
     expect(result.reasons).toContain('cmd_failed:test');
+  });
+
+  it('fails with cmd_timeout:<name> when command exceeds timeoutMs', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+
+    writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a'], { cwd: repo });
+
+    const card = makeCard({ scope: ['src/'] });
+    const result = runGate(
+      repo,
+      card,
+      base,
+      {
+        build: 'sleep 1',
+        lint: '',
+        test: '',
+      },
+      50 // 50ms timeout
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.reasons).toContain('cmd_timeout:build');
+    expect(result.reasons).not.toContain('cmd_failed:build');
   });
 
   it('all good passes with ok true and empty reasons', () => {

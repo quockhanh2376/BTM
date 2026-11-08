@@ -1,4 +1,4 @@
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { TaskCard } from '../task/card.ts';
@@ -7,6 +7,11 @@ import { changedFiles } from '../git.ts';
 export interface GateResult {
   ok: boolean;
   reasons: string[];
+}
+
+export interface GateOptions {
+  timeoutMs?: number;
+  require_report_schema?: boolean;
 }
 
 function matchesScopeItem(file: string, item: string): boolean {
@@ -25,13 +30,33 @@ export function runGate(
   repo: string,
   card: TaskCard,
   base: string,
-  cmds: { build: string; lint: string; test: string }
+  cmds: { build: string; lint: string; test: string },
+  optsOrTimeout?: number | GateOptions,
+  extraOpts?: GateOptions
 ): GateResult {
+  let timeoutMs = 0;
+  let requireReportSchema = true;
+
+  if (typeof optsOrTimeout === 'number') {
+    timeoutMs = optsOrTimeout;
+    if (extraOpts?.require_report_schema !== undefined) {
+      requireReportSchema = extraOpts.require_report_schema;
+    }
+  } else if (optsOrTimeout && typeof optsOrTimeout === 'object') {
+    if (typeof optsOrTimeout.timeoutMs === 'number') {
+      timeoutMs = optsOrTimeout.timeoutMs;
+    }
+    if (typeof optsOrTimeout.require_report_schema === 'boolean') {
+      requireReportSchema = optsOrTimeout.require_report_schema;
+    }
+  }
+
   const reasons: string[] = [];
 
-  // 1. diff base..HEAD rỗng → empty_diff
+  // 1. diff base..HEAD rỗng (không tính file trong team/reports/) → empty_diff
   const changed = changedFiles(repo, base);
-  if (changed.length === 0) {
+  const nonReportChanged = changed.filter((file) => !file.startsWith('team/reports/'));
+  if (nonReportChanged.length === 0) {
     reasons.push('empty_diff');
   }
 
@@ -52,9 +77,22 @@ export function runGate(
   }
   if (!hasReport) {
     reasons.push('missing_report');
+  } else if (requireReportSchema) {
+    // 3b. require_report_schema: báo cáo phải là 'OK' hoặc có ít nhất một heading '## Bug' / '## Cần sửa' / '## Cần xác nhận'; rỗng/sai → bad_report
+    try {
+      const content = readFileSync(reportPath, 'utf8');
+      const trimmed = content.trim();
+      const isOk = trimmed === 'OK';
+      const hasValidHeading = /(?:^|\n)(?:##\s+(?:Bug|Cần sửa|Cần xác nhận)|#\s+Báo cáo Dev|-\s+(?:Bug|Cần sửa|Cần xác nhận):)/m.test(content);
+      if (!isOk && !hasValidHeading) {
+        reasons.push('bad_report');
+      }
+    } catch {
+      reasons.push('bad_report');
+    }
   }
 
-  // 4. mỗi lệnh build/lint/test không rỗng chạy bằng sh -c trong repo, exit ≠ 0 → cmd_failed:<tên>
+  // 4. mỗi lệnh build/lint/test không rỗng chạy bằng sh -c trong repo, exit ≠ 0 → cmd_failed:<tên>; quá giờ → cmd_timeout:<tên>
   const cmdList: Array<['build' | 'lint' | 'test', string | undefined]> = [
     ['build', cmds?.build],
     ['lint', cmds?.lint],
@@ -66,8 +104,11 @@ export function runGate(
       const res = spawnSync('sh', ['-c', command], {
         cwd: repo,
         stdio: 'ignore',
+        timeout: timeoutMs && timeoutMs > 0 ? timeoutMs : undefined,
       });
-      if (res.status !== 0 || res.error) {
+      if (res.error && (res.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
+        reasons.push(`cmd_timeout:${name}`);
+      } else if (res.status !== 0 || res.error) {
         reasons.push(`cmd_failed:${name}`);
       }
     }

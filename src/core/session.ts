@@ -63,7 +63,7 @@ function authorForAgent(agentId: string): { name: string; email: string } {
 
 function loadCards(repo: string): TaskCard[] {
   const tasksDir = join(repo, 'team', 'tasks');
-  const cards = loadTaskCards(tasksDir);
+  const cards = loadTaskCards(tasksDir, repo);
   if (cards.length === 0) {
     throw new CardError('No task cards created by PM');
   }
@@ -155,7 +155,11 @@ async function workOnCards(
         return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
       }
 
-      const gateResult = runGate(d.repo, card, base, d.cfg.gate.commands);
+      const timeoutMs = (d.cfg.turn.timeout_minutes.dev ?? 0) * 60 * 1000;
+      const gateResult = runGate(d.repo, card, base, d.cfg.gate.commands, {
+        timeoutMs,
+        require_report_schema: d.cfg.gate.require_report_schema,
+      });
       if (!gateResult.ok || hasAutoDenied) {
         const failureReasons: string[] = [];
         if (hasAutoDenied) {

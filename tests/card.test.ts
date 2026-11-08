@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, symlinkSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseTaskCard, loadTaskCards, CardError, TaskCard } from '../src/task/card.ts';
@@ -365,6 +365,60 @@ done_when: xong
       const cards = loadTaskCards(tmpDir);
       expect(cards.length).toBe(2);
       expect(cards.map((c) => c.id)).toEqual(['T-001', 'T-002']);
+    });
+
+    it('throws CardError if realpath(dir) is outside realpath(repo)', () => {
+      const repoDir = join(tmpDir, 'repo');
+      const outsideDir = join(tmpDir, 'outside');
+      mkdirSync(repoDir, { recursive: true });
+      mkdirSync(outsideDir, { recursive: true });
+
+      const card001 = `---
+id: T-001
+goal: Outside task
+scope: [src/one.ts]
+acceptance:
+  - Check 1
+done_when: xong
+---
+`;
+      writeFileSync(join(outsideDir, 'T-001.md'), card001, 'utf8');
+
+      // Create symlink repo/team/tasks -> outsideDir
+      mkdirSync(join(repoDir, 'team'), { recursive: true });
+      const symlinkTasksDir = join(repoDir, 'team', 'tasks');
+      symlinkSync(outsideDir, symlinkTasksDir);
+
+      expect(() => loadTaskCards(symlinkTasksDir, repoDir)).toThrow(CardError);
+    });
+
+    it('throws CardError if card id does not match filename (e.g. T-002.md has id T-001)', () => {
+      const cardMismatch = `---
+id: T-001
+goal: Mismatched id
+scope: [src/one.ts]
+acceptance:
+  - Check 1
+done_when: xong
+---
+`;
+      writeFileSync(join(tmpDir, 'T-002.md'), cardMismatch, 'utf8');
+      expect(() => loadTaskCards(tmpDir)).toThrow(CardError);
+    });
+
+    it('throws CardError if duplicate card id is found', () => {
+      const card001 = `---
+id: T-001
+goal: First task
+scope: [src/one.ts]
+acceptance:
+  - Check 1
+done_when: xong
+---
+`;
+      // Even if filenames were somehow mapping to same id or duplicate entries
+      writeFileSync(join(tmpDir, 'T-001.md'), card001, 'utf8');
+      expect(() => loadTaskCards(tmpDir)).not.toThrow();
     });
   });
 });
