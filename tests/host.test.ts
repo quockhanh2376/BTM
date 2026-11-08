@@ -1198,4 +1198,81 @@ done_when: done
     expect(runnerAbortedAndSettled).toBe(true);
     expect(host.busy()).toBe(false);
   });
+
+  describe('P2-T8 B: Auto duyệt thẻ (host)', () => {
+    it('mặc định đọc auto_approve = !cfg.session.require_task_approval và truyền vào runSession', async () => {
+      let passedApproved: boolean | undefined;
+      const mockRunSession = vi.fn().mockImplementation(async (_deps, _goals, opts) => {
+        passedApproved = opts.approved;
+        return { status: 'done', sessionId: 1, tasks: {}, notes: [] };
+      });
+
+      // Case 1: require_task_approval is true -> auto_approve default is false
+      cfg.session.require_task_approval = true;
+      const host1 = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+        runSession: mockRunSession,
+      });
+
+      await host1.start(['Goal 1']);
+      await host1.whenIdle();
+      expect(passedApproved).toBe(false);
+
+      // Case 2: require_task_approval is false -> auto_approve default is true
+      cfg.session.require_task_approval = false;
+      const host2 = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+        runSession: mockRunSession,
+      });
+
+      await host2.start(['Goal 2']);
+      await host2.whenIdle();
+      expect(passedApproved).toBe(true);
+    });
+
+    it('host.setAutoApprove thay đổi setting trong DB và truyền approved vào runSession', async () => {
+      let passedApproved: boolean | undefined;
+      const mockRunSession = vi.fn().mockImplementation(async (_deps, _goals, opts) => {
+        passedApproved = opts.approved;
+        return { status: 'done', sessionId: 1, tasks: {}, notes: [] };
+      });
+
+      cfg.session.require_task_approval = true; // default would be false
+      const host = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+        runSession: mockRunSession,
+      });
+
+      // Enable auto approve
+      host.setAutoApprove(true);
+      expect(store.getSetting('auto_approve')).toBe('true');
+
+      await host.start(['Goal Auto Approve']);
+      await host.whenIdle();
+      expect(passedApproved).toBe(true);
+
+      // Disable auto approve
+      host.setAutoApprove(false);
+      expect(store.getSetting('auto_approve')).toBe('false');
+
+      await host.start(['Goal Manual Approve']);
+      await host.whenIdle();
+      expect(passedApproved).toBe(false);
+    });
+  });
 });

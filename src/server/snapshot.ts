@@ -40,6 +40,9 @@ export interface Snapshot {
     text: string;
   }[];
   queue: QueueItem[];
+  settings: {
+    autoApprove: boolean;
+  };
 }
 
 const ANSI_REGEX = /(?:\x1B\]|\u009D)[\s\S]*?(?:\x07|\x1B\\|\u009C)|(?:\x1B\[|\u009B)[0-?]*[ -/]*[@-~]|[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]|\x1B[@-Z\\-_]/g;
@@ -114,6 +117,9 @@ function createDefaultSeats(cfg: Config): SeatCard[] {
 export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const project = store.getActiveProject();
   const queue = store.listQueue(50);
+  const autoApproveVal = store.getSetting('auto_approve');
+  const autoApprove = autoApproveVal !== null ? autoApproveVal === 'true' : !cfg.session.require_task_approval;
+  const settings = { autoApprove };
 
   if (!project) {
     return {
@@ -124,6 +130,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       tasks: [],
       log: [],
       queue,
+      settings,
     };
   }
 
@@ -144,6 +151,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       tasks: [],
       log: [],
       queue,
+      settings,
     };
   }
 
@@ -157,6 +165,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       tasks: [],
       log: [],
       queue,
+      settings,
     };
   }
 
@@ -277,5 +286,6 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     tasks,
     log,
     queue,
+    settings,
   };
 }

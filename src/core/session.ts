@@ -1,10 +1,10 @@
-import { realpathSync, mkdirSync, writeFileSync } from 'node:fs';
+import { realpathSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { relative, isAbsolute, join } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { checkForbiddenEnv } from '../config.ts';
 import type { Store, TurnResult } from '../store/db.ts';
 import type { Runner } from '../runner/run.ts';
-import { loadTaskCards, CardError, type TaskCard } from '../task/card.ts';
+import { parseTaskCard, CardError, type TaskCard } from '../task/card.ts';
 import { runGate } from '../gate/gate.ts';
 import { git, commitAll, headSha } from '../git.ts';
 import { parseQcResult } from '../qc/result.ts';
@@ -88,13 +88,28 @@ function authorForAgent(agentId: string): { name: string; email: string } {
   };
 }
 
-function loadCards(repo: string): TaskCard[] {
-  const tasksDir = join(repo, 'team', 'tasks');
-  const cards = loadTaskCards(tasksDir, repo);
-  if (cards.length === 0) {
-    throw new CardError('No task cards created by PM');
+function loadCardFromPath(repo: string, relPath: string): TaskCard {
+  const filePath = join(repo, relPath);
+  let content: string;
+  try {
+    content = readFileSync(filePath, 'utf8');
+  } catch (err) {
+    throw new CardError(`Cannot read task card file "${filePath}": ${(err as Error).message}`);
   }
-  return cards;
+  try {
+    const card = parseTaskCard(content);
+    const fileName = relPath.split('/').pop() ?? relPath;
+    const expectedId = fileName.replace(/\.md$/, '');
+    if (card.id !== expectedId) {
+      throw new CardError(`Task card id "${card.id}" does not match filename "${fileName}"`);
+    }
+    return card;
+  } catch (err) {
+    if (err instanceof CardError) {
+      throw new CardError(`Error loading "${filePath}": ${err.message}`);
+    }
+    throw err;
+  }
 }
 
 async function workOnCards(
@@ -392,13 +407,19 @@ export async function runSession(
   const tasks: Record<string, TaskState> = {};
 
   try {
-    const baseBranch = d.cfg.git.protected_branch || 'main';
-    git(d.repo, 'checkout', '-b', `session/${sessionId}`, baseBranch);
-
-    // 3. PM Turn
     const pmAgent = d.cfg.seats.pm;
     const pmAuthor = authorForAgent(pmAgent);
 
+    const dirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
+    if (dirty) {
+      commitAll(d.repo, `checkpoint before session ${sessionId}`, pmAuthor);
+    }
+
+    const baseBranch = d.cfg.git.protected_branch || 'main';
+    git(d.repo, 'checkout', '-b', `session/${sessionId}`, baseBranch);
+    const sessionBaseSha = headSha(d.repo);
+
+    // 3. PM Turn
     if (isOutOfTurns(d.store, sessionId, d.cfg, 'pm')) {
       sessionStatus = 'out_of_turns';
       return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns for PM'] };
@@ -416,14 +437,14 @@ export async function runSession(
       const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
       const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
       d.store.endTurn(pmTurnId, 'error', reason);
-      if (isAbort) {
-        sessionStatus = 'stopped';
-        return { status: 'stopped', sessionId, tasks, notes: [reason] };
-      }
       try {
         commitAll(d.repo, `WIP pm: ${reason}`, pmAuthor);
       } catch {
         // commitAll error: keep needs_owner, do not throw
+      }
+      if (isAbort) {
+        sessionStatus = 'stopped';
+        return { status: 'stopped', sessionId, tasks, notes: [reason] };
       }
       sessionStatus = 'needs_owner';
       return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
@@ -477,9 +498,28 @@ export async function runSession(
       return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
     }
 
-    let cards: TaskCard[];
+    let cards: TaskCard[] = [];
     try {
-      cards = loadCards(d.repo);
+      const diffOut = git(d.repo, 'diff', '--name-only', '--diff-filter=AMCR', `${sessionBaseSha}..HEAD`, '--', 'team/tasks');
+      const changedFiles = diffOut
+        .split(/\r?\n/)
+        .map((s) => s.trim().replace(/\\/g, '/'))
+        .filter((s) => s.length > 0 && /^team\/tasks\/T-[^/]+\.md$/.test(s));
+
+      if (changedFiles.length === 0) {
+        throw new CardError('No task cards created by PM');
+      }
+
+      const seenIds = new Set<string>();
+      for (const relPath of changedFiles) {
+        const card = loadCardFromPath(d.repo, relPath);
+        if (seenIds.has(card.id)) {
+          throw new CardError(`Duplicate task card id "${card.id}"`);
+        }
+        seenIds.add(card.id);
+        cards.push(card);
+      }
+      cards.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     } catch (err) {
       if (err instanceof CardError) {
         sessionStatus = 'needs_owner';
@@ -493,13 +533,15 @@ export async function runSession(
       throw err;
     }
 
+    d.store.setSessionTasks(sessionId, cards.map((c) => c.id));
+
     for (const card of cards) {
       tasks[card.id] = 'pending';
       d.store.setTaskState(sessionId, card.id, 'pending', 0);
     }
 
     // 4. Require approval check
-    if (d.cfg.session.require_task_approval && !o.approved) {
+    if (!o.approved) {
       sessionStatus = 'awaiting_approval';
       return {
         status: 'awaiting_approval',
@@ -559,11 +601,34 @@ export async function resumeSession(
   const tasks: Record<string, TaskState> = {};
 
   try {
+    const sessionTasks = d.store.getSessionTasks(sessionId);
+    if (sessionTasks.length === 0) {
+      sessionStatus = 'needs_owner';
+      return {
+        status: 'needs_owner',
+        sessionId,
+        tasks: {},
+        notes: ['no_session_tasks'],
+      };
+    }
+
     git(d.repo, 'checkout', `session/${sessionId}`);
 
-    let cards: TaskCard[];
+    let cards: TaskCard[] = [];
     try {
-      cards = loadCards(d.repo);
+      const seenIds = new Set<string>();
+      for (const taskId of sessionTasks) {
+        const relPath = `team/tasks/${taskId}.md`;
+        const card = loadCardFromPath(d.repo, relPath);
+        if (seenIds.has(card.id)) {
+          throw new CardError(`Duplicate task card id "${card.id}"`);
+        }
+        seenIds.add(card.id);
+        cards.push(card);
+      }
+      if (cards.length === 0) {
+        throw new CardError('No task cards created by PM');
+      }
     } catch (err) {
       if (err instanceof CardError) {
         sessionStatus = 'needs_owner';

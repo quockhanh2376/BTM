@@ -1999,5 +1999,397 @@ done_when: done
       expect(exceedTransitions).toContainEqual({ taskId: 'T-001', state: 'failed', fixRounds: 1 });
       storeExceed.close();
     });
+
+    it('P2-T8 A: thẻ T-001 cũ có sẵn + PM tạo T-002 → chỉ T-002 được làm', async () => {
+      // Create repo with existing T-001.md on main
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+        'team/tasks/T-001.md': `---
+id: T-001
+goal: Old task
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`,
+      });
+
+      const { deps, store } = makeDeps(repo);
+      const devTasks: string[] = [];
+
+      const { runner } = createFakeRunner([
+        // PM creates T-002
+        (_s, _a, _p, cwd) => {
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-002.md'),
+            `---
+id: T-002
+goal: New task 2
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev for T-002
+        (_s, _a, prompt, cwd) => {
+          devTasks.push(prompt);
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-002-dev.md'), 'OK');
+        },
+        // QC for T-002
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runner;
+      const outcome = await runSession(deps, ['Goal 2'], { approved: true });
+
+      expect(outcome.status).toBe('done');
+      // Only T-002 should be in outcome.tasks
+      expect(Object.keys(outcome.tasks)).toEqual(['T-002']);
+      expect(outcome.tasks['T-002']).toBe('passed');
+      expect(outcome.tasks['T-001']).toBeUndefined();
+
+      // Dev prompt was only called once, for T-002
+      expect(devTasks).toHaveLength(1);
+      expect(devTasks[0]).toContain('T-002');
+      expect(devTasks[0]).not.toContain('T-001');
+
+      // Verify session_tasks in DB
+      expect(store.getSessionTasks(outcome.sessionId!)).toEqual(['T-002']);
+      store.close();
+    });
+
+    it('P2-T8 A: resumeSession dùng đúng tập thẻ của commit PM của phiên đó (session_tasks)', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+        'team/tasks/T-001.md': `---
+id: T-001
+goal: Old task
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`,
+      });
+
+      const { deps, store } = makeDeps(repo, {
+        session: {
+          ...loadConfig('btm.config.yaml').session,
+          require_task_approval: true,
+        },
+      });
+
+      const { runner: runnerPm } = createFakeRunner([
+        // PM creates T-002
+        (_s, _a, _p, cwd) => {
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-002.md'),
+            `---
+id: T-002
+goal: New task 2
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+      ]);
+
+      deps.runner = runnerPm;
+      const initialOutcome = await runSession(deps, ['Goal 2'], { approved: false });
+      expect(initialOutcome.status).toBe('awaiting_approval');
+      expect(Object.keys(initialOutcome.tasks)).toEqual(['T-002']);
+      expect(store.getSessionTasks(initialOutcome.sessionId!)).toEqual(['T-002']);
+
+      // Now resume the session
+      const devTasks: string[] = [];
+      const { runner: runnerResume } = createFakeRunner([
+        // Dev for T-002
+        (_s, _a, prompt, cwd) => {
+          devTasks.push(prompt);
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-002-dev.md'), 'OK');
+        },
+        // QC for T-002
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runnerResume;
+      const resumeOutcome = await resumeSession(deps, initialOutcome.sessionId!);
+      expect(resumeOutcome.status).toBe('done');
+      expect(Object.keys(resumeOutcome.tasks)).toEqual(['T-002']);
+      expect(resumeOutcome.tasks['T-002']).toBe('passed');
+      expect(devTasks).toHaveLength(1);
+      expect(devTasks[0]).toContain('T-002');
+      store.close();
+    });
+
+    it('P2-T8 A: khi PM bị abort hoặc timeout: commitAll WIP trên nhánh phiên để working tree sạch', async () => {
+      // Subtest 1: Abort
+      const repoAbort = tmpRepo({ 'src/app.ts': '1' });
+      const { deps: depsAbort, store: storeAbort } = makeDeps(repoAbort);
+      const abortCtrl = new AbortController();
+      depsAbort.signal = abortCtrl.signal;
+
+      depsAbort.runner = async (_seat, _agent, _prompt, cwd) => {
+        mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+        writeFileSync(join(cwd, 'team', 'tasks', 'draft.md'), 'draft card');
+        abortCtrl.abort();
+        const err = new Error('aborted');
+        err.name = 'AbortError';
+        throw err;
+      };
+
+      const outcomeAbort = await runSession(depsAbort, ['Goal 1'], { approved: true });
+      expect(outcomeAbort.status).toBe('stopped');
+      // Working tree must be clean
+      expect(git(repoAbort, 'status', '--porcelain').trim()).toBe('');
+      // Last commit on session branch is WIP
+      const lastCommitAbort = git(repoAbort, 'log', '-1', '--pretty=%B').trim();
+      expect(lastCommitAbort).toMatch(/^WIP pm: aborted/);
+      storeAbort.close();
+
+      // Subtest 2: Timeout
+      const repoTimeout = tmpRepo({ 'src/app.ts': '1' });
+      const { deps: depsTimeout, store: storeTimeout } = makeDeps(repoTimeout);
+      depsTimeout.runner = async (_seat, _agent, _prompt, cwd) => {
+        mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+        writeFileSync(join(cwd, 'team', 'tasks', 'draft.md'), 'draft timeout');
+        return {
+          exitCode: null,
+          timedOut: true,
+          durationMs: 1000,
+          output: '',
+          lastMessage: '',
+        };
+      };
+
+      const outcomeTimeout = await runSession(depsTimeout, ['Goal 1'], { approved: true });
+      expect(outcomeTimeout.status).toBe('needs_owner');
+      // Working tree must be clean
+      expect(git(repoTimeout, 'status', '--porcelain').trim()).toBe('');
+      const lastCommitTimeout = git(repoTimeout, 'log', '-1', '--pretty=%B').trim();
+      expect(lastCommitTimeout).toMatch(/^WIP pm: timeout/);
+      storeTimeout.close();
+    });
+
+    it('P2-T8 A: đầu phiên working tree bẩn → commitAll "checkpoint before session <id>" trước khi checkout nhánh mới', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'initial' });
+      // Make working tree dirty on main before runSession
+      writeFileSync(join(repo, 'src', 'app.ts'), 'dirty before session');
+      writeFileSync(join(repo, 'dirty-untracked.txt'), 'hello');
+
+      const { deps, store } = makeDeps(repo);
+      const { runner } = createFakeRunner([
+        // PM creates T-001
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'fixed in session');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runner;
+      const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+      expect(outcome.status).toBe('done');
+
+      // Check commit log on base branch (main) for checkpoint commit
+      const baseBranch = deps.cfg.git.protected_branch || 'main';
+      const mainLog = git(repo, 'log', baseBranch, '-n', '2', '--pretty=%s');
+      expect(mainLog).toContain(`checkpoint before session ${outcome.sessionId}`);
+      store.close();
+    });
+
+    it('P2-T8: config require_task_approval=false nhưng approved=false → awaiting_approval', async () => {
+      const repo = tmpRepo({});
+      const { deps, store } = makeDeps(repo, {
+        session: {
+          ...loadConfig('btm.config.yaml').session,
+          require_task_approval: false,
+        },
+      });
+
+      const { runner, calls } = createFakeRunner([
+        (_seat, _agent, _prompt, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal 1
+scope:
+  - file.txt
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal 1'], { approved: false });
+
+      expect(outcome.status).toBe('awaiting_approval');
+      expect(outcome.sessionId).toBe(1);
+      expect(calls.length).toBe(1);
+      expect(calls[0].seat).toBe('pm');
+      expect(store.countTurns(1)).toBe(1);
+
+      store.close();
+    });
+
+    it('P2-T8: chỉ parse thẻ trong diff PM; thẻ cũ hỏng + PM tạo T-002 hợp lệ → chạy được cả runSession và resumeSession', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+        'team/tasks/T-001.md': 'corrupted yaml content ::: invalid\n',
+      });
+
+      const { deps, store } = makeDeps(repo);
+      let devCalledFor = '';
+
+      const { runner } = createFakeRunner([
+        // PM creates valid T-002
+        (_s, _a, _p, cwd) => {
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-002.md'),
+            `---
+id: T-002
+goal: Feature 2
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, prompt, cwd) => {
+          devCalledFor = prompt;
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-002-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runner;
+      const outcome = await runSession(deps, ['Goal 2'], { approved: true });
+
+      expect(outcome.status).toBe('done');
+      expect(outcome.tasks['T-002']).toBe('passed');
+      expect(outcome.tasks['T-001']).toBeUndefined();
+      expect(devCalledFor).toContain('T-002');
+      expect(devCalledFor).not.toContain('T-001');
+
+      // Test resumeSession when T-001 is broken and session_tasks has ['T-002']
+      const sId = store.createSession(['Resume test'], repo);
+      store.setSessionTasks(sId, ['T-002']);
+      store.setSessionStatus(sId, 'awaiting_approval');
+
+      git(repo, 'checkout', '-b', `session/${sId}`);
+
+      const { runner: runnerResume } = createFakeRunner([
+        // Dev
+        (_s, _a, prompt, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 3;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-002-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+      deps.runner = runnerResume;
+
+      const resumeOutcome = await resumeSession(deps, sId);
+      expect(resumeOutcome.status).toBe('done');
+      expect(resumeOutcome.tasks['T-002']).toBe('passed');
+      expect(resumeOutcome.tasks['T-001']).toBeUndefined();
+
+      store.close();
+    });
+
+    it('P2-T8: resume với session_tasks rỗng → needs_owner "no_session_tasks", không lấy thẻ khác', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+        'team/tasks/T-001.md': `---
+id: T-001
+goal: Existing task
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`,
+      });
+
+      const { deps, store } = makeDeps(repo);
+      const sId = store.createSession(['Goal empty'], repo);
+      expect(store.getSessionTasks(sId)).toEqual([]);
+      store.setSessionStatus(sId, 'awaiting_approval');
+      git(repo, 'checkout', '-b', `session/${sId}`);
+
+      let devOrQcCalled = false;
+      deps.runner = async () => {
+        devOrQcCalled = true;
+        return { exitCode: 0, timedOut: false, durationMs: 0, output: '', lastMessage: '' };
+      };
+
+      const outcome = await resumeSession(deps, sId);
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('no_session_tasks');
+      expect(devOrQcCalled).toBe(false);
+      expect(outcome.tasks['T-001']).toBeUndefined();
+
+      store.close();
+    });
   });
 });

@@ -653,5 +653,38 @@ describe('Store SQLite', () => {
 
       store.close();
     });
+
+    it('manages settings with getSetting and setSetting (table settings)', () => {
+      const store = openStore(':memory:');
+      expect(store.getSetting('auto_approve')).toBeNull();
+      expect(store.getSetting('nonexistent')).toBeNull();
+
+      store.setSetting('auto_approve', 'true');
+      expect(store.getSetting('auto_approve')).toBe('true');
+
+      store.setSetting('auto_approve', 'false');
+      expect(store.getSetting('auto_approve')).toBe('false');
+
+      store.setSetting('custom_key', 'some_value');
+      expect(store.getSetting('custom_key')).toBe('some_value');
+      store.close();
+    });
+
+    it('manages session tasks with setSessionTasks and getSessionTasks (table session_tasks)', () => {
+      const store = openStore(':memory:');
+      const s1 = store.createSession(['Goal 1']);
+      const s2 = store.createSession(['Goal 2']);
+
+      expect(store.getSessionTasks(s1)).toEqual([]);
+      expect(store.getSessionTasks(s2)).toEqual([]);
+
+      store.setSessionTasks(s1, ['T-001', 'T-002']);
+      store.setSessionTasks(s2, ['T-003']);
+
+      expect(store.getSessionTasks(s1)).toEqual(['T-001', 'T-002']);
+      expect(store.getSessionTasks(s2)).toEqual(['T-003']);
+
+      store.close();
+    });
   });
 });

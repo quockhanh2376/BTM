@@ -294,4 +294,28 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(formatLogWho('session', mockSeats)).toBe('session');
     expect(formatLogWho('gate', mockSeats)).toBe('gate');
   });
+
+  describe('P2-T8 B: Auto duyệt thẻ trên web dashboard', () => {
+    it('chứa ô chọn checkbox và <label> "Auto duyệt thẻ" trên thanh trên', () => {
+      // Must be inside session-bar
+      const sessionBarMatch = html.match(/<header[^>]*class=["'][^"']*session-bar[^"']*["'][\s\S]*?<\/header>/);
+      expect(sessionBarMatch).not.toBeNull();
+      const sessionBarHtml = sessionBarMatch![0];
+
+      // Contains label with 'Auto duyệt thẻ'
+      expect(sessionBarHtml).toMatch(/<label[^>]*>[\s\S]*?Auto duyệt thẻ[\s\S]*?<\/label>/);
+      // Contains checkbox input
+      expect(sessionBarHtml).toMatch(/<input[^>]*type=["']checkbox["'][^>]*>/);
+    });
+
+    it('gọi POST /api/settings khi ô chọn đổi trạng thái', () => {
+      expect(html).toContain('/api/settings');
+      expect(html).toMatch(/autoApprove/);
+    });
+
+    it('renderSnapshot cập nhật trạng thái ô chọn từ snapshot.settings.autoApprove', () => {
+      // renderSnapshot must handle state.settings.autoApprove
+      expect(html).toMatch(/settings\s*\.\s*autoApprove/);
+    });
+  });
 });

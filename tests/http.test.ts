@@ -37,6 +37,7 @@ describe('HTTP Server & SSE', () => {
     approveCalls: number;
     stopCalls: number;
     commandCalls: { to: string; text: string }[];
+    autoApproveCalls: boolean[];
   };
 
   beforeEach(async () => {
@@ -49,6 +50,7 @@ describe('HTTP Server & SSE', () => {
       approveCalls: 0,
       stopCalls: 0,
       commandCalls: [],
+      autoApproveCalls: [],
       async start(goals: string[]) {
         host.startCalls.push(goals);
         return { ok: true };
@@ -64,6 +66,9 @@ describe('HTTP Server & SSE', () => {
       command(to, text) {
         host.commandCalls.push({ to, text });
         return { ok: true, id: 1 };
+      },
+      setAutoApprove(autoApprove: boolean) {
+        host.autoApproveCalls.push(autoApprove);
       },
     };
 
@@ -670,6 +675,79 @@ describe('HTTP Server & SSE', () => {
       const data = await res.json();
       expect(data).toEqual({ ok: true, id: 1 });
       expect(host.commandCalls).toEqual([{ to: 'dev', text: 'Fix bug in login' }]);
+    });
+  });
+
+  describe('POST /api/settings', () => {
+    it('rejects without x-btm header (403)', async () => {
+      const res = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ autoApprove: true }),
+      });
+      expect(res.status).toBe(403);
+      expect(host.autoApproveCalls.length).toBe(0);
+    });
+
+    it('rejects invalid Origin (403)', async () => {
+      const res = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: 'http://malicious.example.com',
+        },
+        body: JSON.stringify({ autoApprove: true }),
+      });
+      expect(res.status).toBe(403);
+      expect(host.autoApproveCalls.length).toBe(0);
+    });
+
+    it('rejects invalid body schema (400)', async () => {
+      const res = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ autoApprove: 'not-a-boolean' }),
+      });
+      expect(res.status).toBe(400);
+      expect(host.autoApproveCalls.length).toBe(0);
+    });
+
+    it('calls host.setAutoApprove and returns 200 on valid input', async () => {
+      const res1 = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ autoApprove: true }),
+      });
+      expect(res1.status).toBe(200);
+      const data1 = await res1.json();
+      expect(data1).toMatchObject({ ok: true });
+      expect(host.autoApproveCalls).toEqual([true]);
+
+      const res2 = await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ autoApprove: false }),
+      });
+      expect(res2.status).toBe(200);
+      const data2 = await res2.json();
+      expect(data2).toMatchObject({ ok: true });
+      expect(host.autoApproveCalls).toEqual([true, false]);
     });
   });
 

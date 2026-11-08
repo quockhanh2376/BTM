@@ -162,6 +162,17 @@
       flex-wrap: wrap;
     }
 
+    .auto-approve-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+    }
+
     /* Buttons */
     .btn {
       display: inline-flex;
@@ -666,6 +677,9 @@
         </span>
       </div>
       <div class="actions-section">
+        <label class="auto-approve-label" id="auto-approve-label">
+          <input type="checkbox" id="auto-approve-toggle"> Auto duyệt thẻ
+        </label>
         <button id="approve-btn" class="btn btn-primary" type="button" style="display: none;">Duyệt thẻ</button>
         <button id="stop-btn" class="btn btn-danger" type="button">Dừng khẩn cấp</button>
         <button id="theme-toggle" class="btn btn-icon" type="button" aria-label="Chuyển sáng/tối">
@@ -1048,6 +1062,7 @@
       var holderText = document.getElementById('holder-text');
       var approveBtn = document.getElementById('approve-btn');
       var stopBtn = document.getElementById('stop-btn');
+      var autoApproveToggle = document.getElementById('auto-approve-toggle');
 
       var goalsList = document.getElementById('goals-list');
       var logList = document.getElementById('log-list');
@@ -1122,6 +1137,11 @@
         // Project
         if (projectBadge) {
           projectBadge.textContent = state.project ? ('Dự án: ' + state.project) : 'Dự án: —';
+        }
+
+        // Settings
+        if (autoApproveToggle && state.settings && typeof state.settings.autoApprove === 'boolean') {
+          autoApproveToggle.checked = state.settings.autoApprove;
         }
 
         // Session & Turns
@@ -1352,6 +1372,22 @@
             showFeedback(topFeedback, err.message, true);
           } finally {
             approveBtn.disabled = false;
+          }
+        });
+      }
+
+      if (autoApproveToggle) {
+        autoApproveToggle.addEventListener('change', async function () {
+          var checked = autoApproveToggle.checked;
+          try {
+            var res = await postJson('/api/settings', { autoApprove: checked });
+            if (res && res.error) {
+              showFeedback(topFeedback, res.error, true);
+              autoApproveToggle.checked = !checked;
+            }
+          } catch (err) {
+            showFeedback(topFeedback, err.message, true);
+            autoApproveToggle.checked = !checked;
           }
         });
       }

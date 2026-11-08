@@ -14,6 +14,7 @@ export interface HostApi {
     to: Seat,
     text: string
   ): { ok: boolean; id?: number; error?: string } | Promise<{ ok: boolean; id?: number; error?: string }>;
+  setAutoApprove?(enabled: boolean): void | Promise<void>;
 }
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
@@ -284,6 +285,22 @@ export function createServer(o: {
           }
           const result = await o.host.command(parsed.data.to, parsed.data.text);
           sendJson(res, 200, result);
+          return;
+        }
+
+        if (pathname === '/api/settings') {
+          const SettingsSchema = z.object({
+            autoApprove: z.boolean(),
+          });
+          const parsed = SettingsSchema.safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
+            return;
+          }
+          if (o.host.setAutoApprove) {
+            await o.host.setAutoApprove(parsed.data.autoApprove);
+          }
+          sendJson(res, 200, { ok: true, autoApprove: parsed.data.autoApprove });
           return;
         }
 

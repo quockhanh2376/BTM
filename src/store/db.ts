@@ -61,6 +61,11 @@ export interface Store {
   cancelQueued(): number;
   listQueue(limit: number): QueueItem[];
 
+  getSetting(key: string): string | null;
+  setSetting(key: string, value: string): void;
+  setSessionTasks(sessionId: number, taskIds: string[]): void;
+  getSessionTasks(sessionId: number): string[];
+
   close(): void;
 }
 
@@ -129,6 +134,17 @@ export function openStore(file: string): Store {
       text TEXT NOT NULL,
       status TEXT NOT NULL,
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS session_tasks (
+      session_id INTEGER NOT NULL,
+      task_id TEXT NOT NULL,
+      PRIMARY KEY (session_id, task_id)
     );
   `);
 
@@ -268,6 +284,23 @@ export function openStore(file: string): Store {
     FROM queue
     ORDER BY id DESC
     LIMIT ?
+  `);
+
+  const getSettingStmt = db.prepare(`
+    SELECT value FROM settings WHERE key = ?
+  `);
+
+  const setSettingStmt = db.prepare(`
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `);
+
+  const setSessionTaskStmt = db.prepare(`
+    INSERT OR IGNORE INTO session_tasks (session_id, task_id) VALUES (?, ?)
+  `);
+
+  const getSessionTasksStmt = db.prepare(`
+    SELECT task_id FROM session_tasks WHERE session_id = ? ORDER BY rowid ASC
   `);
 
   return {
@@ -499,6 +532,26 @@ export function openStore(file: string): Store {
         status: r.status as QueueItem['status'],
         created_at: String(r.created_at),
       }));
+    },
+
+    getSetting(key: string): string | null {
+      const row = getSettingStmt.get(key) as { value: string } | undefined;
+      return row ? String(row.value) : null;
+    },
+
+    setSetting(key: string, value: string): void {
+      setSettingStmt.run(key, String(value));
+    },
+
+    setSessionTasks(sessionId: number, taskIds: string[]): void {
+      for (const taskId of taskIds) {
+        setSessionTaskStmt.run(sessionId, taskId);
+      }
+    },
+
+    getSessionTasks(sessionId: number): string[] {
+      const rows = getSessionTasksStmt.all(sessionId) as Array<{ task_id: string }>;
+      return rows.map((r) => String(r.task_id));
     },
 
     close(): void {

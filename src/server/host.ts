@@ -25,6 +25,7 @@ export function createHost(d: HostDeps): HostApi & {
   busy(): boolean;
   tick(): Promise<void>;
   whenIdle(): Promise<void>;
+  setAutoApprove(enabled: boolean): void;
 } {
   let isBusy = false;
   let isStopping = false;
@@ -276,6 +277,18 @@ export function createHost(d: HostDeps): HostApi & {
     }
   }
 
+  function getAutoApprove(): boolean {
+    const setting = d.store.getSetting('auto_approve');
+    if (setting !== null) {
+      return setting === 'true';
+    }
+    return !d.cfg.session.require_task_approval;
+  }
+
+  function setAutoApprove(enabled: boolean): void {
+    d.store.setSetting('auto_approve', String(enabled));
+  }
+
   async function start(goals: string[]): Promise<{ ok: boolean; error?: string }> {
     if (isStopping) {
       return { ok: false, error: 'Đang dừng phiên' };
@@ -316,6 +329,8 @@ export function createHost(d: HostDeps): HostApi & {
       return { ok: false, error: err?.message || String(err) };
     }
 
+    const approved = getAutoApprove();
+
     (async () => {
       try {
         await sessionFn(
@@ -329,7 +344,7 @@ export function createHost(d: HostDeps): HostApi & {
             signal: abortController.signal,
           },
           goals,
-          { approved: false }
+          { approved }
         );
       } catch {
         // Any error is captured by session outcome
@@ -527,5 +542,6 @@ export function createHost(d: HostDeps): HostApi & {
     busy,
     tick,
     whenIdle,
+    setAutoApprove,
   };
 }
