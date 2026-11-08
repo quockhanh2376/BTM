@@ -1,4 +1,4 @@
-import { realpathSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { realpathSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatSync, rmSync } from 'node:fs';
 import { relative, isAbsolute, join, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { checkForbiddenEnv } from '../config.ts';
@@ -450,10 +450,22 @@ function closeNoteIfEligible(
   }
 }
 
+export interface RunSessionOpts {
+  approved: boolean;
+  noteId?: number;
+  text?: string;
+  image?: { ext: string; bytes: Buffer };
+  note?: {
+    noteId: number;
+    text: string;
+    image?: { ext: string; bytes: Buffer };
+  };
+}
+
 export async function runSession(
   d: SessionDeps,
   goals: string[],
-  o: { approved: boolean; noteId?: number }
+  o: RunSessionOpts
 ): Promise<SessionOutcome> {
   // 1. Validate environment, repo path, goals
   const forbidden = checkForbiddenEnv(d.env, d.cfg.login.forbidden_env);
@@ -489,7 +501,10 @@ export async function runSession(
   let sessionStatus: SessionOutcome['status'] = 'needs_owner';
   const tasks: Record<string, TaskState> = {};
 
-  const noteId = o.noteId;
+  const noteId = o.note?.noteId ?? o.noteId;
+  const noteText = o.note?.text ?? o.text;
+  const noteImage = o.note?.image ?? o.image;
+
   let attachedNote: ReturnType<typeof d.store.getNote> = null;
   if (noteId) {
     const note = d.store.getNote(noteId);
@@ -510,7 +525,84 @@ export async function runSession(
 
     const baseBranch = d.cfg.git.protected_branch || 'main';
     git(d.repo, 'checkout', '-b', `session/${sessionId}`, baseBranch);
-    const sessionBaseSha = headSha(d.repo);
+    let sessionBaseSha = headSha(d.repo);
+
+    // Write note and image to branch if provided, before PM turn
+    if (noteId && (noteText !== undefined || noteImage !== undefined)) {
+      let createdMdPath: string | null = null;
+      let createdImgPath: string | null = null;
+      try {
+        const ownerAuthor = { name: 'owner', email: 'owner@btm.local' };
+        let imageName: string | null = null;
+        if (noteImage?.ext && noteImage?.bytes) {
+          imageName = `N-${noteId}.${noteImage.ext}`;
+          if (!attachedNote?.image) {
+            d.store.setNoteImage(noteId, imageName);
+          }
+          const imgPath = inboxPath(d.repo, imageName);
+          try {
+            lstatSync(imgPath);
+            throw new Error(`Target image file already exists: ${imageName}`);
+          } catch (err: any) {
+            if (err?.code !== 'ENOENT') throw err;
+          }
+          writeFileSync(imgPath, noteImage.bytes, { flag: 'wx' });
+          createdImgPath = imgPath;
+        } else if (attachedNote?.image) {
+          imageName = attachedNote.image;
+        }
+
+        const rawText = noteText ?? attachedNote?.text ?? '';
+        const now = new Date().toISOString();
+        const noteMdLines = [
+          '---',
+          `id: N-${noteId}`,
+          'from: owner',
+          'status: open',
+          `at: ${now}`,
+        ];
+        if (imageName) {
+          noteMdLines.push(`image: ${imageName}`);
+        }
+        noteMdLines.push('---', rawText, '');
+
+        const mdPath = inboxPath(d.repo, `N-${noteId}.md`);
+        try {
+          lstatSync(mdPath);
+          throw new Error(`Target note file already exists: N-${noteId}.md`);
+        } catch (err: any) {
+          if (err?.code !== 'ENOENT') throw err;
+        }
+        writeFileSync(mdPath, noteMdLines.join('\n'), { flag: 'wx', encoding: 'utf8' });
+        createdMdPath = mdPath;
+
+        try {
+          commitAll(d.repo, `inbox N-${noteId}`, ownerAuthor);
+        } catch (err: any) {
+          throw new Error(`Commit note failed: ${err?.message || String(err)}`);
+        }
+
+        sessionBaseSha = headSha(d.repo);
+        attachedNote = d.store.getNote(noteId);
+      } catch (err: any) {
+        if (createdMdPath) {
+          try { rmSync(createdMdPath, { force: true }); } catch {}
+        }
+        if (createdImgPath) {
+          try { rmSync(createdImgPath, { force: true }); } catch {}
+        }
+        try {
+          d.store.deleteNote(noteId);
+        } catch {}
+        sessionStatus = 'needs_owner';
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: [err?.message || String(err)],
+        };
+      }
+    }
 
     // 3. PM Turn
     if (isOutOfTurns(d.store, sessionId, d.cfg, 'pm')) {

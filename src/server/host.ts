@@ -294,6 +294,9 @@ export function createHost(d: HostDeps): HostApi & {
     goals: string[],
     opts?: {
       noteId?: number;
+      text?: string;
+      image?: { ext: string; bytes: Buffer };
+      note?: { noteId: number; text: string; image?: { ext: string; bytes: Buffer } };
       prepare?: () => Promise<{ noteId?: number } | void> | { noteId?: number } | void;
     }
   ): Promise<{ ok: boolean; error?: string }> {
@@ -317,7 +320,7 @@ export function createHost(d: HostDeps): HostApi & {
     isBusy = true;
     activeReleaseLock = release;
 
-    let effectiveNoteId = opts?.noteId;
+    let effectiveNoteId = opts?.noteId ?? opts?.note?.noteId;
     if (opts?.prepare) {
       try {
         const prepResult = await opts.prepare();
@@ -357,6 +360,8 @@ export function createHost(d: HostDeps): HostApi & {
     }
 
     const approved = getAutoApprove();
+    const effectiveText = opts?.note?.text ?? opts?.text;
+    const effectiveImage = opts?.note?.image ?? opts?.image;
 
     (async () => {
       try {
@@ -371,7 +376,19 @@ export function createHost(d: HostDeps): HostApi & {
             signal: abortController.signal,
           },
           goals,
-          { approved, noteId: effectiveNoteId }
+          {
+            approved,
+            noteId: effectiveNoteId,
+            text: effectiveText,
+            image: effectiveImage,
+            note: effectiveNoteId
+              ? {
+                  noteId: effectiveNoteId,
+                  text: effectiveText ?? '',
+                  image: effectiveImage,
+                }
+              : undefined,
+          }
         );
       } catch {
         // Any error is captured by session outcome
@@ -565,41 +582,19 @@ export function createHost(d: HostDeps): HostApi & {
         return { ok: false, error: err?.message || 'team/inbox must be inside project' };
       }
 
-      let createdMdPath: string | null = null;
-      let createdNoteId: number = 0;
-      const prepare = () => {
-        createdNoteId = d.store.createNote(activeProject, trimmed, null);
+      const createdNoteId = d.store.createNote(activeProject, trimmed, null);
+      const goal = `Xử lý ghi chú team N-${createdNoteId}: ${trimmed.slice(0, 200)}`;
+      const result = await start([goal], {
+        noteId: createdNoteId,
+        text: trimmed,
+        note: { noteId: createdNoteId, text: trimmed },
+      });
+      if (!result.ok) {
         try {
-          const mdPath = inboxPath(activeProject, `N-${createdNoteId}.md`);
-          try {
-            lstatSync(mdPath);
-            throw new Error(`Target note file already exists: N-${createdNoteId}.md`);
-          } catch (err: any) {
-            if (err?.code !== 'ENOENT') throw err;
-          }
-          const now = new Date().toISOString();
-          const noteContent = `---\nid: N-${createdNoteId}\nfrom: owner\nstatus: open\nat: ${now}\n---\n${trimmed}\n`;
-          writeFileSync(mdPath, noteContent, { flag: 'wx', encoding: 'utf8' });
-          createdMdPath = mdPath;
-          try {
-            commitAll(activeProject, `inbox N-${createdNoteId}`, { name: 'owner', email: 'owner@btm.local' });
-          } catch (err: any) {
-            throw new Error(`Commit note failed: ${err?.message || String(err)}`);
-          }
-        } catch (err: any) {
-          if (createdMdPath) {
-            try { rmSync(createdMdPath, { force: true }); } catch {}
-          }
-          if (createdNoteId) {
-            try { d.store.deleteNote(createdNoteId); } catch {}
-          }
-          throw err;
-        }
-        return { noteId: createdNoteId };
-      };
-
-      const goal = `Xử lý ghi chú team N-?: ${trimmed.slice(0, 200)}`;
-      return await start([goal], { prepare });
+          d.store.deleteNote(createdNoteId);
+        } catch {}
+      }
+      return result;
     }
 
     const id = d.store.enqueue(to as Seat, trimmed);

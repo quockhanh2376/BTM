@@ -14,6 +14,9 @@ export interface HostApi {
     goals: string[],
     opts?: {
       noteId?: number;
+      text?: string;
+      image?: { ext: string; bytes: Buffer };
+      note?: { noteId: number; text: string; image?: { ext: string; bytes: Buffer } };
       prepare?: () => Promise<{ noteId?: number } | void> | { noteId?: number } | void;
     }
   ): Promise<{ ok: boolean; error?: string }>;
@@ -388,8 +391,13 @@ export function createServer(o: {
             return;
           }
 
+          if (o.host.busy && o.host.busy()) {
+            sendJson(res, 409, { error: 'Đang có phiên chạy' });
+            return;
+          }
+
           let imgBuf: Buffer | null = null;
-          let ext: string | null = null;
+          let ext: 'png' | 'jpg' | 'webp' | null = null;
 
           if (parsed.data.image) {
             try {
@@ -412,11 +420,6 @@ export function createServer(o: {
             ext = detected.ext;
           }
 
-          if (o.host.busy && o.host.busy()) {
-            sendJson(res, 409, { error: 'Đang có phiên chạy' });
-            return;
-          }
-
           try {
             inboxPath(activeProject, 'N-0');
           } catch (err: any) {
@@ -424,109 +427,38 @@ export function createServer(o: {
             return;
           }
 
-          let createdNoteId: number = 0;
-          let prepared = false;
-          let commitFailed = false;
-          let createdMdPath: string | null = null;
-          let createdImgPath: string | null = null;
+          const createdNoteId = o.store.createNote(activeProject, parsed.data.text, null);
+          const imageName = ext ? `N-${createdNoteId}.${ext}` : null;
+          if (imageName) {
+            o.store.setNoteImage(createdNoteId, imageName);
+          }
 
-          const prepare = () => {
-            prepared = true;
-            createdNoteId = o.store.createNote(activeProject, parsed.data.text, null);
-            try {
-              const imageName = ext ? `N-${createdNoteId}.${ext}` : null;
-              if (imageName) {
-                o.store.setNoteImage(createdNoteId, imageName);
-              }
-
-              if (imgBuf && imageName) {
-                const imgPath = inboxPath(activeProject, imageName);
-                try {
-                  lstatSync(imgPath);
-                  throw new Error(`Target image file already exists: ${imageName}`);
-                } catch (err: any) {
-                  if (err?.code !== 'ENOENT') throw err;
-                }
-                writeFileSync(imgPath, imgBuf, { flag: 'wx' });
-                createdImgPath = imgPath;
-              }
-
-              const now = new Date().toISOString();
-              const noteMdLines = [
-                '---',
-                `id: N-${createdNoteId}`,
-                'from: owner',
-                'status: open',
-                `at: ${now}`,
-              ];
-              if (imageName) {
-                noteMdLines.push(`image: ${imageName}`);
-              }
-              noteMdLines.push('---', parsed.data.text, '');
-
-              const mdPath = inboxPath(activeProject, `N-${createdNoteId}.md`);
-              try {
-                lstatSync(mdPath);
-                throw new Error(`Target note file already exists: N-${createdNoteId}.md`);
-              } catch (err: any) {
-                if (err?.code !== 'ENOENT') throw err;
-              }
-              writeFileSync(mdPath, noteMdLines.join('\n'), { flag: 'wx', encoding: 'utf8' });
-              createdMdPath = mdPath;
-
-              try {
-                commitAll(activeProject, `inbox N-${createdNoteId}`, { name: 'owner', email: 'owner@btm.local' });
-              } catch (err: any) {
-                commitFailed = true;
-                throw new Error(`Commit note failed: ${err?.message || String(err)}`);
-              }
-            } catch (err: any) {
-              if (createdMdPath) {
-                try { rmSync(createdMdPath, { force: true }); } catch {}
-              }
-              if (createdImgPath) {
-                try { rmSync(createdImgPath, { force: true }); } catch {}
-              }
-              if (createdNoteId) {
-                try { o.store.deleteNote(createdNoteId); } catch {}
-              }
-              throw err;
-            }
-
-            return { noteId: createdNoteId };
-          };
-
-          const initialGoal = `Xử lý ghi chú team N-?: ${parsed.data.text.slice(0, 200)}`;
+          const imageOpt = (ext && imgBuf) ? { ext, bytes: imgBuf } : undefined;
+          const initialGoal = `Xử lý ghi chú team N-${createdNoteId}: ${parsed.data.text.slice(0, 200)}`;
           let result: { ok: boolean; error?: string };
           try {
-            result = await o.host.start([initialGoal], { prepare });
+            result = await o.host.start([initialGoal], {
+              noteId: createdNoteId,
+              text: parsed.data.text,
+              image: imageOpt,
+              note: {
+                noteId: createdNoteId,
+                text: parsed.data.text,
+                image: imageOpt,
+              },
+            });
           } catch (err: any) {
-            if (commitFailed) {
-              sendJson(res, 500, { error: err?.message || 'Commit note failed' });
-              return;
-            }
+            try {
+              o.store.deleteNote(createdNoteId);
+            } catch {}
             sendJson(res, 400, { error: err?.message || 'Error starting session' });
             return;
           }
 
-          if (!prepared && result.ok) {
-            try {
-              prepare();
-            } catch (err: any) {
-              if (commitFailed) {
-                sendJson(res, 500, { error: err?.message || 'Commit note failed' });
-                return;
-              }
-              sendJson(res, 400, { error: err?.message || 'Error preparing note' });
-              return;
-            }
-          }
-
           if (!result.ok) {
-            if (commitFailed) {
-              sendJson(res, 500, { error: result.error || 'Commit note failed' });
-              return;
-            }
+            try {
+              o.store.deleteNote(createdNoteId);
+            } catch {}
             if (result.error === 'Đang có phiên chạy') {
               sendJson(res, 409, { error: 'Đang có phiên chạy' });
               return;

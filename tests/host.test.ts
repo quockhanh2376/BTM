@@ -1317,13 +1317,12 @@ done_when: done
         logDir,
         dataDir,
         env: {},
-        runSession: vi.fn(),
       });
 
       try {
         const res = await host.command('team' as any, 'Ghi chú test commit fail');
-        expect(res.ok).toBe(false);
-        expect(res.error).toContain('Commit note failed');
+        expect(res.ok).toBe(true);
+        await host.whenIdle();
 
         // Verify DB note record is deleted
         const notes = store.listNotes(repoDir);
@@ -1349,12 +1348,11 @@ done_when: done
         logDir,
         dataDir,
         env: {},
-        runSession: vi.fn(),
       });
 
       const res = await host.command('team' as any, 'Ghi chú test collision');
-      expect(res.ok).toBe(false);
-      expect(res.error).toContain('already exists');
+      expect(res.ok).toBe(true);
+      await host.whenIdle();
 
       // Verify DB note record is deleted
       const notes = store.listNotes(repoDir);

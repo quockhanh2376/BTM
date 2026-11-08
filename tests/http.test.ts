@@ -39,6 +39,7 @@ describe('HTTP Server & SSE', () => {
 
   let host: HostApi & {
     startCalls: string[][];
+    startOpts: any[];
     approveCalls: number;
     stopCalls: number;
     commandCalls: { to: string; text: string }[];
@@ -52,6 +53,7 @@ describe('HTTP Server & SSE', () => {
 
     host = {
       startCalls: [],
+      startOpts: [],
       approveCalls: 0,
       stopCalls: 0,
       commandCalls: [],
@@ -68,6 +70,7 @@ describe('HTTP Server & SSE', () => {
           }
         }
         host.startCalls.push(goals);
+        host.startOpts.push(opts);
         return { ok: true };
       },
       async approve() {
@@ -798,7 +801,7 @@ describe('HTTP Server & SSE', () => {
       expect(res2.status).toBe(403);
     });
 
-    it('accepts valid PNG image: saves file, commits, creates note in DB, and calls host.start with goal containing N-id', async () => {
+    it('accepts valid PNG image: creates note in DB, does not write file directly, and calls host.start with goal containing N-id and note opts', async () => {
       // Fake PNG magic bytes 89 50 4E 47 followed by some dummy bytes
       const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
       const base64 = pngBuf.toString('base64');
@@ -824,27 +827,25 @@ describe('HTTP Server & SSE', () => {
       expect(data.ok).toBe(true);
       expect(data.id).toBe(1);
 
-      // Verify files in repo
+      // Verify files in repo are NOT written yet (runSession will write them on session branch)
       const mdPath = join(testRepo, 'team', 'inbox', 'N-1.md');
       const imgPath = join(testRepo, 'team', 'inbox', 'N-1.png');
-      expect(existsSync(mdPath)).toBe(true);
-      expect(existsSync(imgPath)).toBe(true);
-
-      const mdContent = readFileSync(mdPath, 'utf8');
-      expect(mdContent).toContain('id: N-1');
-      expect(mdContent).toContain('from: owner');
-      expect(mdContent).toContain('status: open');
-      expect(mdContent).toContain('image: N-1.png');
-      expect(mdContent).toContain('Vui lòng kiểm tra lỗi giao diện theo ảnh');
-
-      const savedImg = readFileSync(imgPath);
-      expect(savedImg).toEqual(pngBuf);
+      expect(existsSync(mdPath)).toBe(false);
+      expect(existsSync(imgPath)).toBe(false);
 
       // Verify host.start called
       expect(host.startCalls.length).toBe(1);
       expect(host.startCalls[0][0]).toContain('Xử lý ghi chú team N-1: Vui lòng kiểm tra lỗi');
+      expect(host.startOpts[0]?.noteId).toBe(1);
+      expect(host.startOpts[0]?.text).toBe('Vui lòng kiểm tra lỗi giao diện theo ảnh');
+      expect(host.startOpts[0]?.image?.ext).toBe('png');
+      expect(host.startOpts[0]?.image?.bytes).toEqual(pngBuf);
 
-      // Verify GET /api/notes/1/image serves the image with correct Content-Type
+      // Simulate runSession placing the image on disk, and verify GET /api/notes/1/image serves it
+      const inboxDir = join(testRepo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      writeFileSync(imgPath, pngBuf);
+
       const getImgRes = await fetch(`${baseUrl}/api/notes/1/image`);
       expect(getImgRes.status).toBe(200);
       expect(getImgRes.headers.get('content-type')).toBe('image/png');
@@ -930,11 +931,8 @@ describe('HTTP Server & SSE', () => {
       }
     });
 
-    it('rejects POST /api/team-note when target file already exists or is symlink', async () => {
-      const inboxDir = join(testRepo, 'team', 'inbox');
-      mkdirSync(inboxDir, { recursive: true });
-      // Next note id will be 1
-      writeFileSync(join(inboxDir, 'N-1.md'), 'pre-existing file');
+    it('deletes DB note and returns error when host.start fails', async () => {
+      host.start = async () => ({ ok: false, error: 'Failed to start session' });
 
       const res = await fetch(`${baseUrl}/api/team-note`, {
         method: 'POST',
@@ -950,7 +948,7 @@ describe('HTTP Server & SSE', () => {
 
       expect(res.status).toBe(400);
       const data = await res.json();
-      expect(data.error).toContain('already exists');
+      expect(data.error).toBe('Failed to start session');
       expect(store.listNotes(testRepo).length).toBe(0);
     });
 
@@ -1045,14 +1043,14 @@ describe('HTTP Server & SSE', () => {
       expect(data.ok).toBe(true);
       const noteId = data.id;
 
-      const jpgPath = join(testRepo, 'team', 'inbox', `N-${noteId}.jpg`);
-      const jpegPath = join(testRepo, 'team', 'inbox', `N-${noteId}.jpeg`);
-      expect(existsSync(jpgPath)).toBe(true);
-      expect(existsSync(jpegPath)).toBe(false);
+      const note = store.getNote(noteId);
+      expect(note?.image).toBe(`N-${noteId}.jpg`);
+      expect(host.startOpts[0]?.image?.ext).toBe('jpg');
 
-      const mdPath = join(testRepo, 'team', 'inbox', `N-${noteId}.md`);
-      const mdContent = readFileSync(mdPath, 'utf8');
-      expect(mdContent).toContain(`image: N-${noteId}.jpg`);
+      const inboxDir = join(testRepo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      const jpgPath = join(inboxDir, `N-${noteId}.jpg`);
+      writeFileSync(jpgPath, jpegBuf);
 
       const getRes = await fetch(`${baseUrl}/api/notes/${noteId}/image`);
       expect(getRes.status).toBe(200);
@@ -1080,55 +1078,10 @@ describe('HTTP Server & SSE', () => {
       expect(res.status).toBe(415);
     });
 
-    it('when commit note fails, deletes written files, returns 500, and does not open session', async () => {
-      const commitSpy = vi.spyOn(gitModule, 'commitAll').mockImplementation((repo, msg, author) => {
-        if (msg.startsWith('inbox N-')) {
-          throw new Error('Simulated git commit error on creating note');
-        }
-        return gitModule.commitAll(repo, msg, author);
-      });
-
-      const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
-      try {
-        const res = await fetch(`${baseUrl}/api/team-note`, {
-          method: 'POST',
-          headers: {
-            'x-btm': '1',
-            'content-type': 'application/json',
-            Origin: `http://127.0.0.1:${port}`,
-          },
-          body: JSON.stringify({
-            text: 'Note that will fail to commit',
-            image: {
-              name: 'test.png',
-              base64: pngBuf.toString('base64'),
-            },
-          }),
-        });
-
-        expect(res.status).toBe(500);
-        const data = await res.json();
-        expect(data.error).toMatch(/commit/i);
-
-        // Check that written files were deleted
-        const inboxDir = join(testRepo, 'team', 'inbox');
-        const files = existsSync(inboxDir) ? readdirSync(inboxDir) : [];
-        expect(files.filter((f: string) => f.startsWith('N-'))).toEqual([]);
-
-        // Verify host.start did NOT proceed to run session
-        expect(host.startCalls.length).toBe(0);
-
-        // Verify DB note was deleted
-        expect(store.listNotes(testRepo).length).toBe(0);
-      } finally {
-        commitSpy.mockRestore();
-      }
-    });
-
-    it('deletes DB note when image write fails (e.g. image file already exists)', async () => {
-      const inboxDir = join(testRepo, 'team', 'inbox');
-      mkdirSync(inboxDir, { recursive: true });
-      writeFileSync(join(inboxDir, 'N-1.png'), 'pre-existing image');
+    it('deletes DB note and returns 400 when host.start throws', async () => {
+      host.start = async () => {
+        throw new Error('Host start crashed');
+      };
 
       const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
       const res = await fetch(`${baseUrl}/api/team-note`, {
@@ -1139,7 +1092,7 @@ describe('HTTP Server & SSE', () => {
           Origin: `http://127.0.0.1:${port}`,
         },
         body: JSON.stringify({
-          text: 'Note with collision on image',
+          text: 'Note that fails to start',
           image: {
             name: 'test.png',
             base64: pngBuf.toString('base64'),
@@ -1149,20 +1102,15 @@ describe('HTTP Server & SSE', () => {
 
       expect(res.status).toBe(400);
       const data = await res.json();
-      expect(data.error).toContain('already exists');
+      expect(data.error).toContain('Host start crashed');
 
-      // Verify DB note record is deleted
+      // Verify DB note was deleted
       expect(store.listNotes(testRepo).length).toBe(0);
-      // Verify md file was not created
-      expect(existsSync(join(inboxDir, 'N-1.md'))).toBe(false);
     });
 
-    it('deletes DB note and cleans up written image when md write fails', async () => {
-      const inboxDir = join(testRepo, 'team', 'inbox');
-      mkdirSync(inboxDir, { recursive: true });
-      writeFileSync(join(inboxDir, 'N-1.md'), 'pre-existing md');
+    it('returns 409 when host.start reports session already running', async () => {
+      host.start = async () => ({ ok: false, error: 'Đang có phiên chạy' });
 
-      const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
       const res = await fetch(`${baseUrl}/api/team-note`, {
         method: 'POST',
         headers: {
@@ -1171,22 +1119,14 @@ describe('HTTP Server & SSE', () => {
           Origin: `http://127.0.0.1:${port}`,
         },
         body: JSON.stringify({
-          text: 'Note with collision on md but valid image',
-          image: {
-            name: 'test.png',
-            base64: pngBuf.toString('base64'),
-          },
+          text: 'Note when session running',
         }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(409);
       const data = await res.json();
-      expect(data.error).toContain('already exists');
-
-      // Verify DB note record is deleted
+      expect(data.error).toBe('Đang có phiên chạy');
       expect(store.listNotes(testRepo).length).toBe(0);
-      // Verify image file was cleaned up
-      expect(existsSync(join(inboxDir, 'N-1.png'))).toBe(false);
     });
   });
 
