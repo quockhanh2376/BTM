@@ -225,3 +225,4 @@ Theme: biến CSS trên `:root` cho sáng, `[data-theme=dark]` cho tối; mặc 
 - Khi chọn Cả team: nút **Đính kèm ảnh** (`<input type=file accept="image/png,image/jpeg,image/webp">` có label) + dán ảnh (Ctrl+V vào ô lệnh) → xem trước thumbnail, nút bỏ ảnh; gửi `POST /api/team-note`.
 - Khu **Hộp thư team**: danh sách note (id, giờ, trạng thái Mở/Xong, text, ảnh thu nhỏ qua `GET /api/notes/<id>/image` — route mới chỉ phục vụ ảnh của note thuộc project active, content-type theo magic bytes), báo cáo ngắn bên dưới.
 - Không `innerHTML` với dữ liệu; ảnh hiển thị bằng `<img alt="Ảnh đính kèm N-<id>">`.
+- **Sửa theo anh Zon (gộp vào 10b):** icon vòng xoay **luôn quay** kể cả khi `prefers-reduced-motion: reduce` (anh quyết định: phải nhìn thấy ai đang chạy) — bỏ media query tắt quay, cập nhật test. Nút **Duyệt thẻ luôn hiển thị**, `disabled` + `title="Không có thẻ chờ duyệt"` khi phiên không ở `awaiting_approval`.
