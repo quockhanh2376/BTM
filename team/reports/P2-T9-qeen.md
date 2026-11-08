@@ -1,0 +1,1 @@
+Cần xác nhận: chạy `tests/web.test.ts` ở môi trường cho phép ghi; Vitest bị chặn bởi filesystem chỉ đọc (EROFS). Review mã chưa thấy bug trong phạm vi yêu cầu.

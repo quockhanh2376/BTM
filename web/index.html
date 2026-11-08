@@ -139,6 +139,51 @@
       font-weight: 600;
     }
 
+    .spinner-icon {
+      width: 18px;
+      height: 18px;
+      display: inline-block;
+      vertical-align: middle;
+      color: var(--accent);
+      stroke: currentColor;
+      animation: rotate 0.9s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes rotate {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes quay {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .spinner-icon,
+      .blink-dot {
+        animation: none;
+      }
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+
     .blink-dot {
       display: inline-block;
       width: 8px;
@@ -289,6 +334,12 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
+    }
+
+    .seat-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .seat-title {
@@ -672,7 +723,10 @@
         <span id="session-badge" class="badge">Phiên: —</span>
         <span id="turns-badge" class="badge">Đã dùng 0/0 lượt</span>
         <span id="holder-box" class="badge badge-accent">
-          <span id="holder-dot" class="blink-dot" style="display: none;"></span>
+          <svg id="holder-dot" class="spinner-icon" style="display: none; margin-right: 6px;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
+            <path d="M12 3a9 9 0 0 1 9 9"></path>
+          </svg>
           <span id="holder-text">Đang giữ lượt: —</span>
         </span>
       </div>
@@ -713,7 +767,13 @@
       <div class="seat-card" id="seat-card-pm">
         <div class="seat-header">
           <div>
-            <div class="seat-title" id="pm-title">Elon-PM</div>
+            <div class="seat-title-wrap">
+              <div class="seat-title" id="pm-title">Elon-PM</div>
+              <svg id="pm-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
+                <path d="M12 3a9 9 0 0 1 9 9"></path>
+              </svg>
+            </div>
             <div class="seat-tool" id="pm-tool">superpowers</div>
           </div>
           <span class="seat-status-badge status-idle" id="pm-status-badge">Rảnh</span>
@@ -737,7 +797,13 @@
       <div class="seat-card" id="seat-card-dev">
         <div class="seat-header">
           <div>
-            <div class="seat-title" id="dev-title">Jacky-Dev</div>
+            <div class="seat-title-wrap">
+              <div class="seat-title" id="dev-title">Jacky-Dev</div>
+              <svg id="dev-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
+                <path d="M12 3a9 9 0 0 1 9 9"></path>
+              </svg>
+            </div>
             <div class="seat-tool" id="dev-tool">claude</div>
           </div>
           <span class="seat-status-badge status-idle" id="dev-status-badge">Rảnh</span>
@@ -761,7 +827,13 @@
       <div class="seat-card" id="seat-card-qc">
         <div class="seat-header">
           <div>
-            <div class="seat-title" id="qc-title">Jenny-QC</div>
+            <div class="seat-title-wrap">
+              <div class="seat-title" id="qc-title">Jenny-QC</div>
+              <svg id="qc-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
+                <path d="M12 3a9 9 0 0 1 9 9"></path>
+              </svg>
+            </div>
             <div class="seat-tool" id="qc-tool">codex</div>
           </div>
           <span class="seat-status-badge status-idle" id="qc-status-badge">Rảnh</span>
@@ -1101,6 +1173,7 @@
         if (cardData) {
           var titleEl = document.getElementById(seatKey + '-title');
           var toolEl = document.getElementById(seatKey + '-tool');
+          var spinnerEl = document.getElementById(seatKey + '-spinner');
           var statusBadge = document.getElementById(seatKey + '-status-badge');
           var taskEl = document.getElementById(seatKey + '-task');
           var sinceEl = document.getElementById(seatKey + '-since');
@@ -1110,17 +1183,24 @@
           if (titleEl) titleEl.textContent = formatAgentDisplayName(cardData.agent, seatKey);
           if (toolEl) toolEl.textContent = cardData.tool || '—';
 
-          if (statusBadge) {
-            statusBadge.className = 'seat-status-badge';
-            if (cardData.status === 'running') {
-              statusBadge.classList.add('status-running');
-              statusBadge.textContent = formatStatus('running');
-            } else if (cardData.status === 'waiting') {
-              statusBadge.classList.add('status-waiting');
-              statusBadge.textContent = 'Chờ';
-            } else {
-              statusBadge.classList.add('status-idle');
-              statusBadge.textContent = 'Rảnh';
+          if (cardData.status === 'running') {
+            if (spinnerEl) setDisplay(spinnerEl, true, 'inline-block');
+            if (statusBadge) {
+              setDisplay(statusBadge, false);
+              statusBadge.textContent = '';
+            }
+          } else {
+            if (spinnerEl) setDisplay(spinnerEl, false);
+            if (statusBadge) {
+              setDisplay(statusBadge, true, 'inline-block');
+              statusBadge.className = 'seat-status-badge';
+              if (cardData.status === 'waiting') {
+                statusBadge.classList.add('status-waiting');
+                statusBadge.textContent = 'Chờ';
+              } else {
+                statusBadge.classList.add('status-idle');
+                statusBadge.textContent = 'Rảnh';
+              }
             }
           }
 

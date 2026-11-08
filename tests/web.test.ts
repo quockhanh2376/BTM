@@ -318,4 +318,66 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(html).toMatch(/settings\s*\.\s*autoApprove/);
     });
   });
+
+  describe('P2-T9: Icon vòng xoay SVG thay nhãn Đang chạy trên thẻ ghế và chip thanh trên', () => {
+    it('định nghĩa animation quay và dừng quay khi prefers-reduced-motion: reduce', () => {
+      // Có @keyframes quay (hoặc rotate)
+      expect(html).toMatch(/@keyframes\s+(quay|rotate|spin)\b/);
+      // Animation CSS rotate 0.9s linear infinite
+      expect(html).toMatch(/0\.9s\s+linear\s+infinite/);
+      // Hỗ trợ @media (prefers-reduced-motion: reduce) -> animation: none
+      expect(html).toMatch(/@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)[\s\S]*?animation\s*:\s*none/);
+    });
+
+    it('chứa icon SVG vòng xoay inline 18px với role="img" và aria-label="Đang chạy" đặt cạnh tên agent', () => {
+      // Thẻ ghế có icon SVG inline 18px với role="img" và aria-label="Đang chạy"
+      expect(html).toContain('aria-label="Đang chạy"');
+      expect(html).toContain('role="img"');
+      expect(html).toContain('18px');
+      expect(html).toContain('currentColor');
+
+      // Các thẻ ghế (pm, dev, qc) đều có icon vòng xoay đặt cạnh tên agent
+      const pmCardMatch = html.match(/id=["']seat-card-pm["'][\s\S]*?(?=id=["']seat-card-dev["'])/);
+      expect(pmCardMatch).not.toBeNull();
+      const pmHtml = pmCardMatch![0];
+      expect(pmHtml).toContain('id="pm-title">Elon-PM');
+      expect(pmHtml).toMatch(/<svg[^>]*\bid=["']pm-spinner["'][^>]*role=["']img["'][^>]*aria-label=["']Đang chạy["']/);
+
+      const devCardMatch = html.match(/id=["']seat-card-dev["'][\s\S]*?(?=id=["']seat-card-qc["'])/);
+      expect(devCardMatch).not.toBeNull();
+      const devHtml = devCardMatch![0];
+      expect(devHtml).toContain('id="dev-title">Jacky-Dev');
+      expect(devHtml).toMatch(/<svg[^>]*\bid=["']dev-spinner["'][^>]*role=["']img["'][^>]*aria-label=["']Đang chạy["']/);
+
+      const qcCardMatch = html.match(/id=["']seat-card-qc["'][\s\S]*?(?=<\/section>)/);
+      expect(qcCardMatch).not.toBeNull();
+      const qcHtml = qcCardMatch![0];
+      expect(qcHtml).toContain('id="qc-title">Jenny-QC');
+      expect(qcHtml).toMatch(/<svg[^>]*\bid=["']qc-spinner["'][^>]*role=["']img["'][^>]*aria-label=["']Đang chạy["']/);
+    });
+
+    it('chip Đang giữ lượt trên thanh trên dùng cùng icon vòng xoay thay chấm nhấp nháy', () => {
+      const holderBoxMatch = html.match(/<span[^>]*id=["']holder-box["'][^>]*>([\s\S]*?)<\/span>/);
+      expect(holderBoxMatch).not.toBeNull();
+      const holderBoxHtml = holderBoxMatch![0];
+
+      // Dùng SVG inline thay cho blink-dot
+      expect(holderBoxHtml).not.toContain('blink-dot');
+      expect(holderBoxHtml).toMatch(/<svg[^>]*role=["']img["'][^>]*aria-label=["']Đang chạy["']/);
+      expect(holderBoxHtml).toContain('currentColor');
+    });
+
+    it('không còn chuỗi hiển thị "Đang chạy" dạng chip; nhãn Chờ/Rảnh giữ dạng chip xám nhỏ', () => {
+      // HTML tĩnh không có chip nào hiển thị chữ 'Đang chạy'
+      expect(html).not.toMatch(/<span[^>]*class=["'][^"']*seat-status-badge[^"']*["'][^>]*>\s*Đang chạy\s*<\/span>/);
+
+      // Nhãn Chờ / Rảnh giữ dạng chip xám nhỏ trong CSS
+      expect(html).toMatch(/\.status-waiting\b/);
+      expect(html).toMatch(/\.status-idle\b/);
+
+      // Trong renderSeat: khi status === 'running', không gán text 'Đang chạy' vào statusBadge dạng chip
+      expect(html).not.toMatch(/statusBadge\.textContent\s*=\s*['"]Đang chạy['"]/);
+      expect(html).not.toMatch(/statusBadge\.textContent\s*=\s*formatStatus\s*\(\s*['"]running['"]\s*\)/);
+    });
+  });
 });
