@@ -18,6 +18,7 @@ import {
   type SessionOutcome,
   type SessionDeps,
 } from '../src/core/session.ts';
+import { createMonitor } from '../src/energy/monitor.ts';
 import type { TaskCard } from '../src/task/card.ts';
 
 interface HandlerOutput {
@@ -3034,6 +3035,417 @@ note: N-${noteId}
         commitSpy.mockRestore();
         store.close();
       }
+    });
+  });
+
+  describe('Energy Gate & Login Gate in Session (Task 3)', () => {
+    let repo: string;
+    let cfg: Config;
+    let store: Store;
+    let logDir: string;
+
+    beforeEach(() => {
+      repo = tmpRepo({
+        'src/app.ts': 'export const app = 1;\n',
+      });
+      cfg = loadConfig('btm.config.yaml');
+      cfg.host.projects_root = dirname(repo);
+      cfg.turn.commit_before_dev_turn = false;
+      cfg.gate.commands = { build: '', lint: '', test: '' };
+      logDir = join(repo, '.logs');
+      mkdirSync(logDir, { recursive: true });
+      store = openStore(':memory:');
+      store.setActiveProject(repo);
+    });
+
+    afterEach(() => {
+      store.close();
+    });
+
+    it('energy 15% với ngưỡng 20 → lượt Dev không chạy, needs_owner, note có "hồi lúc"', async () => {
+      let devCalled = false;
+      const { runner } = createFakeRunner([
+        // PM turn: tạo task card T-001
+        (seat, agent, prompt, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: Implement feature\nscope:\n  - src/\nacceptance:\n  - Works\ndone_when: Done\n---\n`
+          );
+        },
+        // Dev turn (không được gọi tới vì bị chặn bởi gate)
+        () => {
+          devCalled = true;
+          return { exitCode: 0, output: 'dev should not run' };
+        },
+      ]);
+
+      const gate = vi.fn((agent: string) => {
+        if (agent === 'jacky') {
+          return { ok: false as const, reason: 'energy:5h còn 15%, hồi lúc 19:57' };
+        }
+        return { ok: true as const };
+      });
+
+      const deps: SessionDeps = {
+        cfg,
+        store,
+        runner,
+        repo,
+        env: {},
+        logDir,
+        gate,
+      };
+
+      const outcome = await runSession(deps, ['Build feature'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(devCalled).toBe(false);
+      expect(outcome.notes.some((n) => n.includes('hồi lúc'))).toBe(true);
+      expect(outcome.notes).toContain('energy:5h còn 15%, hồi lúc 19:57');
+
+      // Kiểm tra handoff failure được ghi trong DB
+      const failures = store.listHandoffFailures(outcome.sessionId!);
+      expect(failures).toHaveLength(1);
+      expect(failures[0].task_id).toBe('T-001');
+      expect(failures[0].reason).toBe('energy:5h còn 15%, hồi lúc 19:57');
+    });
+
+    it('energy unknown → chạy bình thường', async () => {
+      let devCalled = false;
+      let qcCalled = false;
+      const { runner } = createFakeRunner([
+        // PM turn
+        (seat, agent, prompt, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: Implement feature\nscope:\n  - src/\nacceptance:\n  - Works\ndone_when: Done\n---\n`
+          );
+        },
+        // Dev turn
+        (seat, agent, prompt, cwd) => {
+          devCalled = true;
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK\n');
+        },
+        // QC turn
+        () => {
+          qcCalled = true;
+          return {
+            lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+          };
+        },
+      ]);
+
+      const gate = vi.fn(() => ({ ok: true as const }));
+
+      const deps: SessionDeps = {
+        cfg,
+        store,
+        runner,
+        repo,
+        env: {},
+        logDir,
+        gate,
+      };
+
+      const outcome = await runSession(deps, ['Build feature'], { approved: true });
+
+      expect(devCalled).toBe(true);
+      expect(qcCalled).toBe(true);
+      expect(outcome.status).toBe('done');
+    });
+
+    it('login relogin cho QC → Dev vẫn chạy, tới QC thì dừng', async () => {
+      let devCalled = false;
+      let qcCalled = false;
+      const { runner } = createFakeRunner([
+        // PM turn
+        (seat, agent, prompt, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: Implement feature\nscope:\n  - src/\nacceptance:\n  - Works\ndone_when: Done\n---\n`
+          );
+        },
+        // Dev turn (chạy bình thường)
+        (seat, agent, prompt, cwd) => {
+          devCalled = true;
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK\n');
+        },
+        // QC turn (không được gọi)
+        () => {
+          qcCalled = true;
+          return { lastMessage: '## QC PASS' };
+        },
+      ]);
+
+      const gate = vi.fn((agent: string) => {
+        if (agent === 'jenny') {
+          return { ok: false as const, reason: 'login:relogin' };
+        }
+        return { ok: true as const };
+      });
+
+      const deps: SessionDeps = {
+        cfg,
+        store,
+        runner,
+        repo,
+        env: {},
+        logDir,
+        gate,
+      };
+
+      const outcome = await runSession(deps, ['Build feature'], { approved: true });
+
+      expect(devCalled).toBe(true);
+      expect(qcCalled).toBe(false);
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('login:relogin');
+
+      // Kiểm tra handoff failure được ghi trong DB cho QC
+      const failures = store.listHandoffFailures(outcome.sessionId!);
+      expect(failures).toHaveLength(1);
+      expect(failures[0].task_id).toBe('T-001');
+      expect(failures[0].reason).toBe('login:relogin');
+    });
+
+    it('gọi refresh(mọi agent đang ngồi ghế) khi mở phiên và refresh([agent]) trước mỗi lượt', async () => {
+      const { runner } = createFakeRunner([
+        // PM
+        (seat, agent, prompt, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: Implement feature\nscope:\n  - src/\nacceptance:\n  - Works\ndone_when: Done\n---\n`
+          );
+        },
+        // Dev
+        (seat, agent, prompt, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK\n');
+        },
+        // QC
+        () => ({ lastMessage: '## QC PASS\n' }),
+      ]);
+
+      const refreshCalls: string[][] = [];
+      const refresh = vi.fn(async (agents: string[]) => {
+        refreshCalls.push(agents);
+      });
+
+      const deps: SessionDeps = {
+        cfg,
+        store,
+        runner,
+        repo,
+        env: {},
+        logDir,
+        refresh,
+        gate: () => ({ ok: true as const }),
+      };
+
+      await runSession(deps, ['Build feature'], { approved: true });
+
+      // Lần 1: mở phiên -> refresh mọi agent ngồi ghế (elon, jacky, jenny)
+      expect(refreshCalls[0]).toEqual(expect.arrayContaining(['elon', 'jacky', 'jenny']));
+      // Các lần tiếp theo: before_turn cho pm, dev, qc
+      expect(refreshCalls).toContainEqual(['elon']);
+      expect(refreshCalls).toContainEqual(['jacky']);
+      expect(refreshCalls).toContainEqual(['jenny']);
+    });
+
+    it('refresh reject khi mở phiên -> coi như unknown, phiên tiếp tục bình thường và setSessionStatus được gọi', async () => {
+      const { runner } = createFakeRunner([
+        // PM
+        (seat, agent, prompt, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: Implement feature\nscope:\n  - src/app.ts\nacceptance:\n  - Works\ndone_when: Done\n---\n`
+          );
+        },
+        // Dev
+        (seat, agent, prompt, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK\n');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      const refresh = vi.fn().mockRejectedValue(new Error('Network offline reading quota'));
+
+      const deps: SessionDeps = {
+        cfg,
+        store,
+        runner,
+        repo,
+        env: {},
+        logDir,
+        refresh,
+        gate: () => ({ ok: true as const }),
+      };
+
+      const outcome = await runSession(deps, ['Build feature'], { approved: true });
+
+      expect(outcome.status).toBe('done');
+      const session = store.getSession(outcome.sessionId!);
+      expect(session?.status).toBe('done');
+    });
+
+    it('refresh reject khi resume phiên -> coi như unknown, phiên tiếp tục và luôn setSessionStatus trong finally', async () => {
+      const sId = store.createSession(['Build feature'], repo);
+      store.setSessionStatus(sId, 'awaiting_approval');
+      store.setSessionTasks(sId, ['T-001']);
+      store.setTaskState(sId, 'T-001', 'pending', 0);
+
+      git(repo, 'checkout', '-b', `session/${sId}`);
+
+      mkdirSync(join(repo, 'team', 'tasks'), { recursive: true });
+      writeFileSync(
+        join(repo, 'team', 'tasks', 'T-001.md'),
+        `---\nid: T-001\ngoal: Implement feature\nscope:\n  - src/app.ts\nacceptance:\n  - Works\ndone_when: Done\n---\n`
+      );
+      commitAll(repo, 'pm: task cards', { name: 'elon', email: 'elon@btm.local' });
+
+      const { runner } = createFakeRunner([
+        // Dev
+        (seat, agent, prompt, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK\n');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      const refresh = vi.fn().mockRejectedValue(new Error('Quota CLI network timeout'));
+
+      const deps: SessionDeps = {
+        cfg,
+        store,
+        runner,
+        repo,
+        env: {},
+        logDir,
+        refresh,
+        gate: () => ({ ok: true as const }),
+      };
+
+      const outcome = await resumeSession(deps, sId);
+
+      expect(outcome.notes).toEqual([]);
+      expect(outcome.status).toBe('done');
+      const session = store.getSession(sId);
+      expect(session?.status).toBe('done');
+    });
+
+    it('test tích hợp session + monitor thật: Energy 50% ở lượt Dev, tụt 10% trước lượt QC -> QC không chạy, needs_owner có "hồi lúc"', async () => {
+      let devRan = false;
+      let qcRan = false;
+      let jennyEnergy = 50; // Ban đầu 50% ở lượt Dev
+
+      let nowTime = new Date('2026-11-08T15:00:00.000Z');
+      const now = () => nowTime;
+
+      const { runner } = createFakeRunner([
+        // PM
+        (seat, agent, prompt, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: Implement feature\nscope:\n  - src/\nacceptance:\n  - Works\ndone_when: Done\n---\n`
+          );
+        },
+        // Dev
+        (seat, agent, prompt, cwd) => {
+          devRan = true;
+          // Dev chạy tốn thời gian (200s > cache_seconds 180s) và trước QC thì energy tụt còn 10%
+          nowTime = new Date(nowTime.getTime() + 200_000);
+          jennyEnergy = 10;
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 100;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK\n');
+        },
+        // QC
+        () => {
+          qcRan = true;
+          return { lastMessage: '## QC PASS\n' };
+        },
+      ]);
+
+      const mockReadEnergy = vi.fn(async (agent: string) => {
+        if (agent === 'jacky') {
+          return {
+            agent: 'jacky',
+            status: 'fresh' as const,
+            windows: [{ name: '5h', remainingPercent: 50, resetsAt: '2026-11-08T18:00:00Z' }],
+            readAt: nowTime.toISOString(),
+          };
+        }
+        if (agent === 'jenny') {
+          return {
+            agent: 'jenny',
+            status: 'fresh' as const,
+            windows: [{ name: '5h', remainingPercent: jennyEnergy, resetsAt: '2026-11-08T19:57:00Z' }],
+            readAt: nowTime.toISOString(),
+          };
+        }
+        return {
+          agent,
+          status: 'fresh' as const,
+          windows: [{ name: '5h', remainingPercent: 80, resetsAt: '2026-11-08T20:00:00Z' }],
+          readAt: nowTime.toISOString(),
+        };
+      });
+
+      const mockCheckLogin = vi.fn(async (agent: string) => ({
+        agent,
+        state: 'ok' as const,
+        detail: 'Ổn',
+      }));
+
+      const monitor = createMonitor({
+        cfg,
+        store,
+        readEnergy: mockReadEnergy as any,
+        checkLogin: mockCheckLogin as any,
+        now,
+      });
+
+      const deps: SessionDeps = {
+        cfg,
+        store,
+        runner,
+        repo,
+        env: {},
+        logDir,
+        monitor,
+      };
+
+      const outcome = await runSession(deps, ['Implement feature'], { approved: true });
+
+      expect(devRan).toBe(true);
+      expect(qcRan).toBe(false);
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes.some((note) => note.includes('hồi lúc'))).toBe(true);
+      expect(outcome.notes.some((note) => note.includes('10%') && note.includes('19:57'))).toBe(true);
+
+      const failures = store.listHandoffFailures(outcome.sessionId!);
+      expect(failures.length).toBeGreaterThan(0);
+      expect(failures[0].reason).toContain('hồi lúc');
     });
   });
 });

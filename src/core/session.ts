@@ -28,6 +28,12 @@ export interface SessionDeps {
   env: NodeJS.ProcessEnv;
   logDir: string;
   signal?: AbortSignal;
+  gate?: (agent: string) => { ok: true } | { ok: false; reason: string };
+  refresh?: (agents: string[], force?: boolean) => Promise<void>;
+  monitor?: {
+    refresh(agents: string[], force?: boolean): Promise<void>;
+    gate(agent: string): { ok: true } | { ok: false; reason: string };
+  };
 }
 
 function isRepoInsideProjectsRoot(repo: string, projectsRoot: string): boolean {
@@ -119,6 +125,9 @@ async function workOnCards(
   cards: TaskCard[],
   tasks: Record<string, TaskState>
 ): Promise<SessionOutcome> {
+  const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
+  const gateFn = d.gate ?? (d.monitor ? d.monitor.gate.bind(d.monitor) : undefined);
+
   for (const card of cards) {
     const base = headSha(d.repo);
     let fixNotes: string[] = [];
@@ -146,6 +155,19 @@ async function workOnCards(
       const devAgent = d.cfg.seats.dev;
       const devAuthor = authorForAgent(devAgent);
       coders.add(devAgent);
+
+      if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+        try {
+          await refreshFn([devAgent]);
+        } catch {}
+      }
+      if (gateFn) {
+        const gateCheck = gateFn(devAgent);
+        if (!gateCheck.ok) {
+          d.store.recordHandoffFailure(sessionId, card.id, gateCheck.reason);
+          return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+        }
+      }
 
       if (isOutOfTurns(d.store, sessionId, d.cfg, 'dev')) {
         return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
@@ -278,6 +300,19 @@ async function workOnCards(
           tasks,
           notes: [`Seat 'qc' is occupied by '${qcAgent}', who also coded task '${card.id}'`],
         };
+      }
+
+      if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+        try {
+          await refreshFn([qcAgent]);
+        } catch {}
+      }
+      if (gateFn) {
+        const gateCheck = gateFn(qcAgent);
+        if (!gateCheck.ok) {
+          d.store.recordHandoffFailure(sessionId, card.id, gateCheck.reason);
+          return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+        }
       }
 
       if (isOutOfTurns(d.store, sessionId, d.cfg, 'qc')) {
@@ -605,6 +640,30 @@ export async function runSession(
     }
 
     // 3. PM Turn
+    const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
+    const gateFn = d.gate ?? (d.monitor ? d.monitor.gate.bind(d.monitor) : undefined);
+
+    if (refreshFn && d.cfg.energy.read_on.includes('session_open')) {
+      const sittingAgents = Array.from(new Set(Object.values(d.cfg.seats)));
+      try {
+        await refreshFn(sittingAgents);
+      } catch {}
+    }
+
+    if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+      try {
+        await refreshFn([pmAgent]);
+      } catch {}
+    }
+    if (gateFn) {
+      const gateCheck = gateFn(pmAgent);
+      if (!gateCheck.ok) {
+        d.store.recordHandoffFailure(sessionId, 'pm', gateCheck.reason);
+        sessionStatus = 'needs_owner';
+        return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+      }
+    }
+
     if (isOutOfTurns(d.store, sessionId, d.cfg, 'pm')) {
       sessionStatus = 'out_of_turns';
       return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns for PM'] };
@@ -798,6 +857,14 @@ export async function resumeSession(
   const tasks: Record<string, TaskState> = {};
 
   try {
+    const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
+    if (refreshFn && d.cfg.energy.read_on.includes('session_open')) {
+      const sittingAgents = Array.from(new Set(Object.values(d.cfg.seats)));
+      try {
+        await refreshFn(sittingAgents);
+      } catch {}
+    }
+
     const sessionTasks = d.store.getSessionTasks(sessionId);
     if (sessionTasks.length === 0) {
       sessionStatus = 'needs_owner';

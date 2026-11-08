@@ -1,0 +1,5 @@
+- **Bug:** [host.ts:150](/srv/agent-projects/btm/src/server/host.ts:150): lệnh trực tiếp Dev/QC bỏ qua refresh/gate → ghế hết Energy hoặc `relogin` vẫn chạy runner.
+- **Bug:** [monitor.ts:59](/srv/agent-projects/btm/src/energy/monitor.ts:59): cache dùng `readAt` của bản ghi Codex cũ → refresh liên tiếp vẫn đọc lại và gọi kiểm tra login, kể cả `force` chưa đủ 30 giây.
+- **Bug:** [monitor.ts:56](/srv/agent-projects/btm/src/energy/monitor.ts:56): hai refresh đồng thời cùng vượt kiểm tra cache → đọc CLI hai lần; cần gộp lần đọc đang chạy theo agent.
+- **Bug:** [session.ts:854](/srv/agent-projects/btm/src/core/session.ts:854): refresh khi resume nằm ngoài `try/finally`; nếu reject, phiên bị treo `running`.
+- **Cần sửa:** Bổ sung test các lỗi trên và Energy tụt giữa hai lượt thật qua monitor; test session hiện mock sẵn gate nên chưa kiểm chứng Review Focus 3.

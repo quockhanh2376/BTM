@@ -1358,5 +1358,48 @@ done_when: done
       const notes = store.listNotes(repoDir);
       expect(notes.length).toBe(0);
     });
+
+    it('lệnh trực tiếp Dev/QC gọi refresh([agent]) và gate(agent); khi gate không ok -> không gọi runner, lượt và phiên error với reason', async () => {
+      const mockRunner = vi.fn();
+      const mockRefresh = vi.fn().mockResolvedValue(undefined);
+      const mockGate = vi.fn().mockReturnValue({
+        ok: false,
+        reason: 'energy:5h còn 10%, hồi lúc 19:57',
+      });
+
+      const fakeMonitor = {
+        refresh: mockRefresh,
+        gate: mockGate,
+      };
+
+      const host = createHost({
+        cfg,
+        store,
+        runner: mockRunner,
+        logDir,
+        dataDir,
+        env: {},
+        monitor: fakeMonitor as any,
+      });
+
+      store.setActiveProject(repoDir);
+      const res = await host.command('dev', 'Viết test mới');
+      expect(res.ok).toBe(true);
+
+      await host.whenIdle();
+
+      expect(mockRefresh).toHaveBeenCalledWith(['jacky']);
+      expect(mockGate).toHaveBeenCalledWith('jacky');
+      expect(mockRunner).not.toHaveBeenCalled();
+
+      const session = store.getLatestSession(undefined, repoDir);
+      expect(session).toBeDefined();
+      expect(session!.status).toBe('error');
+
+      const turns = store.listTurns(session!.id);
+      expect(turns.length).toBe(1);
+      expect(turns[0].result).toBe('error');
+      expect(turns[0].error).toBe('energy:5h còn 10%, hồi lúc 19:57');
+    });
   });
 });

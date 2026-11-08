@@ -733,5 +733,83 @@ describe('Store SQLite', () => {
 
       store.close();
     });
+
+    it('manages energy readings and login health (saveEnergy, latestEnergy, saveLogin, latestLogin)', () => {
+      const store = openStore(':memory:');
+
+      // Ban đầu chưa có bản ghi
+      expect(store.latestEnergy('jacky')).toBeNull();
+      expect(store.latestLogin('jacky')).toBeNull();
+
+      // Lưu energy reading
+      store.saveEnergy({
+        agent: 'jacky',
+        status: 'fresh',
+        windows: [
+          { name: '5h', remainingPercent: 83, resetsAt: '2026-11-08T19:57:00Z' },
+          { name: 'week', remainingPercent: 63, resetsAt: '2026-11-15T00:22:39Z' },
+        ],
+        readAt: '2026-11-08T15:00:00.000Z',
+      });
+
+      const e1 = store.latestEnergy('jacky');
+      expect(e1).toEqual({
+        agent: 'jacky',
+        status: 'fresh',
+        windows: [
+          { name: '5h', remainingPercent: 83, resetsAt: '2026-11-08T19:57:00Z' },
+          { name: 'week', remainingPercent: 63, resetsAt: '2026-11-15T00:22:39Z' },
+        ],
+        readAt: '2026-11-08T15:00:00.000Z',
+      });
+
+      // Lưu reading mới hơn -> latestEnergy trả về reading mới nhất
+      store.saveEnergy({
+        agent: 'jacky',
+        status: 'unknown',
+        windows: [],
+        readAt: '2026-11-08T15:05:00.000Z',
+        note: 'timeout',
+      });
+
+      const e2 = store.latestEnergy('jacky');
+      expect(e2?.status).toBe('unknown');
+      expect(e2?.note).toBe('timeout');
+
+      // Lưu login health
+      store.saveLogin({
+        agent: 'elon',
+        state: 'expiring',
+        detail: 'Hết hạn 11/11',
+        expiresAt: '2026-11-11T12:00:00.000Z',
+      });
+
+      const l1 = store.latestLogin('elon');
+      expect(l1).toEqual({
+        agent: 'elon',
+        state: 'expiring',
+        detail: 'Hết hạn 11/11',
+        expiresAt: '2026-11-11T12:00:00.000Z',
+      });
+
+      // Cập nhật login mới hơn
+      store.saveLogin({
+        agent: 'elon',
+        state: 'ok',
+        detail: 'Ổn',
+      });
+
+      const l2 = store.latestLogin('elon');
+      expect(l2).toEqual({
+        agent: 'elon',
+        state: 'ok',
+        detail: 'Ổn',
+      });
+
+      // Agent khác không bị ảnh hưởng
+      expect(store.latestLogin('jenny')).toBeNull();
+
+      store.close();
+    });
   });
 });

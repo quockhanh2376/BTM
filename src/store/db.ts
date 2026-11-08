@@ -2,6 +2,8 @@ import { mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import type { Seat } from '../config.ts';
+import type { EnergyReading, EnergyWindow } from '../energy/quota.ts';
+import type { LoginHealth, LoginState } from '../energy/login.ts';
 
 export type TurnResult = 'ok' | 'timeout' | 'error' | 'rejected';
 export type BoardState = 'pending' | 'in_dev' | 'awaiting_qc' | 'passed' | 'returned' | 'failed' | 'blocked';
@@ -84,6 +86,11 @@ export interface Store {
   listNotes(project?: string, limit?: number): NoteRow[];
   getNotesBySession(sessionId: number): NoteRow[];
   deleteNote(id: number): void;
+
+  saveEnergy(r: EnergyReading): void;
+  latestEnergy(agent: string): EnergyReading | null;
+  saveLogin(h: LoginHealth): void;
+  latestLogin(agent: string): LoginHealth | null;
 
   close(): void;
 }
@@ -174,6 +181,24 @@ export function openStore(file: string): Store {
       status TEXT NOT NULL,
       created_at TEXT NOT NULL,
       session_id INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS energy_readings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent TEXT NOT NULL,
+      status TEXT NOT NULL,
+      windows_json TEXT NOT NULL,
+      read_at TEXT NOT NULL,
+      note TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS login_health (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent TEXT NOT NULL,
+      state TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      expires_at TEXT,
+      checked_at TEXT NOT NULL
     );
   `);
 
@@ -379,6 +404,32 @@ export function openStore(file: string): Store {
     FROM notes
     WHERE session_id = ?
     ORDER BY id ASC
+  `);
+
+  const saveEnergyStmt = db.prepare(`
+    INSERT INTO energy_readings (agent, status, windows_json, read_at, note)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  const getLatestEnergyStmt = db.prepare(`
+    SELECT agent, status, windows_json, read_at, note
+    FROM energy_readings
+    WHERE agent = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `);
+
+  const saveLoginStmt = db.prepare(`
+    INSERT INTO login_health (agent, state, detail, expires_at, checked_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  const getLatestLoginStmt = db.prepare(`
+    SELECT agent, state, detail, expires_at
+    FROM login_health
+    WHERE agent = ?
+    ORDER BY id DESC
+    LIMIT 1
   `);
 
   return {
@@ -718,6 +769,73 @@ export function openStore(file: string): Store {
 
     deleteNote(id: number): void {
       deleteNoteStmt.run(id);
+    },
+
+    saveEnergy(r: EnergyReading): void {
+      saveEnergyStmt.run(
+        r.agent,
+        r.status,
+        JSON.stringify(r.windows || []),
+        r.readAt,
+        r.note ?? null
+      );
+    },
+
+    latestEnergy(agent: string): EnergyReading | null {
+      const row = getLatestEnergyStmt.get(agent) as {
+        agent: string;
+        status: string;
+        windows_json: string;
+        read_at: string;
+        note: string | null;
+      } | undefined;
+      if (!row) return null;
+      let windows: EnergyWindow[] = [];
+      try {
+        windows = JSON.parse(row.windows_json);
+      } catch {
+        windows = [];
+      }
+      const res: EnergyReading = {
+        agent: String(row.agent),
+        status: row.status as 'fresh' | 'unknown',
+        windows,
+        readAt: String(row.read_at),
+      };
+      if (row.note !== null && row.note !== undefined) {
+        res.note = String(row.note);
+      }
+      return res;
+    },
+
+    saveLogin(h: LoginHealth): void {
+      const now = new Date().toISOString();
+      saveLoginStmt.run(
+        h.agent,
+        h.state,
+        h.detail,
+        h.expiresAt ?? null,
+        now
+      );
+    },
+
+    latestLogin(agent: string): LoginHealth | null {
+      const row = getLatestLoginStmt.get(agent) as {
+        agent: string;
+        state: string;
+        detail: string;
+        expires_at: string | null;
+      } | undefined;
+      if (!row) return null;
+      const res: LoginHealth = {
+        agent: String(row.agent),
+        state: row.state as LoginState,
+        detail: String(row.detail),
+      };
+      if (row.expires_at !== null && row.expires_at !== undefined) {
+        res.expiresAt = String(row.expires_at);
+      }
+      return res;
     },
 
     close(): void {
