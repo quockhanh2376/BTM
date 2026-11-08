@@ -27,6 +27,21 @@
       --tab-inactive-bg: #E5E5DF;
       --tab-inactive-text: #55554F;
       --tab-inactive-hover-bg: #ECECE7;
+      /* Tab state colors (Light theme) */
+      --tab-pending: #475569;
+      --tab-in-dev: #1D4ED8;
+      --tab-in_dev: #1D4ED8;
+      --tab-awaiting-qc: #92400E;
+      --tab-awaiting_qc: #92400E;
+      --tab-passed: #166534;
+      --tab-returned: #991B1B;
+      --state-pending: var(--tab-pending);
+      --state-in-dev: var(--tab-in-dev);
+      --state-in_dev: var(--tab-in_dev);
+      --state-awaiting-qc: var(--tab-awaiting-qc);
+      --state-awaiting_qc: var(--tab-awaiting_qc);
+      --state-passed: var(--tab-passed);
+      --state-returned: var(--tab-returned);
       --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       --radius: 12px;
@@ -59,6 +74,21 @@
       --tab-inactive-bg: #2B2B28;
       --tab-inactive-text: #B5B5AE;
       --tab-inactive-hover-bg: #333330;
+      /* Tab state colors (Dark theme) */
+      --tab-pending: #94A3B8;
+      --tab-in-dev: #8AAEFF;
+      --tab-in_dev: #8AAEFF;
+      --tab-awaiting-qc: #FBBF24;
+      --tab-awaiting_qc: #FBBF24;
+      --tab-passed: #4ADE80;
+      --tab-returned: #F87171;
+      --state-pending: var(--tab-pending);
+      --state-in-dev: var(--tab-in-dev);
+      --state-in_dev: var(--tab-in_dev);
+      --state-awaiting-qc: var(--tab-awaiting-qc);
+      --state-awaiting_qc: var(--tab-awaiting_qc);
+      --state-passed: var(--tab-passed);
+      --state-returned: var(--tab-returned);
     }
 
     *, *::before, *::after {
@@ -441,7 +471,7 @@
       display: grid;
       grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.2fr);
       gap: 16px;
-      align-items: start;
+      align-items: stretch;
     }
 
     /* Task Board Tab Navigation and Panel */
@@ -462,6 +492,28 @@
       scrollbar-width: thin;
       white-space: nowrap;
       -webkit-overflow-scrolling: touch;
+      transition: border-color 0.15s ease;
+    }
+
+    .task-tabs-nav[data-active-state="pending"],
+    .task-tabs-nav:has(.task-tab[data-state="pending"][aria-selected="true"]) {
+      border-bottom-color: var(--tab-pending);
+    }
+    .task-tabs-nav[data-active-state="in_dev"],
+    .task-tabs-nav:has(.task-tab[data-state="in_dev"][aria-selected="true"]) {
+      border-bottom-color: var(--tab-in-dev);
+    }
+    .task-tabs-nav[data-active-state="awaiting_qc"],
+    .task-tabs-nav:has(.task-tab[data-state="awaiting_qc"][aria-selected="true"]) {
+      border-bottom-color: var(--tab-awaiting-qc);
+    }
+    .task-tabs-nav[data-active-state="passed"],
+    .task-tabs-nav:has(.task-tab[data-state="passed"][aria-selected="true"]) {
+      border-bottom-color: var(--tab-passed);
+    }
+    .task-tabs-nav[data-active-state="returned"],
+    .task-tabs-nav:has(.task-tab[data-state="returned"][aria-selected="true"]) {
+      border-bottom-color: var(--tab-returned);
     }
 
     .task-tab {
@@ -483,7 +535,7 @@
       z-index: 1;
       white-space: nowrap;
       flex-shrink: 0;
-      transition: background-color 0.15s ease, color 0.15s ease;
+      transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
       outline: none;
     }
 
@@ -496,6 +548,24 @@
       outline-offset: -2px;
     }
 
+    /* Tab không active: dải màu riêng 3px ở mép trên */
+    .task-tab[data-state="pending"] {
+      border-top: 3px solid var(--tab-pending);
+    }
+    .task-tab[data-state="in_dev"] {
+      border-top: 3px solid var(--tab-in-dev);
+    }
+    .task-tab[data-state="awaiting_qc"] {
+      border-top: 3px solid var(--tab-awaiting-qc);
+    }
+    .task-tab[data-state="passed"] {
+      border-top: 3px solid var(--tab-passed);
+    }
+    .task-tab[data-state="returned"] {
+      border-top: 3px solid var(--tab-returned);
+    }
+
+    /* Tab active: nền đặc màu riêng, viền cùng màu, chữ tương phản >= 4.5:1 */
     .task-tab[aria-selected="true"] {
       background-color: var(--tab-active-bg, var(--accent));
       color: var(--tab-active-text);
@@ -508,6 +578,59 @@
       box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.08);
     }
 
+    .task-tab[data-state="pending"][aria-selected="true"] {
+      background-color: var(--tab-pending);
+      border-color: var(--tab-pending);
+      color: #ffffff;
+    }
+    .task-tab[data-state="in_dev"][aria-selected="true"] {
+      background-color: var(--tab-in-dev);
+      border-color: var(--tab-in-dev);
+      color: #ffffff;
+    }
+    .task-tab[data-state="awaiting_qc"][aria-selected="true"] {
+      background-color: var(--tab-awaiting-qc);
+      border-color: var(--tab-awaiting-qc);
+      color: #ffffff;
+    }
+    .task-tab[data-state="passed"][aria-selected="true"] {
+      background-color: var(--tab-passed);
+      border-color: var(--tab-passed);
+      color: #ffffff;
+    }
+    .task-tab[data-state="returned"][aria-selected="true"] {
+      background-color: var(--tab-returned);
+      border-color: var(--tab-returned);
+      color: #ffffff;
+    }
+
+    [data-theme="dark"] .task-tab[data-state="pending"][aria-selected="true"] {
+      background-color: var(--tab-pending);
+      border-color: var(--tab-pending);
+      color: #141413;
+    }
+    [data-theme="dark"] .task-tab[data-state="in_dev"][aria-selected="true"] {
+      background-color: var(--tab-in-dev);
+      border-color: var(--tab-in-dev);
+      color: #141413;
+    }
+    [data-theme="dark"] .task-tab[data-state="awaiting_qc"][aria-selected="true"] {
+      background-color: var(--tab-awaiting-qc);
+      border-color: var(--tab-awaiting-qc);
+      color: #141413;
+    }
+    [data-theme="dark"] .task-tab[data-state="passed"][aria-selected="true"] {
+      background-color: var(--tab-passed);
+      border-color: var(--tab-passed);
+      color: #141413;
+    }
+    [data-theme="dark"] .task-tab[data-state="returned"][aria-selected="true"] {
+      background-color: var(--tab-returned);
+      border-color: var(--tab-returned);
+      color: #141413;
+    }
+
+    /* Số đếm trên tab */
     .task-tab-count {
       font-size: 11px;
       padding: 2px 6px;
@@ -516,8 +639,51 @@
       color: inherit;
     }
 
+    /* Tab không active: số đếm màu riêng */
+    .task-tab[data-state="pending"] .task-tab-count {
+      color: var(--tab-pending);
+      font-weight: 700;
+    }
+    .task-tab[data-state="in_dev"] .task-tab-count {
+      color: var(--tab-in-dev);
+      font-weight: 700;
+    }
+    .task-tab[data-state="awaiting_qc"] .task-tab-count {
+      color: var(--tab-awaiting-qc);
+      font-weight: 700;
+    }
+    .task-tab[data-state="passed"] .task-tab-count {
+      color: var(--tab-passed);
+      font-weight: 700;
+    }
+    .task-tab[data-state="returned"] .task-tab-count {
+      color: var(--tab-returned);
+      font-weight: 700;
+    }
+
+    /* Tab active: số đếm trên nền đặc */
     .task-tab[aria-selected="true"] .task-tab-count {
       background-color: #1e3f99;
+      color: #ffffff;
+    }
+    .task-tab[data-state="pending"][aria-selected="true"] .task-tab-count {
+      background-color: #1e293b;
+      color: #ffffff;
+    }
+    .task-tab[data-state="in_dev"][aria-selected="true"] .task-tab-count {
+      background-color: #1e3a8a;
+      color: #ffffff;
+    }
+    .task-tab[data-state="awaiting_qc"][aria-selected="true"] .task-tab-count {
+      background-color: #78350f;
+      color: #ffffff;
+    }
+    .task-tab[data-state="passed"][aria-selected="true"] .task-tab-count {
+      background-color: #14532d;
+      color: #ffffff;
+    }
+    .task-tab[data-state="returned"][aria-selected="true"] .task-tab-count {
+      background-color: #7f1d1d;
       color: #ffffff;
     }
 
@@ -525,8 +691,30 @@
       background-color: #141413;
       color: #8aaeff;
     }
+    [data-theme="dark"] .task-tab[data-state="pending"][aria-selected="true"] .task-tab-count {
+      background-color: #141413;
+      color: #94a3b8;
+    }
+    [data-theme="dark"] .task-tab[data-state="in_dev"][aria-selected="true"] .task-tab-count {
+      background-color: #141413;
+      color: #8aaeff;
+    }
+    [data-theme="dark"] .task-tab[data-state="awaiting_qc"][aria-selected="true"] .task-tab-count {
+      background-color: #141413;
+      color: #fbbf24;
+    }
+    [data-theme="dark"] .task-tab[data-state="passed"][aria-selected="true"] .task-tab-count {
+      background-color: #141413;
+      color: #4ade80;
+    }
+    [data-theme="dark"] .task-tab[data-state="returned"][aria-selected="true"] .task-tab-count {
+      background-color: #141413;
+      color: #f87171;
+    }
 
     .task-tabpanel {
+      flex: 1;
+      min-height: 360px;
       background-color: var(--card-bg);
       border: 1px solid var(--border);
       border-top: none;
@@ -564,27 +752,32 @@
       border-bottom: none;
     }
 
+    .task-table col.col-id,
     .task-table .col-id {
-      width: 55px;
+      width: 72px;
       font-family: var(--font-mono);
       font-weight: 700;
       color: var(--accent);
       white-space: nowrap;
     }
 
+    .task-table col.col-goal,
     .task-table .col-goal {
+      width: auto;
       word-break: break-word;
       overflow-wrap: break-word;
       white-space: normal;
     }
 
+    .task-table col.col-fixes,
     .task-table .col-fixes {
-      width: 55px;
+      width: 80px;
       white-space: nowrap;
     }
 
+    .task-table col.col-updated,
     .task-table .col-updated {
-      width: 65px;
+      width: 96px;
       font-family: var(--font-mono);
       font-size: 12px;
       color: var(--text-muted);
@@ -946,6 +1139,14 @@
       .actions-section {
         justify-content: flex-end;
       }
+      .task-tabpanel {
+        padding: 12px 8px;
+        overflow-x: auto;
+      }
+      .task-table th,
+      .task-table td {
+        padding: 8px 4px;
+      }
     }
   </style>
 </head>
@@ -1098,30 +1299,36 @@
       <!-- Bảng task dạng tab thẻ hồ sơ -->
       <section class="card task-board-section">
         <h2 class="section-title">Bảng task</h2>
-        <div class="task-tabs-nav" role="tablist" aria-label="Bảng task" id="task-tablist">
-          <button type="button" role="tab" id="tab-pending" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="pending">
+        <div class="task-tabs-nav" role="tablist" aria-label="Bảng task" id="task-tablist" data-active-state="pending">
+          <button type="button" role="tab" id="tab-pending" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="pending" data-state="pending">
             <span>Chờ</span>
             <span class="task-tab-count" id="count-pending">0</span>
           </button>
-          <button type="button" role="tab" id="tab-in_dev" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="in_dev">
+          <button type="button" role="tab" id="tab-in_dev" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="in_dev" data-state="in_dev">
             <span>Đang làm</span>
             <span class="task-tab-count" id="count-in_dev">0</span>
           </button>
-          <button type="button" role="tab" id="tab-awaiting_qc" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="awaiting_qc">
+          <button type="button" role="tab" id="tab-awaiting_qc" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="awaiting_qc" data-state="awaiting_qc">
             <span>Chờ test</span>
             <span class="task-tab-count" id="count-awaiting_qc">0</span>
           </button>
-          <button type="button" role="tab" id="tab-passed" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="passed">
+          <button type="button" role="tab" id="tab-passed" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="passed" data-state="passed">
             <span>Đạt</span>
             <span class="task-tab-count" id="count-passed">0</span>
           </button>
-          <button type="button" role="tab" id="tab-returned" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="returned">
+          <button type="button" role="tab" id="tab-returned" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="returned" data-state="returned">
             <span>Trả về</span>
             <span class="task-tab-count" id="count-returned">0</span>
           </button>
         </div>
         <div class="task-tabpanel" id="task-tabpanel" role="tabpanel" aria-labelledby="tab-pending" tabindex="0">
           <table class="task-table">
+            <colgroup>
+              <col class="col-id" style="width: 72px;">
+              <col class="col-goal">
+              <col class="col-fixes" style="width: 80px;">
+              <col class="col-updated" style="width: 96px;">
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col" class="col-id">ID</th>
@@ -1495,6 +1702,12 @@
         });
         if (taskTabpanel) {
           taskTabpanel.setAttribute('aria-labelledby', 'tab-' + activeKey);
+        }
+        var taskTabsNav = document.getElementById('task-tablist');
+        if (taskTabsNav) {
+          taskTabsNav.setAttribute('data-active-state', activeKey);
+          var colorVar = 'var(--tab-' + (activeKey === 'in_dev' ? 'in-dev' : (activeKey === 'awaiting_qc' ? 'awaiting-qc' : activeKey)) + ')';
+          taskTabsNav.style.borderBottomColor = colorVar;
         }
       }
 

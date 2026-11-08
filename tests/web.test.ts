@@ -585,9 +585,9 @@ describe('Web Dashboard (web/index.html)', () => {
       // 4. B.2: table-layout fixed + word-break, các cột khác ngắn để không bao giờ làm trang cuộn ngang ở 375px
       expect(html).toMatch(/\.task-table\s*\{[^}]*table-layout:\s*fixed/);
       expect(html).toMatch(/\.task-table\s*\{[^}]*(word-break:\s*break-word|overflow-wrap:\s*break-word)/);
-      expect(html).toMatch(/\.col-id\s*\{[^}]*width:\s*(5[0-9]|6[0-5])px/);
-      expect(html).toMatch(/\.col-fixes\s*\{[^}]*width:\s*(5[0-9]|6[0-5])px/);
-      expect(html).toMatch(/\.col-updated\s*\{[^}]*width:\s*(6[0-9]|7[0-5])px/);
+      expect(html).toMatch(/\.col-id\s*\{[^}]*width:\s*(5[0-9]|6[0-5]|7[0-5])px/);
+      expect(html).toMatch(/\.col-fixes\s*\{[^}]*width:\s*(5[0-9]|6[0-5]|7[0-9]|8[0-5])px/);
+      expect(html).toMatch(/\.col-updated\s*\{[^}]*width:\s*(6[0-9]|7[0-5]|9[0-6])px/);
     });
 
     it('mặc định tab active theo thẻ đang chạy, fallback tab đầu tiên có thẻ, giữ lựa chọn người dùng cho đến khi trạng thái thay đổi', () => {
@@ -781,6 +781,224 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(row.children[1].textContent).toBe('Xây dựng giao diện tab cho bảng task');
       expect(row.children[2].textContent).toBe('2');
       expect(row.children[3].textContent).toBe('13:00:00');
+    });
+  });
+
+  describe('P2-T12: Khung Bảng task cao bằng cả hàng và panel min-height 360px', () => {
+    it('hàng chứa 2 khung dùng align-items: stretch', () => {
+      const layoutMatch = html.match(/\.board-and-log-layout\s*\{([^}]+)\}/);
+      expect(layoutMatch).not.toBeNull();
+      const css = layoutMatch![1];
+      expect(css).toMatch(/align-items:\s*stretch/);
+      expect(css).not.toMatch(/align-items:\s*start/);
+    });
+
+    it('khung Bảng task là flex column', () => {
+      const taskBoardMatch = html.match(/\.task-board-section\s*\{([^}]+)\}/);
+      expect(taskBoardMatch).not.toBeNull();
+      const css = taskBoardMatch![1];
+      expect(css).toMatch(/display:\s*flex/);
+      expect(css).toMatch(/flex-direction:\s*column/);
+    });
+
+    it('panel bên dưới tab có flex: 1 và min-height 360px để luôn kéo dài xuống đáy khung', () => {
+      const panelMatch = html.match(/\.task-tabpanel\s*\{([^}]+)\}/);
+      expect(panelMatch).not.toBeNull();
+      const css = panelMatch![1];
+      expect(css).toMatch(/flex:\s*1(\s+1\s+(0|0%|auto))?/);
+      expect(css).toMatch(/min-height:\s*360px/);
+    });
+
+    it('khi xếp dọc ở màn hẹp vẫn giữ min-height 360px', () => {
+      expect(html).not.toMatch(/@media[^{]*\{[^}]*\.task-tabpanel\s*\{[^}]*min-height:\s*(0|none|[1-2][0-9]{2}px|3[0-5][0-9]px)/);
+    });
+
+    it('bảng trong panel giữ nguyên và dòng Không có thẻ nằm trên cùng panel', () => {
+      const panelHtmlMatch = html.match(/<div[^>]*id=["']task-tabpanel["'][^>]*>([\s\S]*?)<\/div>/);
+      expect(panelHtmlMatch).not.toBeNull();
+      const panelInner = panelHtmlMatch![1];
+      expect(panelInner).toContain('class="task-table"');
+      expect(panelInner).toMatch(/<tbody[^>]*id=["']task-table-body["'][^>]*>[\s\S]*?Không có thẻ[\s\S]*?<\/tbody>/);
+
+      const tdMatch = html.match(/\.task-table\s+td\s*\{([^}]+)\}/);
+      expect(tdMatch).not.toBeNull();
+      expect(tdMatch![1]).toMatch(/vertical-align:\s*top/);
+
+      const tableMatch = html.match(/\.task-table\s*\{([^}]+)\}/);
+      expect(tableMatch).not.toBeNull();
+      expect(tableMatch![1]).not.toMatch(/height:\s*(100%|inherit)/);
+
+      expect(html).toMatch(/td\.textContent\s*=\s*['"]Không có thẻ['"]/);
+    });
+  });
+
+  describe('P2-T13: Mỗi tab một màu theo trạng thái và căn chỉnh độ rộng cột bảng task', () => {
+    const getLuminance = (hex: string): number => {
+      const clean = hex.replace('#', '');
+      const r = parseInt(clean.slice(0, 2), 16) / 255;
+      const g = parseInt(clean.slice(2, 4), 16) / 255;
+      const b = parseInt(clean.slice(4, 6), 16) / 255;
+      const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+      return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    };
+
+    const getContrastRatio = (hex1: string, hex2: string): number => {
+      const l1 = getLuminance(hex1);
+      const l2 = getLuminance(hex2);
+      const lighter = Math.max(l1, l2);
+      const darker = Math.min(l1, l2);
+      return (lighter + 0.05) / (darker + 0.05);
+    };
+
+    it('định nghĩa 5 biến màu trạng thái cho cả 2 theme (:root và [data-theme="dark"])', () => {
+      // 1. :root có đủ 5 biến màu trạng thái (Chờ = slate, Đang làm = xanh dương, Chờ test = vàng cam, Đạt = xanh lá, Trả về = đỏ)
+      const rootMatch = html.match(/:root\s*\{([^}]+)\}/);
+      expect(rootMatch).not.toBeNull();
+      const rootCss = rootMatch![1];
+
+      expect(rootCss).toMatch(/--(tab|state)-pending:\s*#[0-9a-fA-F]{6}/i);
+      expect(rootCss).toMatch(/--(tab|state)-in[-_]dev:\s*#[0-9a-fA-F]{6}/i);
+      expect(rootCss).toMatch(/--(tab|state)-awaiting[-_]qc:\s*#[0-9a-fA-F]{6}/i);
+      expect(rootCss).toMatch(/--(tab|state)-passed:\s*#[0-9a-fA-F]{6}/i);
+      expect(rootCss).toMatch(/--(tab|state)-returned:\s*#[0-9a-fA-F]{6}/i);
+
+      // 2. [data-theme="dark"] có đủ 5 biến màu trạng thái tương ứng
+      const darkMatch = html.match(/\[data-theme=["']dark["']\]\s*\{([^}]+)\}/);
+      expect(darkMatch).not.toBeNull();
+      const darkCss = darkMatch![1];
+
+      expect(darkCss).toMatch(/--(tab|state)-pending:\s*#[0-9a-fA-F]{6}/i);
+      expect(darkCss).toMatch(/--(tab|state)-in[-_]dev:\s*#[0-9a-fA-F]{6}/i);
+      expect(darkCss).toMatch(/--(tab|state)-awaiting[-_]qc:\s*#[0-9a-fA-F]{6}/i);
+      expect(darkCss).toMatch(/--(tab|state)-passed:\s*#[0-9a-fA-F]{6}/i);
+      expect(darkCss).toMatch(/--(tab|state)-returned:\s*#[0-9a-fA-F]{6}/i);
+    });
+
+    it('độ tương phản chữ trên nền tab active và số đếm trên cả 2 theme đều đạt >= 4.5:1', () => {
+      // Trích xuất các mã màu hex từ :root cho 5 trạng thái
+      const rootMatch = html.match(/:root\s*\{([^}]+)\}/)!;
+      const rootCss = rootMatch[1];
+      const getHex = (css: string, varName: string) => {
+        const m = css.match(new RegExp(`--(?:tab|state)-${varName}:\\s*(#[0-9a-fA-F]{6})`, 'i'));
+        return m ? m[1] : null;
+      };
+
+      const lightPending = getHex(rootCss, 'pending');
+      const lightInDev = getHex(rootCss, 'in[-_]dev');
+      const lightAwaitingQc = getHex(rootCss, 'awaiting[-_]qc');
+      const lightPassed = getHex(rootCss, 'passed');
+      const lightReturned = getHex(rootCss, 'returned');
+
+      expect(lightPending).not.toBeNull();
+      expect(lightInDev).not.toBeNull();
+      expect(lightAwaitingQc).not.toBeNull();
+      expect(lightPassed).not.toBeNull();
+      expect(lightReturned).not.toBeNull();
+
+      // Theme sáng: chữ trắng #FFFFFF trên nền đặc màu riêng của tab active
+      expect(getContrastRatio('#FFFFFF', lightPending!)).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio('#FFFFFF', lightInDev!)).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio('#FFFFFF', lightAwaitingQc!)).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio('#FFFFFF', lightPassed!)).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio('#FFFFFF', lightReturned!)).toBeGreaterThanOrEqual(4.5);
+
+      // Theme sáng: số đếm trên nền tab inactive (#E5E5DF)
+      expect(getContrastRatio(lightPending!, '#E5E5DF')).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio(lightInDev!, '#E5E5DF')).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio(lightAwaitingQc!, '#E5E5DF')).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio(lightPassed!, '#E5E5DF')).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio(lightReturned!, '#E5E5DF')).toBeGreaterThanOrEqual(4.5);
+
+      // Trích xuất các mã màu hex từ dark theme
+      const darkMatch = html.match(/\[data-theme=["']dark["']\]\s*\{([^}]+)\}/)!;
+      const darkCss = darkMatch[1];
+
+      const darkPending = getHex(darkCss, 'pending');
+      const darkInDev = getHex(darkCss, 'in[-_]dev');
+      const darkAwaitingQc = getHex(darkCss, 'awaiting[-_]qc');
+      const darkPassed = getHex(darkCss, 'passed');
+      const darkReturned = getHex(darkCss, 'returned');
+
+      expect(darkPending).not.toBeNull();
+      expect(darkInDev).not.toBeNull();
+      expect(darkAwaitingQc).not.toBeNull();
+      expect(darkPassed).not.toBeNull();
+      expect(darkReturned).not.toBeNull();
+
+      // Theme tối: chữ tối #141413 trên nền sắc độ sáng của tab active
+      expect(getContrastRatio('#141413', darkPending!)).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio('#141413', darkInDev!)).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio('#141413', darkAwaitingQc!)).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio('#141413', darkPassed!)).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio('#141413', darkReturned!)).toBeGreaterThanOrEqual(4.5);
+
+      // Theme tối: số đếm trên nền tab inactive (#2B2B28)
+      expect(getContrastRatio(darkPending!, '#2B2B28')).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio(darkInDev!, '#2B2B28')).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio(darkAwaitingQc!, '#2B2B28')).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio(darkPassed!, '#2B2B28')).toBeGreaterThanOrEqual(4.5);
+      expect(getContrastRatio(darkReturned!, '#2B2B28')).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('cả 5 tab đều mang thuộc tính data-state tương ứng với trạng thái', () => {
+      expect(html).toMatch(/<button[^>]*id=["']tab-pending["'][^>]*data-state=["']pending["']/);
+      expect(html).toMatch(/<button[^>]*id=["']tab-in_dev["'][^>]*data-state=["']in_dev["']/);
+      expect(html).toMatch(/<button[^>]*id=["']tab-awaiting_qc["'][^>]*data-state=["']awaiting_qc["']/);
+      expect(html).toMatch(/<button[^>]*id=["']tab-passed["'][^>]*data-state=["']passed["']/);
+      expect(html).toMatch(/<button[^>]*id=["']tab-returned["'][^>]*data-state=["']returned["']/);
+    });
+
+    it('tab không active có dải màu riêng 3px ở mép trên và số đếm có màu riêng', () => {
+      // 1. Dải màu riêng 3px ở mép trên
+      expect(html).toMatch(/border-top:\s*3px\s+solid/i);
+      expect(html).toMatch(/\.task-tab\[data-state=["']pending["']\][^{]*\{[^}]*border-top:\s*3px/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']in_dev["']\][^{]*\{[^}]*border-top:\s*3px/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']awaiting_qc["']\][^{]*\{[^}]*border-top:\s*3px/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']passed["']\][^{]*\{[^}]*border-top:\s*3px/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']returned["']\][^{]*\{[^}]*border-top:\s*3px/);
+
+      // 2. Số đếm màu riêng cho từng tab
+      expect(html).toMatch(/\.task-tab\[data-state=["']pending["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']in_dev["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']awaiting_qc["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']passed["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']returned["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+    });
+
+    it('tab active có nền đặc màu riêng và đường viền nối panel cùng màu đó', () => {
+      // 1. Tab active có nền đặc màu riêng và viền riêng cho cả 5 trạng thái
+      expect(html).toMatch(/\.task-tab\[data-state=["']pending["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']in_dev["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']awaiting_qc["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']passed["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']returned["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+
+      // 2. Đường viền nối panel cùng màu với tab active
+      expect(html).toMatch(/\.task-tabs-nav\[data-active-state|\.task-tabs-nav:has/);
+      expect(html).toMatch(/border-bottom(-color)?:\s*(2px\s+solid\s+)?var\(--(tab|state)-/);
+
+      // 3. updateTabUI cập nhật data-active-state hoặc màu viền nối
+      expect(html).toMatch(/data-active-state|borderBottomColor|--tab-active/);
+    });
+
+    it('bảng trong panel: table width 100%, table-layout fixed, có colgroup và đặt đúng độ rộng các cột', () => {
+      // 1. Bảng có <colgroup> và 4 <col>
+      expect(html).toMatch(/<colgroup>[\s\S]*?<col[\s\S]*?<\/colgroup>/);
+
+      // 2. table width 100% và table-layout fixed
+      expect(html).toMatch(/\.task-table\s*\{[^}]*width:\s*100%/);
+      expect(html).toMatch(/\.task-table\s*\{[^}]*table-layout:\s*fixed/);
+
+      // 3. Đặt độ rộng cột ID ~72px, Vòng sửa ~80px, Cập nhật ~96px, Mục tiêu phần còn lại
+      expect(html).toMatch(/(\.col-id|col\.col-id|style=["'][^"']*width:\s*72px)[^{;]*\{?[^}]*width:\s*72px/);
+      expect(html).toMatch(/(\.col-fixes|col\.col-fixes|style=["'][^"']*width:\s*80px)[^{;]*\{?[^}]*width:\s*80px/);
+      expect(html).toMatch(/(\.col-updated|col\.col-updated|style=["'][^"']*width:\s*96px)[^{;]*\{?[^}]*width:\s*96px/);
+
+      // 4. Cột Mục tiêu tự co giãn phần còn lại (width auto hoặc word-break)
+      expect(html).toMatch(/\.col-goal\s*\{[^}]*(width:\s*auto|word-break:\s*break-word|overflow-wrap:\s*break-word)/);
+
+      // 5. Không tràn khung ở mobile 375px: không có min-width lớn hơn 320px trên bảng/panel
+      expect(html).not.toMatch(/\.task-table\s*\{[^}]*min-width:\s*(3[3-9][0-9]|[4-9][0-9]{2})/);
     });
   });
 
