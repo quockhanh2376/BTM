@@ -1,0 +1,6 @@
+- Bug: [http.ts:203](/srv/agent-projects/btm/src/server/http.ts:203) nhận `application/jsonp` → 200, gọi host; cần so khớp MIME chính xác và thêm test.
+- Bug: [http.ts:182](/srv/agent-projects/btm/src/server/http.ts:182) nhận Origin rỗng hoặc `http://localhost:<port>///` → 200, gọi host; trái luật Origin phải đúng hai giá trị cho phép. Cần thêm test.
+- Bug: [http.ts:62](/srv/agent-projects/btm/src/server/http.ts:62) biến body rỗng thành `{}`, khiến `/api/approve`, `/api/stop` thực thi dù JSON không hợp lệ; cần trả 400 và test host không được gọi.
+- Bug: [http.ts:292](/srv/agent-projects/btm/src/server/http.ts:292) chờ sự kiện `close` mới đóng SSE, nhưng SSE còn mở khiến `server.close()` không hoàn tất; cần dọn trước khi chờ đóng và thêm test.
+- Cần sửa: bổ sung test body chunked vượt 16 KB, ping SSE và dọn interval khi client ngắt; test hiện tại chưa phủ các nhánh này.
+- Cần xác nhận: sandbox chặn listen (`EPERM`); các input lạ trên đã kiểm chứng qua request handler, lỗi shutdown SSE kết luận bằng đọc code. Không sửa file, không chạy vitest.
