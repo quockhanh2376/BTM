@@ -186,7 +186,7 @@ btm/                          # repo của BTM
 
 ## 14. Dashboard v1.0
 
-Thanh phiên (project active, phiên, lượt đã dùng, ai đang giữ lượt) · tiến độ mục tiêu · thẻ từng ghế (trạng thái, task, thời gian, dòng output cuối, Energy, đèn đăng nhập) · bảng task 5 cột · nhật ký PM · khung lệnh (chọn PM/Dev/QC) · nút Dừng khẩn cấp · trang Tài khoản.
+Thanh phiên (project active, phiên, lượt đã dùng, ai đang giữ lượt) · tiến độ mục tiêu · thẻ từng ghế (trạng thái, task, thời gian, dòng output cuối, Energy, đèn đăng nhập) · bảng task 5 cột · nhật ký PM · khung lệnh (chọn PM/Dev/QC) · nút Dừng khẩn cấp · trang Tài khoản · nút chuyển giao diện sáng/tối (mặc định theo hệ điều hành, nhớ lựa chọn trên trình duyệt).
 
 ## 15. Lộ trình
 
