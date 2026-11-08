@@ -1,0 +1,3 @@
+Bug: `web/index.html:1851` luôn bật lại Duyệt thẻ trong `finally`; nếu snapshot đã chuyển khỏi `awaiting_approval`, nút vẫn bấm được trái yêu cầu.
+Bug: `web/index.html:1382` thiếu hủy/vô hiệu hóa FileReader đang đọc; bấm Bỏ ảnh hoặc chọn ảnh khác có thể bị callback cũ gắn lại ảnh, gửi nhầm ảnh.
+Cần sửa: `tests/web.test.ts:382` chỉ kiểm tra chuỗi, thiếu kiểm thử hành vi chặn ảnh >5 MB/sai MIME cho cả chọn file và Ctrl+V, cùng hai tình huống trên.

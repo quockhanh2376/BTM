@@ -165,13 +165,6 @@
       100% { transform: rotate(360deg); }
     }
 
-    @media (prefers-reduced-motion: reduce) {
-      .spinner-icon,
-      .blink-dot {
-        animation: none;
-      }
-    }
-
     .sr-only {
       position: absolute;
       width: 1px;
@@ -679,6 +672,173 @@
       padding: 8px 0;
     }
 
+    /* Hộp thư team */
+    .inbox-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .notes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .note-item {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .note-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .note-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .note-id {
+      font-weight: 700;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+
+    .note-time {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .note-status {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .note-status-open {
+      background-color: var(--running-bg);
+      color: var(--running-text);
+    }
+
+    .note-status-done {
+      background-color: var(--badge-bg);
+      color: var(--badge-text);
+    }
+
+    .note-text {
+      font-size: 13px;
+      color: var(--text);
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    .note-image-thumb {
+      max-width: 140px;
+      max-height: 140px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .note-report {
+      background-color: var(--bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 4px 0 0 0;
+      color: var(--text-muted);
+    }
+
+    /* Đính kèm ảnh trong khung lệnh */
+    .attach-image-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .file-input-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background-color: var(--bg);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .file-input-label:hover {
+      border-color: var(--accent);
+    }
+
+    .image-preview-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background-color: var(--bg);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .image-preview-thumb {
+      width: 36px;
+      height: 36px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      display: block;
+    }
+
+    .image-preview-name {
+      font-size: 12px;
+      color: var(--text-muted);
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .btn-sm {
+      padding: 4px 8px;
+      font-size: 11px;
+      border-radius: 6px;
+      background-color: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .btn-sm:hover {
+      background-color: var(--badge-bg);
+    }
+
     /* Responsive adjustments for 960px, 600px, and 375px */
     @media (max-width: 960px) {
       .seats-grid {
@@ -734,7 +894,7 @@
         <label class="auto-approve-label" id="auto-approve-label">
           <input type="checkbox" id="auto-approve-toggle"> Auto duyệt thẻ
         </label>
-        <button id="approve-btn" class="btn btn-primary" type="button" style="display: none;">Duyệt thẻ</button>
+        <button id="approve-btn" class="btn btn-primary" type="button" disabled title="Không có thẻ chờ duyệt">Duyệt thẻ</button>
         <button id="stop-btn" class="btn btn-danger" type="button">Dừng khẩn cấp</button>
         <button id="theme-toggle" class="btn btn-icon" type="button" aria-label="Chuyển sáng/tối">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -916,12 +1076,23 @@
       </section>
     </div>
 
+    <!-- Hộp thư team -->
+    <section class="card inbox-section">
+      <h2 class="section-title">Hộp thư team</h2>
+      <div id="notes-list" class="notes-list">
+        <div class="empty-placeholder">Chưa có ghi chú team</div>
+      </div>
+    </section>
+
     <!-- Khung lệnh -->
     <section class="card cmd-section">
       <h2 class="section-title">Khung lệnh</h2>
-      <div class="recipient-radios">
+      <div class="recipient-radios" id="recipient-radios">
         <label class="radio-label">
-          <input type="radio" name="cmd-to" value="pm" checked> PM
+          <input type="radio" name="cmd-to" value="team" checked> Cả team
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="cmd-to" value="pm"> PM
         </label>
         <label class="radio-label">
           <input type="radio" name="cmd-to" value="dev"> Dev
@@ -933,12 +1104,24 @@
 
       <div class="form-group">
         <label for="cmd-text" class="form-label">Nội dung lệnh hoặc mục tiêu:</label>
-        <textarea id="cmd-text" class="form-textarea" rows="3" placeholder="Nhập mục tiêu cho PM hoặc lệnh cho Dev/QC..."></textarea>
+        <textarea id="cmd-text" class="form-textarea" rows="3" placeholder="Nhập mục tiêu cho PM, lệnh cho Dev/QC hoặc ghi chú cho Cả team..."></textarea>
+      </div>
+
+      <div id="attach-image-group" class="attach-image-group">
+        <label for="note-image-input" class="file-input-label" id="attach-image-label">
+          Đính kèm ảnh
+        </label>
+        <input type="file" id="note-image-input" accept="image/png,image/jpeg,image/webp" class="sr-only">
+        <div id="image-preview-wrap" class="image-preview-wrap" style="display: none;">
+          <img id="image-preview" class="image-preview-thumb" alt="Xem trước ảnh đính kèm">
+          <span id="image-preview-name" class="image-preview-name"></span>
+          <button id="remove-image-btn" class="btn-sm" type="button">Bỏ ảnh</button>
+        </div>
       </div>
 
       <div class="cmd-actions">
         <button id="cmd-send-btn" class="btn btn-primary" type="button">Gửi lệnh</button>
-        <p class="cmd-note">Lệnh cho PM = mở phiên với mục tiêu này; lệnh cho Dev/QC xếp hàng sau lượt đang chạy</p>
+        <p class="cmd-note" id="cmd-note">Lệnh cho PM = mở phiên với mục tiêu này; lệnh cho Dev/QC xếp hàng sau lượt đang chạy</p>
       </div>
       <div id="cmd-feedback" class="action-feedback" style="display: none;"></div>
 
@@ -1136,6 +1319,19 @@
       var stopBtn = document.getElementById('stop-btn');
       var autoApproveToggle = document.getElementById('auto-approve-toggle');
 
+      var latestSnapshot = null;
+
+      function updateApproveButton(snapshot) {
+        if (!approveBtn) return;
+        if (snapshot && snapshot.session && snapshot.session.status === 'awaiting_approval') {
+          approveBtn.disabled = false;
+          approveBtn.removeAttribute('title');
+        } else {
+          approveBtn.disabled = true;
+          approveBtn.setAttribute('title', 'Không có thẻ chờ duyệt');
+        }
+      }
+
       var goalsList = document.getElementById('goals-list');
       var logList = document.getElementById('log-list');
       var queueList = document.getElementById('queue-list');
@@ -1152,12 +1348,231 @@
       var countPassed = document.getElementById('count-passed');
       var countReturned = document.getElementById('count-returned');
 
+      var notesList = document.getElementById('notes-list');
+      var recipientRadios = document.getElementById('recipient-radios');
+      var attachImageGroup = document.getElementById('attach-image-group');
+      var noteImageInput = document.getElementById('note-image-input');
+      var imagePreviewWrap = document.getElementById('image-preview-wrap');
+      var imagePreview = document.getElementById('image-preview');
+      var imagePreviewName = document.getElementById('image-preview-name');
+      var removeImageBtn = document.getElementById('remove-image-btn');
+      var cmdNote = document.getElementById('cmd-note');
+
+      var imageToken = 0;
+      var reader = null;
+      var attachedImage = null;
+
+      function clearAttachedImage() {
+        imageToken++;
+        if (reader) {
+          try {
+            reader.abort();
+          } catch (err) {}
+          reader = null;
+        }
+        attachedImage = null;
+        if (noteImageInput) noteImageInput.value = '';
+        if (imagePreview) imagePreview.removeAttribute('src');
+        if (imagePreviewName) imagePreviewName.textContent = '';
+        setDisplay(imagePreviewWrap, false);
+      }
+
+      function setAttachedImage(file, dataUrl, base64) {
+        attachedImage = {
+          name: file.name || 'image.png',
+          base64: base64,
+          dataUrl: dataUrl
+        };
+        if (imagePreview) imagePreview.src = dataUrl;
+        if (imagePreviewName) imagePreviewName.textContent = file.name || 'image.png';
+        setDisplay(imagePreviewWrap, true, 'inline-flex');
+      }
+
+      function processImageFile(file) {
+        imageToken++;
+        var currentToken = imageToken;
+        if (!file) return;
+        var validTypes = ['image/png', 'image/jpeg', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+          showFeedback(cmdFeedback, 'Chỉ chấp nhận ảnh PNG, JPEG hoặc WebP', true);
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          showFeedback(cmdFeedback, 'Ảnh vượt quá giới hạn 5 MB', true);
+          return;
+        }
+        if (reader) {
+          try {
+            reader.abort();
+          } catch (err) {}
+          reader = null;
+        }
+        reader = new FileReader();
+        reader.onload = function (e) {
+          if (currentToken === imageToken) {
+            var dataUrl = e.target.result;
+            var commaIdx = dataUrl.indexOf(',');
+            var base64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+            setAttachedImage(file, dataUrl, base64);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function updateAttachVisibility() {
+        var checkedRadio = document.querySelector('input[name="cmd-to"]:checked');
+        var to = checkedRadio ? checkedRadio.value : 'team';
+        setDisplay(attachImageGroup, to === 'team', 'flex');
+        if (cmdNote) {
+          if (to === 'team') {
+            cmdNote.textContent = 'Gửi Cả team = mở phiên với ghi chú này; có thể đính kèm hoặc dán ảnh';
+          } else if (to === 'pm') {
+            cmdNote.textContent = 'Lệnh cho PM = mở phiên với mục tiêu này';
+          } else {
+            cmdNote.textContent = 'Lệnh cho ' + formatSeatLabel(to) + ' xếp hàng sau lượt đang chạy';
+          }
+        }
+      }
+
+      if (recipientRadios) {
+        recipientRadios.addEventListener('change', function () {
+          updateAttachVisibility();
+        });
+      }
+
+      if (noteImageInput) {
+        noteImageInput.addEventListener('change', function () {
+          if (noteImageInput.files && noteImageInput.files[0]) {
+            processImageFile(noteImageInput.files[0]);
+          }
+        });
+      }
+
+      if (removeImageBtn) {
+        removeImageBtn.addEventListener('click', function () {
+          clearAttachedImage();
+        });
+      }
+
       function formatTime(str) {
         if (!str) return '—';
         if (str.indexOf('T') !== -1) {
           return str.split('T')[1].slice(0, 8);
         }
         return str;
+      }
+
+      function renderRecipients(seats) {
+        if (!recipientRadios) return;
+        var currentChecked = document.querySelector('input[name="cmd-to"]:checked');
+        var currentVal = currentChecked ? currentChecked.value : 'team';
+
+        var seatList = Array.isArray(seats) ? seats : [];
+        var seatKeys = seatList.map(function (s) { return s.seat; });
+        if (seatKeys.length === 0) {
+          seatKeys = ['pm', 'dev', 'qc'];
+        }
+
+        var options = [{ value: 'team', label: 'Cả team' }];
+        seatKeys.forEach(function (sk) {
+          options.push({ value: sk, label: formatSeatLabel(sk) });
+        });
+
+        var currentInputs = recipientRadios.querySelectorAll('input[name="cmd-to"]');
+        var currentVals = Array.from(currentInputs).map(function (inp) { return inp.value; });
+        var newVals = options.map(function (o) { return o.value; });
+        var isSame = currentVals.length === newVals.length && currentVals.every(function (v, i) { return v === newVals[i]; });
+
+        if (!isSame) {
+          clearChildren(recipientRadios);
+          options.forEach(function (opt) {
+            var label = document.createElement('label');
+            label.className = 'radio-label';
+
+            var radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'cmd-to';
+            radio.value = opt.value;
+            if (opt.value === currentVal || (opt.value === 'team' && !newVals.includes(currentVal))) {
+              radio.checked = true;
+            }
+            label.appendChild(radio);
+
+            var textNode = document.createTextNode(' ' + opt.label);
+            label.appendChild(textNode);
+
+            recipientRadios.appendChild(label);
+          });
+        }
+        updateAttachVisibility();
+      }
+
+      function renderNotes(notes) {
+        if (!notesList) return;
+        clearChildren(notesList);
+        var list = Array.isArray(notes) ? notes : [];
+        if (list.length === 0) {
+          var empty = document.createElement('div');
+          empty.className = 'empty-placeholder';
+          empty.textContent = 'Chưa có ghi chú team';
+          notesList.appendChild(empty);
+          return;
+        }
+
+        list.forEach(function (n) {
+          var item = document.createElement('div');
+          item.className = 'note-item';
+
+          var header = document.createElement('div');
+          header.className = 'note-header';
+
+          var meta = document.createElement('div');
+          meta.className = 'note-meta';
+
+          var idEl = document.createElement('span');
+          idEl.className = 'note-id';
+          idEl.textContent = 'N-' + n.id;
+          meta.appendChild(idEl);
+
+          if (n.at) {
+            var timeEl = document.createElement('span');
+            timeEl.className = 'note-time';
+            timeEl.textContent = formatTime(n.at);
+            meta.appendChild(timeEl);
+          }
+          header.appendChild(meta);
+
+          var statusEl = document.createElement('span');
+          statusEl.className = 'note-status';
+          var isDone = n.status === 'done';
+          statusEl.classList.add(isDone ? 'note-status-done' : 'note-status-open');
+          statusEl.textContent = isDone ? 'Xong' : (n.status === 'open' ? 'Mở' : formatStatus(n.status));
+          header.appendChild(statusEl);
+
+          item.appendChild(header);
+
+          var textEl = document.createElement('div');
+          textEl.className = 'note-text';
+          textEl.textContent = n.text || '';
+          item.appendChild(textEl);
+
+          if (n.image) {
+            var imgEl = document.createElement('img');
+            imgEl.className = 'note-image-thumb';
+            imgEl.src = '/api/notes/' + n.id + '/image';
+            imgEl.alt = 'Ảnh đính kèm N-' + n.id;
+            item.appendChild(imgEl);
+          }
+
+          if (n.report && n.report.trim()) {
+            var reportEl = document.createElement('pre');
+            reportEl.className = 'note-report';
+            reportEl.textContent = n.report;
+            item.appendChild(reportEl);
+          }
+
+          notesList.appendChild(item);
+        });
       }
 
       function renderSeat(seatKey, cardData, isCurrentHolder) {
@@ -1213,6 +1628,7 @@
 
       function renderSnapshot(state) {
         if (!state) return;
+        latestSnapshot = state;
 
         // Project
         if (projectBadge) {
@@ -1228,13 +1644,13 @@
         if (state.session) {
           if (sessionBadge) sessionBadge.textContent = 'Phiên #' + state.session.id + ' · ' + formatStatus(state.session.status);
           if (turnsBadge) turnsBadge.textContent = 'Đã dùng ' + state.session.turnsUsed + '/' + state.session.maxTurns + ' lượt';
-          if (approveBtn) {
-            setDisplay(approveBtn, state.session.status === 'awaiting_approval', 'inline-flex');
-          }
         } else {
           if (sessionBadge) sessionBadge.textContent = 'Chưa có phiên';
           if (turnsBadge) turnsBadge.textContent = 'Đã dùng 0/0 lượt';
-          if (approveBtn) setDisplay(approveBtn, false);
+        }
+
+        if (approveBtn) {
+          updateApproveButton(state);
         }
 
         // Holder
@@ -1397,6 +1813,14 @@
             });
           }
         }
+
+        // Notes
+        renderNotes(state.notes);
+
+        // Recipient radios
+        if (state.seats) {
+          renderRecipients(state.seats);
+        }
       }
 
       // 5. Connect SSE
@@ -1451,7 +1875,7 @@
           } catch (err) {
             showFeedback(topFeedback, err.message, true);
           } finally {
-            approveBtn.disabled = false;
+            updateApproveButton(latestSnapshot);
           }
         });
       }
@@ -1474,10 +1898,31 @@
 
       var cmdSendBtn = document.getElementById('cmd-send-btn');
       var cmdTextArea = document.getElementById('cmd-text');
+
+      if (cmdTextArea) {
+        cmdTextArea.addEventListener('paste', function (e) {
+          var checkedRadio = document.querySelector('input[name="cmd-to"]:checked');
+          var to = checkedRadio ? checkedRadio.value : 'team';
+          if (to !== 'team') return;
+          if (e.clipboardData && e.clipboardData.items) {
+            for (var i = 0; i < e.clipboardData.items.length; i++) {
+              var item = e.clipboardData.items[i];
+              if (item.type && item.type.startsWith('image/')) {
+                var file = item.getAsFile();
+                if (file) {
+                  processImageFile(file);
+                  break;
+                }
+              }
+            }
+          }
+        });
+      }
+
       if (cmdSendBtn && cmdTextArea) {
         cmdSendBtn.addEventListener('click', async function () {
           var checkedRadio = document.querySelector('input[name="cmd-to"]:checked');
-          var to = checkedRadio ? checkedRadio.value : 'pm';
+          var to = checkedRadio ? checkedRadio.value : 'team';
           var text = cmdTextArea.value.trim();
 
           if (!text) {
@@ -1487,12 +1932,30 @@
 
           cmdSendBtn.disabled = true;
           try {
-            var res = await postJson('/api/command', { to: to, text: text });
-            if (res && res.ok === false) {
-              showFeedback(cmdFeedback, res.error || 'Gửi lệnh thất bại', true);
+            if (to === 'team') {
+              var payload = { text: text };
+              if (attachedImage && attachedImage.base64) {
+                payload.image = {
+                  name: attachedImage.name || 'image.png',
+                  base64: attachedImage.base64
+                };
+              }
+              var res = await postJson('/api/team-note', payload);
+              if (res && res.error) {
+                showFeedback(cmdFeedback, res.error, true);
+              } else {
+                showFeedback(cmdFeedback, 'Đã gửi ghi chú team thành công', false);
+                cmdTextArea.value = '';
+                clearAttachedImage();
+              }
             } else {
-              showFeedback(cmdFeedback, 'Đã gửi lệnh thành công', false);
-              cmdTextArea.value = '';
+              var res = await postJson('/api/command', { to: to, text: text });
+              if (res && res.ok === false) {
+                showFeedback(cmdFeedback, res.error || 'Gửi lệnh thất bại', true);
+              } else {
+                showFeedback(cmdFeedback, 'Đã gửi lệnh thành công', false);
+                cmdTextArea.value = '';
+              }
             }
           } catch (err) {
             showFeedback(cmdFeedback, err.message, true);

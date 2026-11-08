@@ -224,8 +224,10 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(html).toContain('confirm(');
   });
 
-  it('has radio inputs for recipient with pm as default', () => {
-    expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']pm["'][^>]*checked/);
+  it('has radio inputs for recipient with team (Cả team) as default', () => {
+    expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']team["'][^>]*checked/);
+    expect(html).toMatch(/Cả team/);
+    expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']pm["']/);
     expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']dev["']/);
     expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']qc["']/);
   });
@@ -320,13 +322,13 @@ describe('Web Dashboard (web/index.html)', () => {
   });
 
   describe('P2-T9: Icon vòng xoay SVG thay nhãn Đang chạy trên thẻ ghế và chip thanh trên', () => {
-    it('định nghĩa animation quay và dừng quay khi prefers-reduced-motion: reduce', () => {
+    it('định nghĩa animation quay và icon luôn quay kể cả khi prefers-reduced-motion: reduce', () => {
       // Có @keyframes quay (hoặc rotate)
       expect(html).toMatch(/@keyframes\s+(quay|rotate|spin)\b/);
       // Animation CSS rotate 0.9s linear infinite
       expect(html).toMatch(/0\.9s\s+linear\s+infinite/);
-      // Hỗ trợ @media (prefers-reduced-motion: reduce) -> animation: none
-      expect(html).toMatch(/@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)[\s\S]*?animation\s*:\s*none/);
+      // Sửa theo anh Zon: icon vòng xoay luôn quay, bỏ media query tắt quay spinner
+      expect(html).not.toMatch(/@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)[\s\S]*?\.spinner-icon[\s\S]*?animation\s*:\s*none/);
     });
 
     it('chứa icon SVG vòng xoay inline 18px với role="img" và aria-label="Đang chạy" đặt cạnh tên agent', () => {
@@ -378,6 +380,90 @@ describe('Web Dashboard (web/index.html)', () => {
       // Trong renderSeat: khi status === 'running', không gán text 'Đang chạy' vào statusBadge dạng chip
       expect(html).not.toMatch(/statusBadge\.textContent\s*=\s*['"]Đang chạy['"]/);
       expect(html).not.toMatch(/statusBadge\.textContent\s*=\s*formatStatus\s*\(\s*['"]running['"]\s*\)/);
+    });
+  });
+
+  describe('P2-T10b: Giao diện Cả team, Hộp thư team và sửa theo anh Zon', () => {
+    it('nút Duyệt thẻ luôn hiển thị, disabled và có title="Không có thẻ chờ duyệt" khi không chờ duyệt', () => {
+      // 1. Trong HTML tĩnh: nút approve-btn không có style="display: none;"
+      const approveBtnMatch = html.match(/<button[^>]*id=["']approve-btn["'][^>]*>([\s\S]*?)<\/button>/);
+      expect(approveBtnMatch).not.toBeNull();
+      const approveBtnHtml = approveBtnMatch![0];
+      expect(approveBtnHtml).not.toMatch(/display\s*:\s*none/i);
+      expect(approveBtnHtml).toContain('disabled');
+      expect(approveBtnHtml).toContain('title="Không có thẻ chờ duyệt"');
+
+      // 2. Kiểm tra logic trong renderSnapshot không ẩn nút mà chuyển disabled/title
+      expect(html).not.toMatch(/setDisplay\s*\(\s*approveBtn\s*,\s*state\.session\.status\s*===\s*['"]awaiting_approval['"]/);
+      expect(html).toMatch(/approveBtn\.disabled\s*=/);
+      expect(html).toMatch(/Không có thẻ chờ duyệt/);
+    });
+
+    it('có khu vực Hộp thư team hiển thị note, ảnh qua /api/notes/<id>/image và báo cáo ngắn', () => {
+      // 1. Tiêu đề Hộp thư team
+      expect(html).toContain('Hộp thư team');
+      expect(html).toContain('id="notes-list"');
+
+      // 2. Logic renderNotes hiển thị trạng thái Mở / Xong, ảnh alt="Ảnh đính kèm N-<id>" và endpoint /api/notes/
+      expect(html).toMatch(/\/api\/notes\//);
+      expect(html).toMatch(/Ảnh đính kèm N-/);
+      expect(html).toMatch(/['"]Mở['"]/);
+      expect(html).toMatch(/['"]Xong['"]/);
+    });
+
+    it('người nhận có Cả team mặc định và sinh từ snapshot.seats', () => {
+      // Có input radio Cả team mặc định
+      expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']team["'][^>]*checked/);
+      expect(html).toMatch(/Cả team/);
+
+      // Render danh sách người nhận từ snapshot.seats
+      expect(html).toMatch(/state\.seats/);
+      expect(html).toMatch(/cmd-to/);
+    });
+
+    it('hỗ trợ đính kèm ảnh khi chọn Cả team với input file accept png/jpeg/webp và dán ảnh Ctrl+V', () => {
+      // Input file với accept đúng và label có text Đính kèm ảnh
+      expect(html).toMatch(/<input[^>]*type=["']file["'][^>]*accept=["'][^"']*image\/png[^"']*image\/jpeg[^"']*image\/webp[^"']*["']/);
+      expect(html).toMatch(/<label[^>]*for=["'][^"']*["'][^>]*>[\s\S]*?Đính kèm ảnh[\s\S]*?<\/label>/);
+
+      // Khung xem trước thumbnail và nút Bỏ ảnh
+      expect(html).toContain('Bỏ ảnh');
+      expect(html).toMatch(/id=["'][^"']*preview[^"']*["']/);
+
+      // Listener paste cho Ctrl+V
+      expect(html).toMatch(/addEventListener\s*\(\s*['"]paste['"]/);
+
+      // Gọi /api/team-note khi gửi tới Cả team
+      expect(html).toContain('/api/team-note');
+    });
+
+    it('sau khi gửi duyệt (finally), trạng thái nút Duyệt thẻ chỉ lấy từ snapshot mới nhất (awaiting_approval), không tự bật lại', () => {
+      // 1. Không tự bật lại vô điều kiện trong finally của approve-btn
+      const approveClickMatch = html.match(/approveBtn\.addEventListener\s*\(\s*['"]click['"][\s\S]*?finally\s*\{([\s\S]*?)\}\s*\)\s*;/);
+      expect(approveClickMatch).not.toBeNull();
+      const finallyBlock = approveClickMatch![1];
+      expect(finallyBlock).not.toMatch(/^\s*approveBtn\.disabled\s*=\s*false\s*;/m);
+
+      // 2. Trạng thái chỉ lấy từ snapshot mới nhất và enabled khi và chỉ khi session.status === 'awaiting_approval'
+      expect(html).toMatch(/var\s+(latestSnapshot|lastSnapshot)\s*=\s*null/);
+      expect(html).toMatch(/(latestSnapshot|lastSnapshot)\s*=\s*state/);
+      expect(finallyBlock).toMatch(/(updateApproveButton|latestSnapshot|lastSnapshot)/);
+      expect(html).toMatch(/session\.status\s*===\s*['"]awaiting_approval['"]/);
+    });
+
+    it('mỗi lần chọn/dán/Bỏ ảnh tăng token, FileReader callback chỉ gán ảnh nếu token khớp, Bỏ ảnh gọi reader.abort()', () => {
+      // 1. Biến token và reader
+      expect(html).toMatch(/var\s+(imageToken|token)\s*=\s*0/);
+      expect(html).toMatch(/var\s+reader\s*=\s*null/);
+
+      // 2. Token được tăng khi chọn ảnh, dán ảnh hoặc Bỏ ảnh
+      expect(html).toMatch(/(imageToken|token)\s*\+\+/);
+
+      // 3. Callback FileReader chỉ gán ảnh nếu token còn khớp
+      expect(html).toMatch(/reader\.onload\s*=\s*function\s*\([^)]*\)\s*\{[\s\S]*?(===|!==)[\s\S]*?setAttachedImage/);
+
+      // 4. Bỏ ảnh gọi reader.abort()
+      expect(html).toMatch(/reader\.abort\s*\(\s*\)/);
     });
   });
 });
