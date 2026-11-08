@@ -1,5 +1,5 @@
-import { realpathSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
-import { relative, isAbsolute, join } from 'node:path';
+import { realpathSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { relative, isAbsolute, join, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { checkForbiddenEnv } from '../config.ts';
 import type { Store, TurnResult } from '../store/db.ts';
@@ -9,6 +9,7 @@ import { runGate } from '../gate/gate.ts';
 import { git, commitAll, headSha } from '../git.ts';
 import { parseQcResult } from '../qc/result.ts';
 import { pmPrompt, devPrompt, qcPrompt } from './prompts.ts';
+import { inboxPath } from '../server/inbox.ts';
 
 export type TaskState = 'pending' | 'passed' | 'failed' | 'blocked';
 
@@ -124,6 +125,23 @@ async function workOnCards(
     let fixRounds = 0;
     const coders = new Set<string>();
 
+    let cardImages: string[] | undefined;
+    if (card.note) {
+      const rawId = card.note.replace(/^N-/, '');
+      const noteId = Number(rawId);
+      if (!isNaN(noteId)) {
+        const note = d.store.getNote(noteId);
+        if (note?.image) {
+          try {
+            const imgPath = inboxPath(d.repo, note.image);
+            if (existsSync(imgPath)) {
+              cardImages = [imgPath];
+            }
+          } catch {}
+        }
+      }
+    }
+
     while (true) {
       const devAgent = d.cfg.seats.dev;
       const devAuthor = authorForAgent(devAgent);
@@ -140,7 +158,10 @@ async function workOnCards(
       const devPromptText = devPrompt(card, fixNotes, d.cfg.runner.agy_allow_commands);
       let devOutput;
       try {
-        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, { signal: d.signal });
+        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
+          signal: d.signal,
+          images: cardImages,
+        });
       } catch (err) {
         const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
@@ -271,7 +292,10 @@ async function workOnCards(
       const preQcHead = headSha(d.repo);
       let qcOutput;
       try {
-        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo, qcLogFile, { signal: d.signal });
+        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo, qcLogFile, {
+          signal: d.signal,
+          images: cardImages,
+        });
       } catch (err) {
         const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
@@ -367,10 +391,69 @@ async function workOnCards(
   };
 }
 
+function closeNoteIfEligible(
+  d: SessionDeps,
+  sessionId: number,
+  cards: TaskCard[],
+  tasks: Record<string, TaskState>,
+  outcome: SessionOutcome
+): void {
+  const sessionNotes = d.store.getNotesBySession(sessionId);
+  if (sessionNotes.length === 0) return;
+
+  for (const note of sessionNotes) {
+    if (note.status === 'done') continue;
+    const cardsForNote = cards.filter(
+      (c) => c.note === `N-${note.id}` || c.note === String(note.id)
+    );
+    const allPassed =
+      cardsForNote.length > 0 &&
+      cardsForNote.every((c) => tasks[c.id] === 'passed');
+
+    if (outcome.status === 'done' && allPassed) {
+      let notePath: string;
+      try {
+        notePath = inboxPath(d.repo, `N-${note.id}.md`);
+      } catch (err: any) {
+        outcome.status = 'needs_owner';
+        outcome.notes.push(`inboxPath error: ${err?.message || String(err)}`);
+        continue;
+      }
+
+      try {
+        if (!existsSync(notePath)) {
+          throw new Error(`Note file not found: ${notePath}`);
+        }
+        const content = readFileSync(notePath, 'utf8');
+        const updated = content.replace(/^status:\s*open$/m, 'status: done');
+        writeFileSync(notePath, updated, 'utf8');
+        try {
+          commitAll(d.repo, `close note N-${note.id}`, {
+            name: 'owner',
+            email: 'owner@btm.local',
+          });
+          d.store.setNoteStatus(note.id, 'done');
+        } catch (commitErr: any) {
+          try {
+            git(d.repo, 'checkout', 'HEAD', '--', notePath);
+            git(d.repo, 'reset', 'HEAD', '--', notePath);
+          } catch {}
+          throw commitErr;
+        }
+      } catch (err: any) {
+        outcome.status = 'needs_owner';
+        outcome.notes.push(`close note N-${note.id} error: ${err?.message || String(err)}`);
+      }
+    } else if (outcome.status === 'done' && !allPassed) {
+      outcome.status = 'needs_owner';
+    }
+  }
+}
+
 export async function runSession(
   d: SessionDeps,
   goals: string[],
-  o: { approved: boolean }
+  o: { approved: boolean; noteId?: number }
 ): Promise<SessionOutcome> {
   // 1. Validate environment, repo path, goals
   const forbidden = checkForbiddenEnv(d.env, d.cfg.login.forbidden_env);
@@ -406,6 +489,16 @@ export async function runSession(
   let sessionStatus: SessionOutcome['status'] = 'needs_owner';
   const tasks: Record<string, TaskState> = {};
 
+  const noteId = o.noteId;
+  let attachedNote: ReturnType<typeof d.store.getNote> = null;
+  if (noteId) {
+    const note = d.store.getNote(noteId);
+    if (note && note.project === d.repo) {
+      attachedNote = note;
+      d.store.setNoteSession(noteId, sessionId);
+    }
+  }
+
   try {
     const pmAgent = d.cfg.seats.pm;
     const pmAuthor = authorForAgent(pmAgent);
@@ -428,7 +521,18 @@ export async function runSession(
     const pmTurnId = d.store.startTurn(sessionId, 'pm', pmAgent, null);
     const pmLogFile = join(d.logDir, `turn-${pmTurnId}.log`);
     d.store.setTurnLog(pmTurnId, pmLogFile);
-    const pmPromptText = pmPrompt(goals);
+
+    let promptNotes: Array<{ notePath: string; imagePath?: string; id?: string }> | undefined;
+    if (attachedNote) {
+      promptNotes = [
+        {
+          notePath: `team/inbox/N-${attachedNote.id}.md`,
+          imagePath: attachedNote.image ? `team/inbox/${attachedNote.image}` : undefined,
+          id: `N-${attachedNote.id}`,
+        },
+      ];
+    }
+    const pmPromptText = pmPrompt(goals, promptNotes);
     const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
     let pmOutput;
     try {
@@ -553,6 +657,7 @@ export async function runSession(
 
     // 5. Work on cards
     const outcome = await workOnCards(d, sessionId, cards, tasks);
+    closeNoteIfEligible(d, sessionId, cards, tasks, outcome);
     sessionStatus = outcome.status;
     return outcome;
   } finally {
@@ -648,6 +753,7 @@ export async function resumeSession(
     }
 
     const outcome = await workOnCards(d, sessionId, cards, tasks);
+    closeNoteIfEligible(d, sessionId, cards, tasks, outcome);
     sessionStatus = outcome.status;
     return outcome;
   } finally {

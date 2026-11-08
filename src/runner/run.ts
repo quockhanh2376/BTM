@@ -343,17 +343,21 @@ export type Runner = (
   prompt: string,
   cwd: string,
   logFile: string,
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal; images?: string[] }
 ) => Promise<TurnOutput>;
 
-export function makeRunner(cfg: Config, defaultSignal?: AbortSignal): Runner {
+export function makeRunner(
+  cfg: Config,
+  defaultSignal?: AbortSignal,
+  runProc: typeof runProcess = runProcess
+): Runner {
   return async (
     seat: Seat,
     agentId: string,
     prompt: string,
     cwd: string,
     logFile: string,
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal; images?: string[] }
   ): Promise<TurnOutput> => {
     const agent = cfg.agents[agentId];
     if (!agent) {
@@ -375,9 +379,10 @@ export function makeRunner(cfg: Config, defaultSignal?: AbortSignal): Runner {
       timeoutMin,
       allow,
       outFile,
+      images: options?.images,
     });
 
-    const result = await runProcess(argv, {
+    const result = await runProc(argv, {
       cwd,
       timeoutMs,
       logFile: absLogFile,

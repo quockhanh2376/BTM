@@ -686,5 +686,52 @@ describe('Store SQLite', () => {
 
       store.close();
     });
+
+    it('manages notes with createNote, getNote, setNoteSession, setNoteStatus, setNoteImage, listNotes, getNotesBySession', () => {
+      const store = openStore(':memory:');
+      const id1 = store.createNote('/srv/agent-projects/proj-a', 'Ghi chú 1', 'N-1.png');
+      expect(id1).toBe(1);
+
+      const note1 = store.getNote(id1);
+      expect(note1).toEqual({
+        id: 1,
+        project: '/srv/agent-projects/proj-a',
+        text: 'Ghi chú 1',
+        image: 'N-1.png',
+        status: 'open',
+        created_at: expect.any(String),
+        session_id: null,
+      });
+
+      const id2 = store.createNote('/srv/agent-projects/proj-a', 'Ghi chú 2');
+      expect(id2).toBe(2);
+
+      store.setNoteImage(id2, 'N-2.jpg');
+      expect(store.getNote(id2)?.image).toBe('N-2.jpg');
+
+      store.setNoteSession(id1, 101);
+      expect(store.getNote(id1)?.session_id).toBe(101);
+
+      store.setNoteStatus(id1, 'done');
+      expect(store.getNote(id1)?.status).toBe('done');
+
+      // Notes by session
+      expect(store.getNotesBySession(101)).toHaveLength(1);
+      expect(store.getNotesBySession(101)[0].id).toBe(1);
+      expect(store.getNotesBySession(999)).toHaveLength(0);
+
+      // List notes by project
+      const listA = store.listNotes('/srv/agent-projects/proj-a');
+      expect(listA).toHaveLength(2);
+      expect(listA[0].id).toBe(2); // newest first
+      expect(listA[1].id).toBe(1);
+
+      // deleteNote
+      store.deleteNote(id1);
+      expect(store.getNote(id1)).toBeNull();
+      expect(store.listNotes('/srv/agent-projects/proj-a')).toHaveLength(1);
+
+      store.close();
+    });
   });
 });

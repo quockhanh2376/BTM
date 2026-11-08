@@ -89,6 +89,28 @@ describe('Runner Argv', () => {
         'implement task',
       ]);
     });
+
+    it('adds -i <image> for codex-cli when images are provided', () => {
+      const argv = buildArgv('codex-cli', 'review task with image', {
+        ...defaultOpts,
+        seat: 'qc',
+        outFile: '/tmp/qc.out',
+        images: ['team/inbox/N-1.png', 'team/inbox/N-2.jpg'],
+      });
+      expect(argv).toEqual([
+        'codex',
+        'exec',
+        '--sandbox',
+        'read-only',
+        '-o',
+        '/tmp/qc.out',
+        '-i',
+        'team/inbox/N-1.png',
+        '-i',
+        'team/inbox/N-2.jpg',
+        'review task with image',
+      ]);
+    });
   });
 
   describe('claude-code', () => {

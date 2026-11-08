@@ -77,15 +77,20 @@ export function runGate(
   }
   if (!hasReport) {
     reasons.push('missing_report');
-  } else if (requireReportSchema) {
-    // 3b. require_report_schema: báo cáo phải là 'OK' hoặc có ít nhất một heading '## Bug' / '## Cần sửa' / '## Cần xác nhận'; rỗng/sai → bad_report
+  } else {
     try {
       const content = readFileSync(reportPath, 'utf8');
-      const trimmed = content.trim();
-      const isOk = trimmed === 'OK';
-      const hasValidHeading = /(?:^|\n)(?:##\s+(?:Bug|Cần sửa|Cần xác nhận)|#\s+Báo cáo Dev|-\s+(?:Bug|Cần sửa|Cần xác nhận):)/m.test(content);
-      if (!isOk && !hasValidHeading) {
-        reasons.push('bad_report');
+      const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (lines.length > 5) {
+        reasons.push('report_too_long');
+      }
+      if (requireReportSchema) {
+        const trimmed = content.trim();
+        const isOk = trimmed === 'OK';
+        const hasValidHeading = /(?:^|\n)(?:##\s+(?:Bug|Cần sửa|Cần xác nhận)|#\s+Báo cáo Dev|-\s+(?:Bug|Cần sửa|Cần xác nhận):)/m.test(content);
+        if (!isOk && !hasValidHeading) {
+          reasons.push('bad_report');
+        }
       }
     } catch {
       reasons.push('bad_report');

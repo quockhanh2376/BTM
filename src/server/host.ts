@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, appendFileSync, mkdirSync, writeFileSync, realpathSync, lstatSync, rmSync } from 'node:fs';
+import { join, relative, isAbsolute } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import type { Store } from '../store/db.ts';
 import type { Runner } from '../runner/run.ts';
@@ -9,6 +9,7 @@ import { devPrompt, directPrompt } from '../core/prompts.ts';
 import type { TaskCard } from '../task/card.ts';
 import { commitAll } from '../git.ts';
 import { acquireLock } from '../cli.ts';
+import { inboxPath } from './inbox.ts';
 
 export interface HostDeps {
   cfg: Config;
@@ -289,7 +290,13 @@ export function createHost(d: HostDeps): HostApi & {
     d.store.setSetting('auto_approve', String(enabled));
   }
 
-  async function start(goals: string[]): Promise<{ ok: boolean; error?: string }> {
+  async function start(
+    goals: string[],
+    opts?: {
+      noteId?: number;
+      prepare?: () => Promise<{ noteId?: number } | void> | { noteId?: number } | void;
+    }
+  ): Promise<{ ok: boolean; error?: string }> {
     if (isStopping) {
       return { ok: false, error: 'Đang dừng phiên' };
     }
@@ -309,6 +316,26 @@ export function createHost(d: HostDeps): HostApi & {
 
     isBusy = true;
     activeReleaseLock = release;
+
+    let effectiveNoteId = opts?.noteId;
+    if (opts?.prepare) {
+      try {
+        const prepResult = await opts.prepare();
+        if (prepResult && typeof prepResult === 'object' && prepResult.noteId) {
+          effectiveNoteId = prepResult.noteId;
+          goals = goals.map((g) => g.replace('N-?', `N-${prepResult.noteId}`));
+        }
+      } catch (err: any) {
+        if (activeReleaseLock === release) {
+          release();
+          activeReleaseLock = null;
+        }
+        isBusy = false;
+        notifyIfIdle();
+        return { ok: false, error: err?.message || String(err) };
+      }
+    }
+
     const abortController = new AbortController();
     currentAbortController = abortController;
 
@@ -344,7 +371,7 @@ export function createHost(d: HostDeps): HostApi & {
             signal: abortController.signal,
           },
           goals,
-          { approved }
+          { approved, noteId: effectiveNoteId }
         );
       } catch {
         // Any error is captured by session outcome
@@ -502,14 +529,15 @@ export function createHost(d: HostDeps): HostApi & {
   }
 
   async function command(
-    to: Seat,
+    to: Seat | 'team',
     text: string
   ): Promise<{ ok: boolean; id?: number; error?: string }> {
     if (isStopping) {
       return { ok: false, error: 'Đang dừng' };
     }
 
-    if (to !== 'pm' && to !== 'dev' && to !== 'qc') {
+    const validSeats = [...Object.keys(d.cfg.seats), 'team'];
+    if (!validSeats.includes(to)) {
       return { ok: false, error: 'Người nhận không hợp lệ' };
     }
 
@@ -522,7 +550,59 @@ export function createHost(d: HostDeps): HostApi & {
       return await start([trimmed]);
     }
 
-    const id = d.store.enqueue(to, trimmed);
+    if (to === 'team') {
+      const activeProject = d.store.getActiveProject();
+      if (!activeProject) {
+        return { ok: false, error: 'Chưa có dự án active' };
+      }
+      if (busy()) {
+        return { ok: false, error: 'Đang có phiên chạy' };
+      }
+
+      try {
+        inboxPath(activeProject, 'N-0');
+      } catch (err: any) {
+        return { ok: false, error: err?.message || 'team/inbox must be inside project' };
+      }
+
+      let createdMdPath: string | null = null;
+      let createdNoteId: number = 0;
+      const prepare = () => {
+        createdNoteId = d.store.createNote(activeProject, trimmed, null);
+        try {
+          const mdPath = inboxPath(activeProject, `N-${createdNoteId}.md`);
+          try {
+            lstatSync(mdPath);
+            throw new Error(`Target note file already exists: N-${createdNoteId}.md`);
+          } catch (err: any) {
+            if (err?.code !== 'ENOENT') throw err;
+          }
+          const now = new Date().toISOString();
+          const noteContent = `---\nid: N-${createdNoteId}\nfrom: owner\nstatus: open\nat: ${now}\n---\n${trimmed}\n`;
+          writeFileSync(mdPath, noteContent, { flag: 'wx', encoding: 'utf8' });
+          createdMdPath = mdPath;
+          try {
+            commitAll(activeProject, `inbox N-${createdNoteId}`, { name: 'owner', email: 'owner@btm.local' });
+          } catch (err: any) {
+            throw new Error(`Commit note failed: ${err?.message || String(err)}`);
+          }
+        } catch (err: any) {
+          if (createdMdPath) {
+            try { rmSync(createdMdPath, { force: true }); } catch {}
+          }
+          if (createdNoteId) {
+            try { d.store.deleteNote(createdNoteId); } catch {}
+          }
+          throw err;
+        }
+        return { noteId: createdNoteId };
+      };
+
+      const goal = `Xử lý ghi chú team N-?: ${trimmed.slice(0, 200)}`;
+      return await start([goal], { prepare });
+    }
+
+    const id = d.store.enqueue(to as Seat, trimmed);
     void tick();
     return { ok: true, id };
   }

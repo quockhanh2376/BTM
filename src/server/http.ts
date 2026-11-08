@@ -1,20 +1,30 @@
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, lstatSync, rmSync } from 'node:fs';
+import { join, relative, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import type { Config, Seat } from '../config.ts';
 import type { Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
+import { commitAll } from '../git.ts';
+import { inboxPath, detectImage } from './inbox.ts';
 
 export interface HostApi {
-  start(goals: string[]): Promise<{ ok: boolean; error?: string }>;
+  start(
+    goals: string[],
+    opts?: {
+      noteId?: number;
+      prepare?: () => Promise<{ noteId?: number } | void> | { noteId?: number } | void;
+    }
+  ): Promise<{ ok: boolean; error?: string }>;
   approve(): Promise<{ ok: boolean; error?: string }>;
   stop(): { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
   command(
-    to: Seat,
+    to: Seat | 'team',
     text: string
   ): { ok: boolean; id?: number; error?: string } | Promise<{ ok: boolean; id?: number; error?: string }>;
   setAutoApprove?(enabled: boolean): void | Promise<void>;
+  busy?(): boolean;
 }
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
@@ -128,6 +138,72 @@ export function createServer(o: {
         return;
       }
 
+      // Note image route
+      const noteImageMatch = pathname.match(/^\/api\/notes\/([^/]+)\/image$/);
+      if (method === 'GET' && noteImageMatch) {
+        const rawId = noteImageMatch[1];
+        const noteId = Number(rawId.replace(/^N-/, ''));
+        if (isNaN(noteId)) {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+        const activeProject = o.store.getActiveProject();
+        if (!activeProject) {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+        const note = o.store.getNote(noteId);
+        if (!note || note.project !== activeProject || !note.image) {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+
+        const validNameRegex = new RegExp(`^(N-)?${noteId}\\.(png|jpg|webp)$`);
+        if (!validNameRegex.test(note.image)) {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+
+        let imgPath: string;
+        try {
+          imgPath = inboxPath(activeProject, note.image);
+          const stat = lstatSync(imgPath);
+          if (!stat.isFile()) {
+            sendJson(res, 404, { error: 'Not found' });
+            return;
+          }
+        } catch {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+
+        let imgBuf: Buffer;
+        try {
+          imgBuf = readFileSync(imgPath);
+        } catch {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+
+        const detected = detectImage(imgBuf);
+        if (!detected) {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+
+        if (!note.image.endsWith(`.${detected.ext}`)) {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+
+        res.writeHead(200, {
+          'Content-Type': detected.mime,
+          'Content-Length': imgBuf.length,
+        });
+        res.end(imgBuf);
+        return;
+      }
+
       // SSE event stream route
       if (method === 'GET' && pathname === '/api/events') {
         res.writeHead(200, {
@@ -221,10 +297,11 @@ export function createServer(o: {
           return;
         }
 
-        // 4. Read body (max 16 KB)
+        // 4. Read body (max 16 KB, or 7 MB for team-note)
+        const maxBytes = pathname === '/api/team-note' ? 7 * 1024 * 1024 : 16384;
         let body: unknown;
         try {
-          body = await readJsonBody(req, 16384);
+          body = await readJsonBody(req, maxBytes);
         } catch (err: any) {
           const status = err.statusCode || 400;
           sendJson(res, status, { error: err.message || 'Invalid request body' });
@@ -274,8 +351,9 @@ export function createServer(o: {
         }
 
         if (pathname === '/api/command') {
+          const allowedSeats = [...Object.keys(o.cfg.seats), 'team'];
           const CommandSchema = z.object({
-            to: z.enum(['pm', 'dev', 'qc']),
+            to: z.string().refine((val) => allowedSeats.includes(val), { message: 'Invalid recipient' }),
             text: z.string().trim().min(1).max(2000),
           });
           const parsed = CommandSchema.safeParse(body);
@@ -283,8 +361,181 @@ export function createServer(o: {
             sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
             return;
           }
-          const result = await o.host.command(parsed.data.to, parsed.data.text);
+          const result = await o.host.command(parsed.data.to as Seat | 'team', parsed.data.text);
           sendJson(res, 200, result);
+          return;
+        }
+
+        if (pathname === '/api/team-note') {
+          const TeamNoteSchema = z.object({
+            text: z.string().trim().min(1).max(2000),
+            image: z
+              .object({
+                name: z.string().min(1),
+                base64: z.string().min(1),
+              })
+              .optional(),
+          });
+          const parsed = TeamNoteSchema.safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
+            return;
+          }
+
+          const activeProject = o.store.getActiveProject();
+          if (!activeProject) {
+            sendJson(res, 400, { error: 'Chưa có dự án active' });
+            return;
+          }
+
+          let imgBuf: Buffer | null = null;
+          let ext: string | null = null;
+
+          if (parsed.data.image) {
+            try {
+              imgBuf = Buffer.from(parsed.data.image.base64, 'base64');
+            } catch {
+              sendJson(res, 400, { error: 'Invalid base64 image data' });
+              return;
+            }
+
+            if (imgBuf.length > 5 * 1024 * 1024) {
+              sendJson(res, 413, { error: 'Image exceeds 5 MB limit' });
+              return;
+            }
+
+            const detected = detectImage(imgBuf);
+            if (!detected) {
+              sendJson(res, 415, { error: 'Unsupported image format' });
+              return;
+            }
+            ext = detected.ext;
+          }
+
+          if (o.host.busy && o.host.busy()) {
+            sendJson(res, 409, { error: 'Đang có phiên chạy' });
+            return;
+          }
+
+          try {
+            inboxPath(activeProject, 'N-0');
+          } catch (err: any) {
+            sendJson(res, 400, { error: err?.message || 'team/inbox must be inside project' });
+            return;
+          }
+
+          let createdNoteId: number = 0;
+          let prepared = false;
+          let commitFailed = false;
+          let createdMdPath: string | null = null;
+          let createdImgPath: string | null = null;
+
+          const prepare = () => {
+            prepared = true;
+            createdNoteId = o.store.createNote(activeProject, parsed.data.text, null);
+            try {
+              const imageName = ext ? `N-${createdNoteId}.${ext}` : null;
+              if (imageName) {
+                o.store.setNoteImage(createdNoteId, imageName);
+              }
+
+              if (imgBuf && imageName) {
+                const imgPath = inboxPath(activeProject, imageName);
+                try {
+                  lstatSync(imgPath);
+                  throw new Error(`Target image file already exists: ${imageName}`);
+                } catch (err: any) {
+                  if (err?.code !== 'ENOENT') throw err;
+                }
+                writeFileSync(imgPath, imgBuf, { flag: 'wx' });
+                createdImgPath = imgPath;
+              }
+
+              const now = new Date().toISOString();
+              const noteMdLines = [
+                '---',
+                `id: N-${createdNoteId}`,
+                'from: owner',
+                'status: open',
+                `at: ${now}`,
+              ];
+              if (imageName) {
+                noteMdLines.push(`image: ${imageName}`);
+              }
+              noteMdLines.push('---', parsed.data.text, '');
+
+              const mdPath = inboxPath(activeProject, `N-${createdNoteId}.md`);
+              try {
+                lstatSync(mdPath);
+                throw new Error(`Target note file already exists: N-${createdNoteId}.md`);
+              } catch (err: any) {
+                if (err?.code !== 'ENOENT') throw err;
+              }
+              writeFileSync(mdPath, noteMdLines.join('\n'), { flag: 'wx', encoding: 'utf8' });
+              createdMdPath = mdPath;
+
+              try {
+                commitAll(activeProject, `inbox N-${createdNoteId}`, { name: 'owner', email: 'owner@btm.local' });
+              } catch (err: any) {
+                commitFailed = true;
+                throw new Error(`Commit note failed: ${err?.message || String(err)}`);
+              }
+            } catch (err: any) {
+              if (createdMdPath) {
+                try { rmSync(createdMdPath, { force: true }); } catch {}
+              }
+              if (createdImgPath) {
+                try { rmSync(createdImgPath, { force: true }); } catch {}
+              }
+              if (createdNoteId) {
+                try { o.store.deleteNote(createdNoteId); } catch {}
+              }
+              throw err;
+            }
+
+            return { noteId: createdNoteId };
+          };
+
+          const initialGoal = `Xử lý ghi chú team N-?: ${parsed.data.text.slice(0, 200)}`;
+          let result: { ok: boolean; error?: string };
+          try {
+            result = await o.host.start([initialGoal], { prepare });
+          } catch (err: any) {
+            if (commitFailed) {
+              sendJson(res, 500, { error: err?.message || 'Commit note failed' });
+              return;
+            }
+            sendJson(res, 400, { error: err?.message || 'Error starting session' });
+            return;
+          }
+
+          if (!prepared && result.ok) {
+            try {
+              prepare();
+            } catch (err: any) {
+              if (commitFailed) {
+                sendJson(res, 500, { error: err?.message || 'Commit note failed' });
+                return;
+              }
+              sendJson(res, 400, { error: err?.message || 'Error preparing note' });
+              return;
+            }
+          }
+
+          if (!result.ok) {
+            if (commitFailed) {
+              sendJson(res, 500, { error: result.error || 'Commit note failed' });
+              return;
+            }
+            if (result.error === 'Đang có phiên chạy') {
+              sendJson(res, 409, { error: 'Đang có phiên chạy' });
+              return;
+            }
+            sendJson(res, 400, { error: result.error || 'Failed to start session' });
+            return;
+          }
+
+          sendJson(res, 200, { id: createdNoteId, note: `N-${createdNoteId}`, ...result });
           return;
         }
 

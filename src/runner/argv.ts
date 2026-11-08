@@ -5,6 +5,7 @@ export interface ArgvOpts {
   timeoutMin: number;
   allow: string[];
   outFile: string;
+  images?: string[];
 }
 
 function shQuote(s: string): string {
@@ -23,6 +24,7 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
       return ['script', '-qec', cmd, '/dev/null'];
     }
     case 'codex-cli': {
+      const imageArgs = o.images && o.images.length > 0 ? o.images.flatMap((img) => ['-i', img]) : [];
       return [
         'codex',
         'exec',
@@ -30,6 +32,7 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
         o.seat === 'qc' ? 'read-only' : 'workspace-write',
         '-o',
         o.outFile,
+        ...imageArgs,
         prompt,
       ];
     }

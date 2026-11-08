@@ -20,6 +20,16 @@ export interface SessionRow {
   project?: string | null;
 }
 
+export interface NoteRow {
+  id: number;
+  project: string;
+  text: string;
+  image: string | null;
+  status: string;
+  created_at: string;
+  session_id: number | null;
+}
+
 export interface Store {
   setActiveProject(path: string): void;
   getActiveProject(): string | null;
@@ -65,6 +75,15 @@ export interface Store {
   setSetting(key: string, value: string): void;
   setSessionTasks(sessionId: number, taskIds: string[]): void;
   getSessionTasks(sessionId: number): string[];
+
+  createNote(project: string, text: string, image?: string | null): number;
+  getNote(id: number): NoteRow | null;
+  setNoteSession(id: number, sessionId: number): void;
+  setNoteStatus(id: number, status: string): void;
+  setNoteImage(id: number, image: string): void;
+  listNotes(project?: string, limit?: number): NoteRow[];
+  getNotesBySession(sessionId: number): NoteRow[];
+  deleteNote(id: number): void;
 
   close(): void;
 }
@@ -145,6 +164,16 @@ export function openStore(file: string): Store {
       session_id INTEGER NOT NULL,
       task_id TEXT NOT NULL,
       PRIMARY KEY (session_id, task_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT NOT NULL,
+      text TEXT NOT NULL,
+      image TEXT,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      session_id INTEGER
     );
   `);
 
@@ -301,6 +330,55 @@ export function openStore(file: string): Store {
 
   const getSessionTasksStmt = db.prepare(`
     SELECT task_id FROM session_tasks WHERE session_id = ? ORDER BY rowid ASC
+  `);
+
+  const createNoteStmt = db.prepare(`
+    INSERT INTO notes (project, text, image, status, created_at, session_id)
+    VALUES (?, ?, ?, 'open', ?, NULL)
+  `);
+
+  const getNoteStmt = db.prepare(`
+    SELECT id, project, text, image, status, created_at, session_id
+    FROM notes
+    WHERE id = ?
+  `);
+
+  const setNoteSessionStmt = db.prepare(`
+    UPDATE notes SET session_id = ? WHERE id = ?
+  `);
+
+  const setNoteStatusStmt = db.prepare(`
+    UPDATE notes SET status = ? WHERE id = ?
+  `);
+
+  const setNoteImageStmt = db.prepare(`
+    UPDATE notes SET image = ? WHERE id = ?
+  `);
+
+  const listNotesByProjectStmt = db.prepare(`
+    SELECT id, project, text, image, status, created_at, session_id
+    FROM notes
+    WHERE project = ?
+    ORDER BY id DESC
+    LIMIT ?
+  `);
+
+  const listAllNotesStmt = db.prepare(`
+    SELECT id, project, text, image, status, created_at, session_id
+    FROM notes
+    ORDER BY id DESC
+    LIMIT ?
+  `);
+
+  const deleteNoteStmt = db.prepare(`
+    DELETE FROM notes WHERE id = ?
+  `);
+
+  const getNotesBySessionStmt = db.prepare(`
+    SELECT id, project, text, image, status, created_at, session_id
+    FROM notes
+    WHERE session_id = ?
+    ORDER BY id ASC
   `);
 
   return {
@@ -552,6 +630,94 @@ export function openStore(file: string): Store {
     getSessionTasks(sessionId: number): string[] {
       const rows = getSessionTasksStmt.all(sessionId) as Array<{ task_id: string }>;
       return rows.map((r) => String(r.task_id));
+    },
+
+    createNote(project: string, text: string, image?: string | null): number {
+      const now = new Date().toISOString();
+      const info = createNoteStmt.run(project, text, image ?? null, now);
+      return Number(info.lastInsertRowid);
+    },
+
+    getNote(id: number): NoteRow | null {
+      const row = getNoteStmt.get(id) as {
+        id: number;
+        project: string;
+        text: string;
+        image: string | null;
+        status: string;
+        created_at: string;
+        session_id: number | null;
+      } | undefined;
+      if (!row) return null;
+      return {
+        id: Number(row.id),
+        project: String(row.project),
+        text: String(row.text),
+        image: row.image !== null && row.image !== undefined ? String(row.image) : null,
+        status: String(row.status),
+        created_at: String(row.created_at),
+        session_id: row.session_id !== null && row.session_id !== undefined ? Number(row.session_id) : null,
+      };
+    },
+
+    setNoteSession(id: number, sessionId: number): void {
+      setNoteSessionStmt.run(sessionId, id);
+    },
+
+    setNoteStatus(id: number, status: string): void {
+      setNoteStatusStmt.run(status, id);
+    },
+
+    setNoteImage(id: number, image: string): void {
+      setNoteImageStmt.run(image, id);
+    },
+
+    listNotes(project?: string, limit = 50): NoteRow[] {
+      const rows = (project !== undefined
+        ? listNotesByProjectStmt.all(project, limit)
+        : listAllNotesStmt.all(limit)) as Array<{
+        id: number;
+        project: string;
+        text: string;
+        image: string | null;
+        status: string;
+        created_at: string;
+        session_id: number | null;
+      }>;
+      return rows.map((r) => ({
+        id: Number(r.id),
+        project: String(r.project),
+        text: String(r.text),
+        image: r.image !== null && r.image !== undefined ? String(r.image) : null,
+        status: String(r.status),
+        created_at: String(r.created_at),
+        session_id: r.session_id !== null && r.session_id !== undefined ? Number(r.session_id) : null,
+      }));
+    },
+
+    getNotesBySession(sessionId: number): NoteRow[] {
+      const rows = getNotesBySessionStmt.all(sessionId) as Array<{
+        id: number;
+        project: string;
+        text: string;
+        image: string | null;
+        status: string;
+        created_at: string;
+        session_id: number | null;
+      }>;
+      return rows.map((r) => ({
+        id: Number(r.id),
+        project: String(r.project),
+        text: String(r.text),
+        image: r.image !== null && r.image !== undefined ? String(r.image) : null,
+        status: String(r.status),
+        created_at: String(r.created_at),
+        session_id: r.session_id !== null && r.session_id !== undefined ? Number(r.session_id) : null,
+      }));
+    },
+
+    deleteNote(id: number): void {
+      deleteNoteStmt.run(id);
     },
 
     close(): void {

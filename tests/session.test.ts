@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { writeFileSync, readFileSync, mkdirSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { writeFileSync, readFileSync, mkdirSync, realpathSync, chmodSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { loadConfig, type Config, type Seat } from '../src/config.ts';
 import { openStore, type Store } from '../src/store/db.ts';
 import { tmpRepo } from './helpers.ts';
-import { git } from '../src/git.ts';
+import * as gitModule from '../src/git.ts';
+import { git, commitAll } from '../src/git.ts';
 import {
   pmPrompt,
   devPrompt,
@@ -163,6 +164,34 @@ describe('Prompts', () => {
     expect(prompt).toContain('file trong team/reports/ luôn được phép');
     expect(prompt).toContain('bỏ qua mọi tiêu chí về git/commit');
     expect(prompt).toContain('chỉ chấm sản phẩm theo acceptance');
+  });
+
+  it('pmPrompt with notes instructs reading note and image and writing note: N-<id> in front matter', () => {
+    const prompt = pmPrompt(['Xử lý ghi chú team N-1: Thêm nút'], [
+      { notePath: 'team/inbox/N-1.md', imagePath: 'team/inbox/N-1.png', id: 'N-1' },
+    ]);
+    expect(prompt).toContain('team/inbox/N-1.md');
+    expect(prompt).toContain('team/inbox/N-1.png');
+    expect(prompt).toContain('note: N-1');
+    expect(prompt).toContain('báo cáo ≤ 5 dòng');
+  });
+
+  it('devPrompt and qcPrompt with card having note include note path and image instructions', () => {
+    const card: TaskCard = {
+      id: 'T-001',
+      goal: 'Thêm nút',
+      scope: ['src/a.ts'],
+      acceptance: ['nút xuất hiện'],
+      done_when: 'test pass',
+      note: 'N-1',
+    };
+    const devP = devPrompt(card, [], ['cat', 'ls']);
+    expect(devP).toContain('Đọc team/inbox/N-1.md và ảnh đính kèm; làm/chấm theo ảnh');
+    expect(devP).toContain('báo cáo ≤ 5 dòng');
+
+    const qcP = qcPrompt(card, 'base123');
+    expect(qcP).toContain('Đọc team/inbox/N-1.md và ảnh đính kèm; làm/chấm theo ảnh');
+    expect(qcP).toContain('báo cáo ≤ 5 dòng');
   });
 });
 
@@ -2388,6 +2417,402 @@ done_when: done
       expect(outcome.notes).toContain('no_session_tasks');
       expect(devOrQcCalled).toBe(false);
       expect(outcome.tasks['T-001']).toBeUndefined();
+
+      store.close();
+    });
+
+    it('Task 10a: phiên done + thẻ passed → note done; khác → needs_owner, note open', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      mkdirSync(join(repo, 'team', 'inbox'), { recursive: true });
+      writeFileSync(
+        join(repo, 'team', 'inbox', 'N-1.md'),
+        `---
+id: N-1
+from: owner
+status: open
+at: 2026-11-08T08:00:00.000Z
+image: N-1.png
+---
+Yêu cầu cập nhật nút
+`
+      );
+      writeFileSync(join(repo, 'team', 'inbox', 'N-1.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      commitAll(repo, 'inbox N-1', { name: 'owner', email: 'owner@btm.local' });
+
+      const { deps, store } = makeDeps(repo);
+      const noteId = store.createNote(repo, 'Yêu cầu cập nhật nút', 'N-1.png');
+
+      const { runner } = createFakeRunner([
+        // PM creates card with note: N-1
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Cập nhật nút
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+note: N-1
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC passes
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(
+        deps,
+        ['Xử lý ghi chú team N-1: Yêu cầu cập nhật nút'],
+        { approved: true, noteId }
+      );
+
+      expect(outcome.status).toBe('done');
+      expect(outcome.tasks['T-001']).toBe('passed');
+
+      // Note in DB must be done
+      const noteAfter = store.getNote(noteId);
+      expect(noteAfter?.status).toBe('done');
+
+      // Note in file must be done
+      const fileContent = readFileSync(join(repo, 'team', 'inbox', 'N-1.md'), 'utf8');
+      expect(fileContent).toContain('status: done');
+
+      store.close();
+    });
+
+    it('lỗi ghi/commit khi đóng note → note giữ open trong DB, phiên needs_owner với lý do, không nuốt lỗi', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      mkdirSync(join(repo, 'team', 'inbox'), { recursive: true });
+      const notePath = join(repo, 'team', 'inbox', 'N-1.md');
+      writeFileSync(
+        notePath,
+        `---
+id: N-1
+from: owner
+status: open
+at: 2026-11-08T08:00:00.000Z
+---
+Yêu cầu cập nhật nút
+`
+      );
+      commitAll(repo, 'inbox N-1', { name: 'owner', email: 'owner@btm.local' });
+
+      const { deps, store } = makeDeps(repo);
+      const noteId = store.createNote(repo, 'Yêu cầu cập nhật nút');
+
+      const { runner } = createFakeRunner([
+        // PM creates card with note: N-1
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Cập nhật nút
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+note: N-1
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC passes, but right before closing note we make notePath read-only
+        () => {
+          chmodSync(notePath, 0o444);
+          return {
+            lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+          };
+        },
+      ]);
+      deps.runner = runner;
+
+      try {
+        const outcome = await runSession(
+          deps,
+          ['Xử lý ghi chú team N-1: Yêu cầu cập nhật nút'],
+          { approved: true, noteId }
+        );
+
+        // Outcome must be needs_owner because closing note failed!
+        expect(outcome.status).toBe('needs_owner');
+        expect(outcome.notes.some((n) => n.includes('close') || n.includes('EACCES'))).toBe(true);
+
+        // Note in DB must remain open
+        const noteAfter = store.getNote(noteId);
+        expect(noteAfter?.status).toBe('open');
+      } finally {
+        chmodSync(notePath, 0o644);
+        store.close();
+      }
+    });
+
+    it('Task 10a: commit đóng note lỗi → khôi phục file về status: open (git checkout file) rồi needs_owner', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      mkdirSync(join(repo, 'team', 'inbox'), { recursive: true });
+      const notePath = join(repo, 'team', 'inbox', 'N-1.md');
+      writeFileSync(
+        notePath,
+        `---
+id: N-1
+from: owner
+status: open
+at: 2026-11-08T08:00:00.000Z
+---
+Yêu cầu đóng note nhưng commit lỗi
+`
+      );
+      commitAll(repo, 'inbox N-1', { name: 'owner', email: 'owner@btm.local' });
+
+      const { deps, store } = makeDeps(repo);
+      const noteId = store.createNote(repo, 'Yêu cầu đóng note nhưng commit lỗi');
+
+      const origCommitAll = gitModule.commitAll;
+      const commitSpy = vi.spyOn(gitModule, 'commitAll').mockImplementation((repoArg, msg, author) => {
+        if (msg.startsWith('close note')) {
+          // Giả lập commit lỗi SAU khi đã stage (git add -A)
+          git(repoArg, 'add', '-A');
+          throw new Error('Simulated git commit error on close note after stage');
+        }
+        return origCommitAll(repoArg, msg, author);
+      });
+
+      const { runner } = createFakeRunner([
+        // PM creates card with note: N-1
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Test commit failure
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+note: N-1
+---
+Do task
+`
+          );
+        },
+        // Dev
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC -> passed
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+
+      deps.runner = runner;
+
+      try {
+        const outcome = await runSession(deps, ['Mục tiêu test commit close note fail'], {
+          approved: true,
+          noteId,
+        });
+
+        expect(outcome.status).toBe('needs_owner');
+        expect(outcome.notes.some((n) => n.includes('close note N-1 error'))).toBe(true);
+
+        // Verify file is restored to status: open via git checkout
+        const fileContent = readFileSync(notePath, 'utf8');
+        expect(fileContent).toContain('status: open');
+        expect(fileContent).not.toContain('status: done');
+
+        // Verify git index is reset for note file
+        const diffCached = git(repo, 'diff', '--cached', '--name-only');
+        expect(diffCached).not.toContain('team/inbox/N-1.md');
+
+        // Verify DB note status is not done
+        const noteRow = store.getNote(noteId);
+        expect(noteRow?.status).toBe('open');
+      } finally {
+        commitSpy.mockRestore();
+        store.close();
+      }
+    });
+
+    it('passes card note image absolute path to QC runner options', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      const { deps, store } = makeDeps(repo);
+
+      // Create note with image
+      const noteId = store.createNote(repo, 'Fix UI bug with image', 'N-1.png');
+      const inboxDir = join(repo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      writeFileSync(join(inboxDir, 'N-1.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      writeFileSync(
+        join(inboxDir, 'N-1.md'),
+        `---\nid: N-1\nfrom: owner\nstatus: open\nat: 2026-11-08T08:00:00.000Z\nimage: N-1.png\n---\nFix UI bug with image\n`
+      );
+      commitAll(repo, 'inbox N-1', { name: 'owner', email: 'owner@btm.local' });
+
+      // Card content
+      const cardContent = `---
+id: T-001
+goal: Update button color
+scope:
+  - src/app.ts
+acceptance:
+  - Button color updated
+done_when: tests pass
+note: N-${noteId}
+---
+Details here.
+`;
+
+      let capturedQcOptions: any;
+
+      deps.runner = async (seat, agentId, prompt, cwd, logFile, options) => {
+        if (seat === 'pm') {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'tasks', 'T-001.md'), cardContent, 'utf8');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'dev') {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'qc') {
+          capturedQcOptions = options;
+          return {
+            exitCode: 0,
+            timedOut: false,
+            durationMs: 10,
+            output: '',
+            lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+          };
+        }
+        return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: '' };
+      };
+
+      const outcome = await runSession(deps, ['Work on T-001'], { approved: true, noteId });
+      expect(outcome.notes).toEqual([]);
+      expect(outcome.status).toBe('done');
+      expect(capturedQcOptions?.images).toBeDefined();
+      expect(capturedQcOptions.images).toEqual([resolve(repo, 'team', 'inbox', 'N-1.png')]);
+
+      store.close();
+    });
+
+    it('noteId chỉ truyền tường minh qua opts (không suy từ chuỗi goal) và chỉ gắn note cùng project', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      const otherRepo = tmpRepo({
+        'src/app.ts': 'export const x = 1;\n',
+      });
+      const { deps, store } = makeDeps(repo);
+
+      // Note 1: belongs to current repo
+      const note1 = store.createNote(repo, 'Note for current repo');
+      const inboxDir = join(repo, 'team', 'inbox');
+      mkdirSync(inboxDir, { recursive: true });
+      writeFileSync(
+        join(inboxDir, `N-${note1}.md`),
+        `---\nid: N-${note1}\nfrom: owner\nstatus: open\nat: 2026-11-08T08:00:00.000Z\n---\nNote for current repo\n`
+      );
+      commitAll(repo, 'inbox note 1', { name: 'owner', email: 'owner@btm.local' });
+
+      // Note 2: belongs to other repo
+      const note2 = store.createNote(otherRepo, 'Note for other repo');
+
+      const cardContent = (nId?: number) => `---
+id: T-001
+goal: Update button color
+scope:
+  - src/app.ts
+acceptance:
+  - Button color updated
+done_when: tests pass
+${nId ? `note: N-${nId}\n` : ''}---
+`;
+
+      let currentNoteForPm: number | undefined;
+
+      deps.runner = async (seat, _agentId, _prompt, cwd) => {
+        if (seat === 'pm') {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'tasks', 'T-001.md'), cardContent(currentNoteForPm), 'utf8');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'dev') {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 2;\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+          return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: 'done' };
+        }
+        if (seat === 'qc') {
+          return {
+            exitCode: 0,
+            timedOut: false,
+            durationMs: 10,
+            output: '',
+            lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+          };
+        }
+        return { exitCode: 0, timedOut: false, durationMs: 10, output: '', lastMessage: '' };
+      };
+
+      // 1. Goal contains N-1, but opts does not pass noteId -> MUST NOT attach note 1!
+      currentNoteForPm = undefined;
+      const outcome1 = await runSession(deps, [`Xử lý ghi chú team N-${note1}: Lỗi`], { approved: true });
+      expect(outcome1.status).toBe('done');
+      const session1Notes = store.getNotesBySession(outcome1.sessionId!);
+      expect(session1Notes.length).toBe(0);
+
+      // 2. Opts passes note2 from another repo -> MUST NOT attach note 2!
+      currentNoteForPm = undefined;
+      const outcome2 = await runSession(deps, ['Fix task with note2'], { approved: true, noteId: note2 });
+      expect(outcome2.status).toBe('done');
+      const session2Notes = store.getNotesBySession(outcome2.sessionId!);
+      expect(session2Notes.length).toBe(0);
+
+      // 3. Opts passes note1 from same repo -> MUST attach note 1!
+      currentNoteForPm = note1;
+      const outcome3 = await runSession(deps, ['Fix task with note1'], { approved: true, noteId: note1 });
+      expect(outcome3.status).toBe('done');
+      const session3Notes = store.getNotesBySession(outcome3.sessionId!);
+      expect(session3Notes.length).toBe(1);
+      expect(session3Notes[0].id).toBe(note1);
 
       store.close();
     });
