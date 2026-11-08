@@ -1,0 +1,2 @@
+Cần sửa: `tests/store.test.ts`: test ghi đè active project không kiểm tra số dòng; test `COUNT(*) = 1` chỉ set một lần. Cần set hai path rồi xác nhận còn đúng một dòng chứa path mới (Task 4).
+Cần sửa: test timestamp chỉ kiểm tra `typeof === 'string'`, chưa xác nhận định dạng ISO theo Task 4; chuỗi rỗng hoặc sai định dạng vẫn pass.
