@@ -1,0 +1,3 @@
+- Bug: [session.ts:200](/srv/agent-projects/btm/src/core/session.ts:200) gọi `commitAll` trước `endTurn`; nếu commit WIP lỗi, lượt bị treo chưa kết thúc. Cả PM/Dev/QC đều gặp; cần ghi kết quả lượt trước commit.
+- Cần sửa: [session.test.ts:1018](/srv/agent-projects/btm/tests/session.test.ts:1018) chưa test `exitCode:null, timedOut:false`; test null hiện có chỉ kiểm tra nhánh timeout.
+- Cần xác nhận: `tsc --noEmit` đạt; chưa chạy suite vì sandbox chỉ đọc, test cần tạo repo tạm. Các sửa còn lại vòng trước đã có trong code.

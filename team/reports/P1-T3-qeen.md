@@ -1,0 +1,3 @@
+Cần sửa: `tests/card.test.ts:10` dùng bản T-001 đã thêm quote, che lỗi fixture thật: `loadTaskCards('team/tasks')` vẫn ném `CardError` tại acceptance chứa `Config: seats pm:`. Cần sửa YAML fixture và test đọc file thật theo Task 3.
+Cần sửa: Test symlink hiện chỉ trỏ trong cùng thư mục; bổ sung trường hợp trỏ ra ngoài project để khóa lỗi vòng trước.
+Cần xác nhận: `loadTaskCards` chỉ chặn symlink ở file; nếu chính `dir` hoặc thư mục cha là symlink ra ngoài project thì vẫn đọc được. Cần xác định tầng chịu trách nhiệm kiểm tra đường dẫn thực.
