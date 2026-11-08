@@ -458,4 +458,121 @@ runner:
     consoleErrSpy.mockRestore();
     openStoreSpy.mockRestore();
   });
+
+  it('btm run bị abort bởi AbortController → endTurn error, session status stopped, exit 130', async () => {
+    await main(['init', 'project-abort-test', '--config', configPath]);
+    const projectPath = join(tmpRoot, 'project-abort-test');
+
+    const ac = new AbortController();
+
+    const fakeRunSession = vi.fn().mockImplementation(async (d: any) => {
+      const sessionId = d.store.createSession(['Abort goal'], projectPath);
+      const turnId = d.store.startTurn(sessionId, 'dev', 'jacky', 'T-001');
+      ac.abort();
+      await new Promise((r) => setTimeout(r, 20));
+      return {
+        status: 'stopped',
+        sessionId,
+        tasks: {},
+        notes: ['aborted'],
+      };
+    });
+
+    const exitCode = await main(
+      ['run', '--goal', 'Abort goal', '--config', configPath],
+      { runSession: fakeRunSession, abortController: ac }
+    );
+
+    expect(exitCode).toBe(130);
+
+    const store = openStore(join(dataDir, 'btm.db'));
+    const session = store.getLatestSession(undefined, projectPath);
+    expect(session?.status).toBe('stopped');
+
+    const db = new Database(join(dataDir, 'btm.db'));
+    const turns = db.prepare('SELECT result, error FROM turns WHERE session_id = ?').all(session?.id) as any[];
+    db.close();
+    store.close();
+
+    expect(turns.length).toBeGreaterThan(0);
+    expect(turns[0].result).toBe('error');
+  });
+
+  it('btm run khóa liên tiến trình: khi lock tồn tại và pid còn sống → in lỗi, exit 1', async () => {
+    await main(['init', 'project-lock-alive', '--config', configPath]);
+    const lockPath = join(dataDir, 'btm.lock');
+    // Ghi PID của tiến trình hiện tại (chắc chắn còn sống)
+    writeFileSync(lockPath, String(process.pid));
+
+    const fakeRunSession = vi.fn();
+    const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exitCode = await main(
+      ['run', '--goal', 'Goal lock alive', '--config', configPath],
+      { runSession: fakeRunSession }
+    );
+    expect(exitCode).toBe(1);
+    expect(consoleErrSpy).toHaveBeenCalledWith(expect.stringMatching(/btm.*running|process.*running/i));
+    expect(fakeRunSession).not.toHaveBeenCalled();
+    consoleErrSpy.mockRestore();
+
+    // Lock file vẫn còn nguyên
+    expect(existsSync(lockPath)).toBe(true);
+    expect(readFileSync(lockPath, 'utf8').trim()).toBe(String(process.pid));
+  });
+
+  it('btm run khóa liên tiến trình: khi lock tồn tại nhưng pid đã chết → ghi đè và xóa trong finally', async () => {
+    await main(['init', 'project-lock-dead', '--config', configPath]);
+    const lockPath = join(dataDir, 'btm.lock');
+    // PID giả định không tồn tại (chết)
+    writeFileSync(lockPath, '99999999');
+
+    const fakeRunSession = vi.fn().mockImplementation(async () => {
+      // Trong khi session đang chạy, btm.lock phải chứa PID của process hiện tại
+      expect(existsSync(lockPath)).toBe(true);
+      expect(readFileSync(lockPath, 'utf8').trim()).toBe(String(process.pid));
+      return {
+        status: 'done',
+        sessionId: 1,
+        tasks: {},
+        notes: [],
+      };
+    });
+
+    const exitCode = await main(
+      ['run', '--goal', 'Goal lock dead', '--config', configPath],
+      { runSession: fakeRunSession }
+    );
+    expect(exitCode).toBe(0);
+
+    // Luôn xóa trong finally
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('btm run khóa liên tiến trình: test hai lần lấy khóa liên tiếp', async () => {
+    await main(['init', 'project-lock-two-times', '--config', configPath]);
+    const lockPath = join(dataDir, 'btm.lock');
+
+    const fakeRunSession = vi.fn().mockResolvedValue({
+      status: 'done',
+      sessionId: 1,
+      tasks: {},
+      notes: [],
+    });
+
+    // Lần 1
+    const exitCode1 = await main(
+      ['run', '--goal', 'Goal 1', '--config', configPath],
+      { runSession: fakeRunSession }
+    );
+    expect(exitCode1).toBe(0);
+    expect(existsSync(lockPath)).toBe(false);
+
+    // Lần 2
+    const exitCode2 = await main(
+      ['run', '--goal', 'Goal 2', '--config', configPath],
+      { runSession: fakeRunSession }
+    );
+    expect(exitCode2).toBe(0);
+    expect(existsSync(lockPath)).toBe(false);
+  });
 });

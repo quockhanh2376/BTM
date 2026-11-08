@@ -13,7 +13,7 @@ import { pmPrompt, devPrompt, qcPrompt } from './prompts.ts';
 export type TaskState = 'pending' | 'passed' | 'failed' | 'blocked';
 
 export interface SessionOutcome {
-  status: 'done' | 'awaiting_approval' | 'needs_owner' | 'out_of_turns' | 'refused';
+  status: 'done' | 'awaiting_approval' | 'needs_owner' | 'out_of_turns' | 'refused' | 'stopped';
   sessionId: number | null;
   tasks: Record<string, TaskState>;
   notes: string[];
@@ -25,6 +25,7 @@ export interface SessionDeps {
   runner: Runner;
   repo: string;
   env: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
 }
 
 function isRepoInsideProjectsRoot(repo: string, projectsRoot: string): boolean {
@@ -120,10 +121,14 @@ async function workOnCards(
       const devPromptText = devPrompt(card, fixNotes, d.cfg.runner.agy_allow_commands);
       let devOutput;
       try {
-        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo);
+        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, { signal: d.signal });
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
+        const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+        const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
         d.store.endTurn(devTurnId, 'error', reason);
+        if (isAbort) {
+          return { status: 'stopped', sessionId, tasks, notes: [reason] };
+        }
         try {
           commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
         } catch {
@@ -240,10 +245,14 @@ async function workOnCards(
       const preQcHead = headSha(d.repo);
       let qcOutput;
       try {
-        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo);
+        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo, { signal: d.signal });
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
+        const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+        const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
         d.store.endTurn(qcTurnId, 'error', reason);
+        if (isAbort) {
+          return { status: 'stopped', sessionId, tasks, notes: [reason] };
+        }
         try {
           commitAll(d.repo, `WIP ${card.id}: ${reason}`, qcAuthor);
         } catch {
@@ -386,10 +395,15 @@ export async function runSession(
     const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
     let pmOutput;
     try {
-      pmOutput = await d.runner('pm', pmAgent, pmPromptText, d.repo);
+      pmOutput = await d.runner('pm', pmAgent, pmPromptText, d.repo, { signal: d.signal });
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
+      const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+      const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
       d.store.endTurn(pmTurnId, 'error', reason);
+      if (isAbort) {
+        sessionStatus = 'stopped';
+        return { status: 'stopped', sessionId, tasks, notes: [reason] };
+      }
       try {
         commitAll(d.repo, `WIP pm: ${reason}`, pmAuthor);
       } catch {
@@ -483,6 +497,9 @@ export async function runSession(
     sessionStatus = outcome.status;
     return outcome;
   } finally {
+    if (d.signal?.aborted) {
+      sessionStatus = 'stopped';
+    }
     d.store.setSessionStatus(sessionId, sessionStatus);
   }
 }
@@ -551,6 +568,9 @@ export async function resumeSession(
     sessionStatus = outcome.status;
     return outcome;
   } finally {
+    if (d.signal?.aborted) {
+      sessionStatus = 'stopped';
+    }
     d.store.setSessionStatus(sessionId, sessionStatus);
   }
 }

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { createWriteStream, mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { buildArgv } from './argv.ts';
@@ -11,9 +11,55 @@ export interface ProcResult {
   output: string;
 }
 
+export function getDescendantPids(rootPid: number): number[] {
+  const ppidMap = new Map<number, number[]>();
+  try {
+    const entries = readdirSync('/proc');
+    for (const entry of entries) {
+      if (!/^\d+$/.test(entry)) continue;
+      const pid = parseInt(entry, 10);
+      try {
+        const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+        const closeParenIdx = stat.lastIndexOf(')');
+        if (closeParenIdx === -1) continue;
+        const rest = stat.slice(closeParenIdx + 2).trimStart();
+        const parts = rest.split(/\s+/);
+        // parts[0] is state, parts[1] is ppid
+        const ppid = parseInt(parts[1], 10);
+        if (!isNaN(ppid)) {
+          let children = ppidMap.get(ppid);
+          if (!children) {
+            children = [];
+            ppidMap.set(ppid, children);
+          }
+          children.push(pid);
+        }
+      } catch {
+        // Process might have terminated or unreadable
+      }
+    }
+  } catch {
+    // /proc unreadable
+  }
+
+  const descendants: number[] = [];
+  const queue = [rootPid];
+  while (queue.length > 0) {
+    const curr = queue.shift()!;
+    const children = ppidMap.get(curr);
+    if (children) {
+      for (const child of children) {
+        descendants.push(child);
+        queue.push(child);
+      }
+    }
+  }
+  return descendants;
+}
+
 export function runProcess(
   argv: string[],
-  o: { cwd: string; timeoutMs: number; logFile: string; env?: NodeJS.ProcessEnv }
+  o: { cwd: string; timeoutMs: number; logFile: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal }
 ): Promise<ProcResult> {
   return new Promise((resolve, reject) => {
     if (argv.length === 0) {
@@ -40,6 +86,8 @@ export function runProcess(
     }
 
     let timedOut = false;
+    let aborted = false;
+    let killInitiated = false;
     let timer: NodeJS.Timeout | null = null;
     let killTimer: NodeJS.Timeout | null = null;
     let groupCheckInterval: NodeJS.Timeout | null = null;
@@ -49,6 +97,16 @@ export function runProcess(
     let resolved = false;
     let streamEnded = false;
     const outputChunks: Buffer[] = [];
+    const descendants = new Set<number>();
+
+    const isPidDead = (pid: number): boolean => {
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch (err: any) {
+        return err?.code === 'ESRCH';
+      }
+    };
 
     const isGroupDead = (pgid: number): boolean => {
       try {
@@ -57,6 +115,23 @@ export function runProcess(
       } catch (err: any) {
         return err?.code === 'ESRCH';
       }
+    };
+
+    const areAllDead = (): boolean => {
+      if (childPid && !isGroupDead(childPid)) {
+        return false;
+      }
+      for (const pid of descendants) {
+        if (!isPidDead(pid)) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    const abortListener = () => {
+      aborted = true;
+      killAll();
     };
 
     const cleanup = () => {
@@ -71,6 +146,9 @@ export function runProcess(
       if (killTimer) {
         clearTimeout(killTimer);
         killTimer = null;
+      }
+      if (o.signal && abortListener) {
+        o.signal.removeEventListener('abort', abortListener);
       }
     };
 
@@ -99,6 +177,18 @@ export function runProcess(
       endLogStream(() => {
         const durationMs = Date.now() - startTime;
         const output = Buffer.concat(outputChunks).toString('utf8');
+        if (aborted) {
+          const err = new Error('The operation was aborted');
+          err.name = 'AbortError';
+          (err as any).result = {
+            exitCode: childCloseCode,
+            timedOut,
+            durationMs,
+            output,
+          };
+          reject(err);
+          return;
+        }
         resolve({
           exitCode: childCloseCode,
           timedOut,
@@ -113,12 +203,12 @@ export function runProcess(
         return;
       }
 
-      if (!timedOut) {
+      if (!timedOut && !aborted) {
         finish();
         return;
       }
 
-      if (childPid && isGroupDead(childPid)) {
+      if (areAllDead()) {
         finish();
         return;
       }
@@ -126,7 +216,7 @@ export function runProcess(
       if (sigkillSent) {
         let retries = 0;
         const ensureDead = () => {
-          if (!childPid || isGroupDead(childPid) || retries++ > 20) {
+          if (areAllDead() || retries++ > 20) {
             finish();
           } else {
             setTimeout(ensureDead, 25);
@@ -136,12 +226,52 @@ export function runProcess(
         return;
       }
 
-      if (!groupCheckInterval && childPid) {
+      if (!groupCheckInterval) {
         groupCheckInterval = setInterval(() => {
-          if (childPid && isGroupDead(childPid)) {
+          if (areAllDead()) {
             finish();
           }
         }, 50);
+      }
+    };
+
+    const killAll = () => {
+      if (killInitiated) return;
+      killInitiated = true;
+
+      if (childPid) {
+        for (const pid of getDescendantPids(childPid)) {
+          descendants.add(pid);
+        }
+        try {
+          process.kill(-childPid, 'SIGTERM');
+        } catch {}
+        for (const pid of descendants) {
+          try {
+            process.kill(pid, 'SIGTERM');
+          } catch {}
+        }
+
+        killTimer = setTimeout(() => {
+          sigkillSent = true;
+          if (childPid) {
+            for (const pid of getDescendantPids(childPid)) {
+              descendants.add(pid);
+            }
+            try {
+              process.kill(-childPid, 'SIGKILL');
+            } catch {}
+            for (const pid of descendants) {
+              try {
+                process.kill(pid, 'SIGKILL');
+              } catch {}
+            }
+          }
+          maybeFinish();
+        }, 5000);
+        maybeFinish();
+      } else {
+        maybeFinish();
       }
     };
 
@@ -156,28 +286,16 @@ export function runProcess(
     if (o.timeoutMs > 0) {
       timer = setTimeout(() => {
         timedOut = true;
-        if (childPid) {
-          try {
-            process.kill(-childPid, 'SIGTERM');
-          } catch {
-            // Process may already have terminated
-          }
-          killTimer = setTimeout(() => {
-            sigkillSent = true;
-            if (childPid) {
-              try {
-                process.kill(-childPid, 'SIGKILL');
-              } catch {
-                // Ignore
-              }
-            }
-            maybeFinish();
-          }, 5000);
-          maybeFinish();
-        } else {
-          maybeFinish();
-        }
+        killAll();
       }, o.timeoutMs);
+    }
+
+    if (o.signal) {
+      if (o.signal.aborted) {
+        abortListener();
+      } else {
+        o.signal.addEventListener('abort', abortListener, { once: true });
+      }
     }
 
     const writeLog = (chunk: Buffer) => {
@@ -219,12 +337,24 @@ export interface TurnOutput extends ProcResult {
   lastMessage: string;
 }
 
-export type Runner = (seat: Seat, agentId: string, prompt: string, cwd: string) => Promise<TurnOutput>;
+export type Runner = (
+  seat: Seat,
+  agentId: string,
+  prompt: string,
+  cwd: string,
+  options?: { signal?: AbortSignal }
+) => Promise<TurnOutput>;
 
-export function makeRunner(cfg: Config, logDir: string): Runner {
+export function makeRunner(cfg: Config, logDir: string, defaultSignal?: AbortSignal): Runner {
   const resolvedLogDir = resolve(logDir);
 
-  return async (seat: Seat, agentId: string, prompt: string, cwd: string): Promise<TurnOutput> => {
+  return async (
+    seat: Seat,
+    agentId: string,
+    prompt: string,
+    cwd: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<TurnOutput> => {
     const agent = cfg.agents[agentId];
     if (!agent) {
       throw new Error(`Agent '${agentId}' not found in config`);
@@ -252,6 +382,7 @@ export function makeRunner(cfg: Config, logDir: string): Runner {
       timeoutMs,
       logFile,
       env: process.env,
+      signal: options?.signal ?? defaultSignal,
     });
 
     let lastMessage = '';

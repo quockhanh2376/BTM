@@ -2,6 +2,7 @@
 import { parseArgs } from 'node:util';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { openSync, writeSync, closeSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import { loadConfig, checkForbiddenEnv } from './config.ts';
 import { openStore } from './store/db.ts';
@@ -14,6 +15,7 @@ export interface CliDeps {
   resumeSession?: typeof resumeSession;
   runner?: Runner;
   env?: NodeJS.ProcessEnv;
+  abortController?: AbortController;
 }
 
 export async function main(
@@ -26,7 +28,7 @@ export async function main(
   let effectiveEnv: NodeJS.ProcessEnv;
   let effectiveDeps: CliDeps | undefined;
 
-  if (env && ('runSession' in env || 'resumeSession' in env || 'runner' in env)) {
+  if (env && ('runSession' in env || 'resumeSession' in env || 'runner' in env || 'abortController' in env)) {
     effectiveDeps = env as CliDeps;
     effectiveEnv = effectiveDeps.env ?? process.env;
   } else {
@@ -151,55 +153,224 @@ Options:
     }
 
     if (command === 'run') {
-      const goals = (values.goal as string[] | undefined) ?? [];
-      const approved = Boolean(values.approved);
+      const lockPath = join(cfg.host.data_dir, 'btm.lock');
+      mkdirSync(cfg.host.data_dir, { recursive: true });
 
-      if (goals.length === 0 && !approved) {
-        console.error('Error: At least one --goal is required. Usage: btm run --goal "<g>" [--goal …]');
-        process.exitCode = 1;
-        return 1;
-      }
-
-      const dbPath = join(cfg.host.data_dir, 'btm.db');
-      const store = openStore(dbPath);
+      let releaseLock: (() => void) | null = null;
       try {
-        const activeProject = store.getActiveProject();
+        let fd: number | null = null;
+        try {
+          fd = openSync(lockPath, 'wx');
+          writeSync(fd, String(process.pid));
+          closeSync(fd);
+          fd = null;
+        } catch (err: any) {
+          if (err?.code === 'EEXIST') {
+            let isAlive = false;
+            let existingPid: number | null = null;
+            try {
+              const content = readFileSync(lockPath, 'utf8').trim();
+              existingPid = parseInt(content, 10);
+              if (!isNaN(existingPid)) {
+                process.kill(existingPid, 0);
+                isAlive = true;
+              }
+            } catch (killErr: any) {
+              if (killErr?.code === 'EPERM') {
+                isAlive = true;
+              } else if (killErr?.code === 'ESRCH') {
+                isAlive = false;
+              }
+            }
 
-        if (!activeProject) {
-          const outcome: SessionOutcome = {
-            status: 'refused',
-            sessionId: null,
-            tasks: {},
-            notes: ['No active project set. Run "btm init <name>" first.'],
-          };
-          console.log(JSON.stringify(outcome, null, 2));
-          process.exitCode = 2;
-          return 2;
+            if (isAlive) {
+              console.error(`Error: Another btm process (PID ${existingPid}) is running.`);
+              process.exitCode = 1;
+              return 1;
+            }
+
+            // pid chết → ghi đè
+            writeFileSync(lockPath, String(process.pid));
+          } else {
+            throw err;
+          }
         }
 
-        if (goals.length === 0 && approved) {
-          const latestAwaiting = store.getLatestSession('awaiting_approval', activeProject);
-          if (!latestAwaiting) {
-            console.error('Error: No session awaiting approval found to resume.');
-            process.exitCode = 1;
-            return 1;
+        releaseLock = () => {
+          try {
+            unlinkSync(lockPath);
+          } catch {}
+        };
+
+        const goals = (values.goal as string[] | undefined) ?? [];
+        const approved = Boolean(values.approved);
+
+        if (goals.length === 0 && !approved) {
+          console.error('Error: At least one --goal is required. Usage: btm run --goal "<g>" [--goal …]');
+          process.exitCode = 1;
+          return 1;
+        }
+
+        const dbPath = join(cfg.host.data_dir, 'btm.db');
+        const store = openStore(dbPath);
+
+        const abortController = effectiveDeps?.abortController ?? new AbortController();
+        let activeTurnId: number | null = null;
+        let activeSessionId: number | null = null;
+
+        const originalStartTurn = store.startTurn.bind(store);
+        store.startTurn = (...args) => {
+          const id = originalStartTurn(...args);
+          activeTurnId = id;
+          activeSessionId = args[0];
+          return id;
+        };
+
+        const originalEndTurn = store.endTurn.bind(store);
+        store.endTurn = (...args) => {
+          originalEndTurn(...args);
+          if (activeTurnId === args[0]) {
+            activeTurnId = null;
+          }
+        };
+
+        const originalCreateSession = store.createSession.bind(store);
+        store.createSession = (...args) => {
+          const id = originalCreateSession(...args);
+          activeSessionId = id;
+          return id;
+        };
+
+        const originalSetSessionStatus = store.setSessionStatus.bind(store);
+        store.setSessionStatus = (...args) => {
+          originalSetSessionStatus(...args);
+          if (args[1] !== 'running' && args[1] !== 'pending') {
+            activeSessionId = null;
+          }
+        };
+
+        let stoppedHandled = false;
+        const handleStop = () => {
+          if (stoppedHandled) return;
+          stoppedHandled = true;
+          abortController.abort();
+          if (activeTurnId !== null) {
+            try {
+              store.endTurn(activeTurnId, 'error', 'Interrupted');
+            } catch {}
+            activeTurnId = null;
+          }
+          if (activeSessionId !== null) {
+            try {
+              store.setSessionStatus(activeSessionId, 'stopped');
+            } catch {}
+          }
+        };
+
+        const sigListener = () => {
+          handleStop();
+          if (releaseLock) {
+            releaseLock();
+            releaseLock = null;
+          }
+          try {
+            store.close();
+          } catch {}
+          process.exitCode = 130;
+          process.exit(130);
+        };
+
+        process.on('SIGINT', sigListener);
+        process.on('SIGTERM', sigListener);
+
+        const abortListener = () => {
+          handleStop();
+        };
+        abortController.signal.addEventListener('abort', abortListener);
+
+        try {
+          const activeProject = store.getActiveProject();
+
+          if (!activeProject) {
+            const outcome: SessionOutcome = {
+              status: 'refused',
+              sessionId: null,
+              tasks: {},
+              notes: ['No active project set. Run "btm init <name>" first.'],
+            };
+            console.log(JSON.stringify(outcome, null, 2));
+            process.exitCode = 2;
+            return 2;
           }
 
-          const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'));
-          const resumeFn = effectiveDeps?.resumeSession ?? resumeSession;
+          if (goals.length === 0 && approved) {
+            const latestAwaiting = store.getLatestSession('awaiting_approval', activeProject);
+            if (!latestAwaiting) {
+              console.error('Error: No session awaiting approval found to resume.');
+              process.exitCode = 1;
+              return 1;
+            }
 
-          const outcome = await resumeFn(
+            activeSessionId = latestAwaiting.id;
+            const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'), abortController.signal);
+            const resumeFn = effectiveDeps?.resumeSession ?? resumeSession;
+
+            const outcome = await resumeFn(
+              {
+                cfg,
+                store,
+                runner,
+                repo: activeProject,
+                env: effectiveEnv,
+                signal: abortController.signal,
+              },
+              latestAwaiting.id
+            );
+
+            console.log(JSON.stringify(outcome, null, 2));
+
+            if (abortController.signal.aborted || outcome.status === 'stopped') {
+              handleStop();
+              process.exitCode = 130;
+              return 130;
+            }
+
+            let exitCode = 1;
+            if (outcome.status === 'done' || outcome.status === 'awaiting_approval') {
+              exitCode = 0;
+            } else if (outcome.status === 'refused') {
+              exitCode = 2;
+            } else {
+              exitCode = 1;
+            }
+
+            process.exitCode = exitCode;
+            return exitCode;
+          }
+
+          const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'), abortController.signal);
+          const sessionFn = effectiveDeps?.runSession ?? runSession;
+
+          const outcome = await sessionFn(
             {
               cfg,
               store,
               runner,
               repo: activeProject,
               env: effectiveEnv,
+              signal: abortController.signal,
             },
-            latestAwaiting.id
+            goals,
+            { approved }
           );
 
           console.log(JSON.stringify(outcome, null, 2));
+
+          if (abortController.signal.aborted || outcome.status === 'stopped') {
+            handleStop();
+            process.exitCode = 130;
+            return 130;
+          }
 
           let exitCode = 1;
           if (outcome.status === 'done' || outcome.status === 'awaiting_approval') {
@@ -212,42 +383,23 @@ Options:
 
           process.exitCode = exitCode;
           return exitCode;
+        } catch (err) {
+          if (abortController.signal.aborted) {
+            handleStop();
+            process.exitCode = 130;
+            return 130;
+          }
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exitCode = 1;
+          return 1;
+        } finally {
+          process.removeListener('SIGINT', sigListener);
+          process.removeListener('SIGTERM', sigListener);
+          abortController.signal.removeEventListener('abort', abortListener);
+          store.close();
         }
-
-        const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'));
-        const sessionFn = effectiveDeps?.runSession ?? runSession;
-
-        const outcome = await sessionFn(
-          {
-            cfg,
-            store,
-            runner,
-            repo: activeProject,
-            env: effectiveEnv,
-          },
-          goals,
-          { approved }
-        );
-
-        console.log(JSON.stringify(outcome, null, 2));
-
-        let exitCode = 1;
-        if (outcome.status === 'done' || outcome.status === 'awaiting_approval') {
-          exitCode = 0;
-        } else if (outcome.status === 'refused') {
-          exitCode = 2;
-        } else {
-          exitCode = 1;
-        }
-
-        process.exitCode = exitCode;
-        return exitCode;
-      } catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
-        process.exitCode = 1;
-        return 1;
       } finally {
-        store.close();
+        releaseLock?.();
       }
     }
 

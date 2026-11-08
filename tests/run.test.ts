@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, chmodSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, chmodSync, mkdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runProcess, makeRunner } from '../src/runner/run.ts';
@@ -142,6 +142,102 @@ describe('Runner Run', () => {
           process.kill(childPid, 'SIGKILL');
         } catch {}
       }
+    }, 15000);
+
+    it('kills detached / new session descendant processes on timeout', async () => {
+      const logFile = join(tmpDir, 'detached_timeout.log');
+      const pidFile = join(tmpDir, 'detached_child.pid');
+
+      const res = await runProcess(
+        [
+          'sh',
+          '-c',
+          `setsid sh -c 'trap "" TERM; echo $$ > "${pidFile}"; sleep 60' & sleep 60`,
+        ],
+        {
+          cwd: tmpDir,
+          timeoutMs: 500,
+          logFile,
+        }
+      );
+
+      expect(res.timedOut).toBe(true);
+
+      const childPid = Number(readFileSync(pidFile, 'utf8').trim());
+      expect(Number.isInteger(childPid)).toBe(true);
+
+      try {
+        let isEsrch = false;
+        const deadline = Date.now() + 7000;
+        while (Date.now() < deadline) {
+          try {
+            process.kill(childPid, 0);
+            await new Promise((r) => setTimeout(r, 100));
+          } catch (err: any) {
+            if (err.code === 'ESRCH') {
+              isEsrch = true;
+              break;
+            }
+            throw err;
+          }
+        }
+        expect(isEsrch).toBe(true);
+        expect(() => process.kill(childPid, 0)).toThrow(/ESRCH/);
+      } finally {
+        try {
+          process.kill(childPid, 'SIGKILL');
+        } catch {}
+      }
+    }, 15000);
+
+    it('kills descendant processes when aborted via AbortSignal', async () => {
+      const logFile = join(tmpDir, 'abort_test.log');
+      const pidFile = join(tmpDir, 'abort_child.pid');
+      const ac = new AbortController();
+
+      const promise = runProcess(
+        [
+          'sh',
+          '-c',
+          `setsid sh -c 'trap "" TERM; echo $$ > "${pidFile}"; sleep 60' & sleep 60`,
+        ],
+        {
+          cwd: tmpDir,
+          timeoutMs: 30000,
+          logFile,
+          signal: ac.signal,
+        }
+      );
+
+      // Wait a moment for the child process to start and write pidFile
+      const deadlineWait = Date.now() + 3000;
+      while (!existsSync(pidFile) && Date.now() < deadlineWait) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(existsSync(pidFile)).toBe(true);
+      const childPid = Number(readFileSync(pidFile, 'utf8').trim());
+      expect(Number.isInteger(childPid)).toBe(true);
+
+      // Abort
+      ac.abort();
+
+      await expect(promise).rejects.toThrow(/aborted/i);
+
+      let isEsrch = false;
+      const deadline = Date.now() + 7000;
+      while (Date.now() < deadline) {
+        try {
+          process.kill(childPid, 0);
+          await new Promise((r) => setTimeout(r, 100));
+        } catch (err: any) {
+          if (err.code === 'ESRCH') {
+            isEsrch = true;
+            break;
+          }
+          throw err;
+        }
+      }
+      expect(isEsrch).toBe(true);
     }, 15000);
 
     it('does not crash when logStream fails (e.g. logFile is a directory) and still resolves with correct output', async () => {
