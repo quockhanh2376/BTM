@@ -8,6 +8,7 @@ export function pmPrompt(goals: string[]): string {
     `Mỗi task tối đa 5 acceptance. Thẻ bắt buộc có front matter YAML hợp lệ, chuỗi có ': ' đặt trong nháy.`,
     `Định dạng thẻ: id, goal, scope (mảng), acceptance (mảng), done_when.`,
     `Scope chỉ là đường dẫn trần (file, hoặc thư mục kết thúc '/'), không chú thích.`,
+    `acceptance và done_when chỉ mô tả kết quả sản phẩm kiểm tra được; KHÔNG ghi quy trình git (commit, push, git status, nhánh) vì Core tự lo.`,
   ].join('\n');
 }
 
@@ -37,6 +38,7 @@ export function qcPrompt(card: TaskCard, base: string): string {
     `Bạn là QC. Hãy đọc file team/tasks/${card.id}.md (gồm acceptance) để kiểm tra task ${card.id}: ${goal}`,
     `So sánh thay đổi từ base commit ${base} đến HEAD theo acceptance và done_when.`,
     `Phạm vi kiểm tra: ${scope}. Nghiệm thu: ${doneWhen}`,
+    `Core tự commit sau mỗi lượt Dev nên có commit sau base là bình thường; file trong team/reports/ luôn được phép; bỏ qua mọi tiêu chí về git/commit; chỉ chấm sản phẩm theo acceptance.`,
     `Đánh giá code và báo cáo Dev theo tiêu chuẩn nghiệm thu, cấm git commit và push.`,
     `JSON QcResult đặt cuối câu trả lời theo mẫu: {"verdict":"pass"|"fail","bugs":[],"fix":[],"confirm":[]}.`,
   ].join('\n');

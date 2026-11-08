@@ -94,6 +94,10 @@ describe('Prompts', () => {
     expect(prompt).toContain("': '");
     expect(prompt).toMatch(/cấm.*commit.*push/i);
     expect(prompt).toMatch(/đường dẫn trần.*không chú thích/i);
+
+    // Requirements for Task 9d:
+    expect(prompt).toContain('acceptance và done_when chỉ mô tả kết quả sản phẩm kiểm tra được');
+    expect(prompt).toContain('KHÔNG ghi quy trình git (commit, push, git status, nhánh) vì Core tự lo');
   });
 
   it('devPrompt is <= 6 lines, Vietnamese, mentions reading task file with acceptance, reports path, fix notes, merges newlines, forbids git commit and push, and lists allowed commands with restrictions', () => {
@@ -151,6 +155,12 @@ describe('Prompts', () => {
     const lastLine = lines[lines.length - 1];
     expect(lastLine).toContain('JSON QcResult đặt cuối câu trả lời');
     expect(lastLine).toContain('{"verdict":"pass"|"fail"');
+
+    // Requirements for Task 9d:
+    expect(prompt).toContain('Core tự commit sau mỗi lượt Dev nên có commit sau base là bình thường');
+    expect(prompt).toContain('file trong team/reports/ luôn được phép');
+    expect(prompt).toContain('bỏ qua mọi tiêu chí về git/commit');
+    expect(prompt).toContain('chỉ chấm sản phẩm theo acceptance');
   });
 });
 
