@@ -40,6 +40,6 @@ export function qcPrompt(card: TaskCard, base: string): string {
     `Phạm vi kiểm tra: ${scope}. Nghiệm thu: ${doneWhen}`,
     `Core tự commit sau mỗi lượt Dev nên có commit sau base là bình thường; file trong team/reports/ luôn được phép; bỏ qua mọi tiêu chí về git/commit; chỉ chấm sản phẩm theo acceptance.`,
     `Đánh giá code và báo cáo Dev theo tiêu chuẩn nghiệm thu, cấm git commit và push.`,
-    `JSON QcResult đặt cuối câu trả lời theo mẫu: {"verdict":"pass"|"fail","bugs":[],"fix":[],"confirm":[]}.`,
+    `JSON QcResult đặt trong khối \`\`\`json ở cuối câu trả lời theo mẫu: \`\`\`json {"verdict":"pass"|"fail","bugs":[],"fix":[],"confirm":[]} \`\`\`.`,
   ].join('\n');
 }

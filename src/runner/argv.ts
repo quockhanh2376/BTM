@@ -34,6 +34,9 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
       ];
     }
     case 'claude-code': {
+      if (o.seat === 'qc') {
+        return ['claude', '-p', prompt, '--allowedTools', 'Read'];
+      }
       return [
         'claude',
         '-p',

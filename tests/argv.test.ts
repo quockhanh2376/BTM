@@ -111,6 +111,20 @@ describe('Runner Argv', () => {
         'Write',
       ]);
     });
+
+    it('gives claude-code in qc seat only Read tool without acceptEdits, Edit, or Write', () => {
+      const argv = buildArgv('claude-code', 'review task', {
+        ...defaultOpts,
+        seat: 'qc',
+      });
+      expect(argv).toEqual([
+        'claude',
+        '-p',
+        'review task',
+        '--allowedTools',
+        'Read',
+      ]);
+    });
   });
 
   describe('unsupported tool', () => {

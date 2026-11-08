@@ -60,7 +60,7 @@ Mọi thứ đều đạt yêu cầu, sẵn sàng nghiệm thu.
       });
     });
 
-    it('parses JSON inside plain ``` fence without language specifier', () => {
+    it('returns qc_output_invalid for plain ``` fence without language specifier', () => {
       const input = `
 \`\`\`
 {
@@ -74,13 +74,13 @@ Mọi thứ đều đạt yêu cầu, sẵn sàng nghiệm thu.
       const result = parseQcResult(input);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
-        bugs: ['Component does not render'],
-        fix: ['Export component properly'],
+        bugs: [],
+        fix: ['qc_output_invalid'],
         confirm: [],
       });
     });
 
-    it('parses raw JSON embedded in prose without code fence', () => {
+    it('returns qc_output_invalid for raw JSON embedded in prose without code fence', () => {
       const input = `
 Kết quả kiểm tra:
 {
@@ -93,9 +93,9 @@ Cảm ơn bạn.
 `;
       const result = parseQcResult(input);
       expect(result).toEqual<QcResult>({
-        verdict: 'pass',
+        verdict: 'fail',
         bugs: [],
-        fix: [],
+        fix: ['qc_output_invalid'],
         confirm: [],
       });
     });
@@ -383,7 +383,7 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
       });
     });
 
-    it('returns fail when fenced JSON is pass but trailing raw JSON is fail', () => {
+    it('extracts last ```json block ignoring trailing raw text outside fence', () => {
       const input = `
 \`\`\`json
 {
@@ -401,13 +401,24 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
 }
 `;
       const result = parseQcResult(input);
-      expect(result.verdict).toBe('fail');
-      expect(result.bugs).toEqual(['Raw fail bug']);
-      expect(result.fix).toEqual(['Raw fail fix']);
+      expect(result.verdict).toBe('pass');
+      expect(result.bugs).toEqual([]);
+      expect(result.fix).toEqual([]);
     });
 
     it('returns qc_output_invalid without backtracking when last JSON block fails schema validation', () => {
       const input = '{"verdict":"pass"} {"verdict":"invalid"}';
+      const result = parseQcResult(input);
+      expect(result).toEqual<QcResult>({
+        verdict: 'fail',
+        bugs: [],
+        fix: ['qc_output_invalid'],
+        confirm: [],
+      });
+    });
+
+    it('returns qc_output_invalid for cut-off JSON with nested valid JSON', () => {
+      const input = '{"verdict":"fail","nested":{"verdict":"pass"}';
       const result = parseQcResult(input);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
@@ -430,7 +441,7 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
       });
     });
 
-    it('parses valid JSON when prose has an unclosed quote before the JSON block', () => {
+    it('returns qc_output_invalid when prose has raw JSON without code fence', () => {
       const input = `Unclosed " quote in prose before JSON
 {
   "verdict": "pass",
@@ -441,9 +452,9 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
 `;
       const result = parseQcResult(input);
       expect(result).toEqual<QcResult>({
-        verdict: 'pass',
+        verdict: 'fail',
         bugs: [],
-        fix: [],
+        fix: ['qc_output_invalid'],
         confirm: [],
       });
     });

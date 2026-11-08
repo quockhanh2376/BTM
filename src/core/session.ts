@@ -1,4 +1,4 @@
-import { realpathSync } from 'node:fs';
+import { realpathSync, mkdirSync, writeFileSync } from 'node:fs';
 import { relative, isAbsolute, join } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { checkForbiddenEnv } from '../config.ts';
@@ -52,6 +52,31 @@ function isOutOfTurns(store: Store, sessionId: number, cfg: Config, seat: Seat):
     return true;
   }
   return false;
+}
+
+function getWorkingTreeChanges(repo: string): string[] {
+  const out = git(repo, 'status', '--porcelain', '-z', '-uall');
+  if (!out) return [];
+  const tokens = out.split('\0');
+  const files: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const item = tokens[i];
+    if (!item) {
+      i++;
+      continue;
+    }
+    const status = item.slice(0, 2);
+    const path = item.slice(3);
+    if (path) files.push(path);
+    if (status.startsWith('R') || status.startsWith('C')) {
+      i++;
+      const orig = tokens[i];
+      if (orig) files.push(orig);
+    }
+    i++;
+  }
+  return files;
 }
 
 function authorForAgent(agentId: string): { name: string; email: string } {
@@ -212,6 +237,7 @@ async function workOnCards(
       const qcAuthor = authorForAgent(qcAgent);
       const qcTurnId = d.store.startTurn(sessionId, 'qc', qcAgent, card.id);
       const qcPromptText = qcPrompt(card, base);
+      const preQcHead = headSha(d.repo);
       let qcOutput;
       try {
         qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo);
@@ -240,7 +266,42 @@ async function workOnCards(
 
       d.store.endTurn(qcTurnId, 'ok');
 
-      const qcResult = parseQcResult(qcOutput.lastMessage);
+      let qcResult = parseQcResult(qcOutput.lastMessage);
+
+      // Check if QC modified repository (HEAD changed or working tree dirty)
+      const postQcHead = headSha(d.repo);
+      const headChanged = postQcHead !== preQcHead;
+      const workingTreeDirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
+
+      if (headChanged || workingTreeDirty) {
+        qcResult = {
+          verdict: 'fail',
+          bugs: ['qc_modified_repo'],
+          fix: ['qc_modified_repo'],
+          confirm: [],
+        };
+        if (headChanged) {
+          git(d.repo, 'reset', '--hard', preQcHead);
+        }
+        if (workingTreeDirty) {
+          git(d.repo, 'reset', 'HEAD', '--', '.');
+          git(d.repo, 'checkout', '--', '.');
+          git(d.repo, 'clean', '-fd');
+        }
+      }
+
+      // Save QC result to team/reports/<id>-qc.json and commit (author ghế qc)
+      const reportsDir = join(d.repo, 'team', 'reports');
+      mkdirSync(reportsDir, { recursive: true });
+      const qcReportPath = join(reportsDir, `${card.id}-qc.json`);
+      writeFileSync(qcReportPath, JSON.stringify(qcResult, null, 2) + '\n', 'utf8');
+      try {
+        commitAll(d.repo, `${card.id}: qc ${qcResult.verdict}`, qcAuthor);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
+      }
+
       if (qcResult.verdict === 'pass') {
         tasks[card.id] = 'passed';
         break;
@@ -322,6 +383,7 @@ export async function runSession(
 
     const pmTurnId = d.store.startTurn(sessionId, 'pm', pmAgent, null);
     const pmPromptText = pmPrompt(goals);
+    const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
     let pmOutput;
     try {
       pmOutput = await d.runner('pm', pmAgent, pmPromptText, d.repo);
@@ -350,6 +412,32 @@ export async function runSession(
       return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
     }
     d.store.endTurn(pmTurnId, 'ok');
+
+    const postPmStatus = getWorkingTreeChanges(d.repo);
+    const pmChanged = postPmStatus.filter((p) => !prePmStatus.has(p));
+    const pmOutOfScope = pmChanged.filter((p) => !p.startsWith('team/tasks/'));
+    if (pmOutOfScope.length > 0) {
+      git(d.repo, 'reset', 'HEAD', '--', '.');
+      try {
+        git(d.repo, 'add', 'team/tasks');
+      } catch {}
+      if (git(d.repo, 'diff', '--cached', '--name-only').trim()) {
+        const authorString = `${pmAuthor.name} <${pmAuthor.email}>`;
+        git(
+          d.repo,
+          '-c',
+          `user.name=${pmAuthor.name}`,
+          '-c',
+          `user.email=${pmAuthor.email}`,
+          'commit',
+          `--author=${authorString}`,
+          '-m',
+          'PM: define task cards'
+        );
+      }
+      sessionStatus = 'needs_owner';
+      return { status: 'needs_owner', sessionId, tasks, notes: ['pm_out_of_scope'] };
+    }
 
     try {
       commitAll(d.repo, 'PM: define task cards', pmAuthor);

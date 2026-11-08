@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { writeFileSync, mkdirSync, realpathSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 import { loadConfig, type Config, type Seat } from '../src/config.ts';
@@ -153,7 +153,7 @@ describe('Prompts', () => {
     expect(lines[0]).toContain('Hiện thực tính năng');
     expect(lines[2]).toContain('src/a.ts, src/b.ts');
     const lastLine = lines[lines.length - 1];
-    expect(lastLine).toContain('JSON QcResult đặt cuối câu trả lời');
+    expect(lastLine).toContain('JSON QcResult đặt trong khối ```json ở cuối');
     expect(lastLine).toContain('{"verdict":"pass"|"fail"');
 
     // Requirements for Task 9d:
@@ -228,9 +228,16 @@ done_when: app exists
     expect(store.countTurns(1, 'dev')).toBe(1);
     expect(store.countTurns(1, 'qc')).toBe(1);
 
-    // 2 commits on session/1 (PM commit + Dev commit)
+    // 3 commits on session/1 (PM commit + Dev commit + QC commit)
     const log = git(repo, 'log', '--oneline', 'main..session/1').trim().split('\n');
-    expect(log.length).toBe(2);
+    expect(log.length).toBe(3);
+    expect(log[0]).toContain('T-001: qc pass');
+
+    // QC report committed to team/reports/T-001-qc.json
+    const qcReport = JSON.parse(
+      readFileSync(join(repo, 'team', 'reports', 'T-001-qc.json'), 'utf8')
+    );
+    expect(qcReport.verdict).toBe('pass');
 
     store.close();
   });
@@ -266,6 +273,115 @@ done_when: done
     expect(calls.length).toBe(1);
     expect(calls[0].seat).toBe('pm');
     expect(store.countTurns(1)).toBe(1);
+
+    store.close();
+  });
+
+  it('PM edits file outside team/tasks/ -> does not commit them, needs_owner (pm_out_of_scope)', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '// original\n' });
+    const { deps, store } = makeDeps(repo);
+
+    const { runner, calls } = createFakeRunner([
+      (_seat, _agent, _prompt, cwd) => {
+        mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+        writeFileSync(
+          join(cwd, 'team', 'tasks', 'T-001.md'),
+          `---
+id: T-001
+goal: Goal 1
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+        );
+        // PM unauthorized change outside team/tasks/
+        writeFileSync(join(cwd, 'src', 'app.ts'), '// PM modified app.ts!\n');
+        writeFileSync(join(cwd, 'evil.txt'), 'malicious\n');
+      },
+    ]);
+    deps.runner = runner;
+
+    const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+
+    expect(outcome.status).toBe('needs_owner');
+    expect(outcome.notes).toContain('pm_out_of_scope');
+    expect(calls.length).toBe(1);
+
+    // Out-of-scope files must NOT be committed in any git commit
+    const committedFiles = git(repo, 'log', '-1', '--name-only').trim().split('\n');
+    expect(committedFiles).not.toContain('src/app.ts');
+    expect(committedFiles).not.toContain('evil.txt');
+
+    store.close();
+  });
+
+  it('QC modifies repo (dirty working tree or commit) -> QC fail lý do qc_modified_repo, không pass', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
+    const { deps, store } = makeDeps(repo);
+    deps.cfg.turn.max_fix_rounds = 0; // fail immediately on 1 QC failure
+
+    const { runner } = createFakeRunner([
+      // PM
+      (_seat, _agent, _prompt, cwd) => {
+        mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+        writeFileSync(
+          join(cwd, 'team', 'tasks', 'T-001.md'),
+          `---
+id: T-001
+goal: Add hello world
+scope:
+  - src/app.ts
+acceptance:
+  - prints hello
+done_when: app exists
+---
+`
+        );
+      },
+      // Dev
+      (_seat, _agent, _prompt, cwd) => {
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const hello = "world";\n');
+        mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+        writeFileSync(
+          join(cwd, 'team', 'reports', 'T-001-dev.md'),
+          `# Báo cáo Dev T-001
+- Bug: không
+- Cần sửa: không
+- Cần xác nhận: OK
+`
+        );
+      },
+      // QC: returns pass BUT modifies repo (leaves dirty working tree)
+      (_seat, _agent, _prompt, cwd) => {
+        writeFileSync(join(cwd, 'src', 'tampered.ts'), 'qc modified this');
+        return {
+          lastMessage: JSON.stringify({
+            verdict: 'pass',
+            bugs: [],
+            fix: [],
+            confirm: [],
+          }),
+        };
+      },
+    ]);
+    deps.runner = runner;
+
+    const outcome = await runSession(deps, ['Build feature'], { approved: true });
+
+    // Must NOT pass! Must fail because qc_modified_repo
+    expect(outcome.tasks['T-001']).toBe('failed');
+    expect(outcome.status).toBe('needs_owner');
+    expect(outcome.notes[0]).toContain('qc_modified_repo');
+
+    // Report team/reports/T-001-qc.json must exist and record qc_modified_repo
+    const qcReportContent = JSON.parse(
+      readFileSync(join(repo, 'team', 'reports', 'T-001-qc.json'), 'utf8')
+    );
+    expect(qcReportContent.verdict).toBe('fail');
+    expect(qcReportContent.fix).toContain('qc_modified_repo');
 
     store.close();
   });
@@ -933,8 +1049,10 @@ done_when: done
     const outcome = await runSession(deps, ['Goal'], { approved: true });
     expect(outcome.status).toBe('done');
 
-    const authorLine = git(repo, 'log', '-1', '--format=%an <%ae>', 'session/1').trim();
-    expect(authorLine).toBe('custom-dev <custom-dev@btm.local>');
+    const devAuthorLine = git(repo, 'log', '-1', '--format=%an <%ae>', 'session/1~1').trim();
+    expect(devAuthorLine).toBe('custom-dev <custom-dev@btm.local>');
+    const qcAuthorLine = git(repo, 'log', '-1', '--format=%an <%ae>', 'session/1').trim();
+    expect(qcAuthorLine).toBe('jenny <jenny@btm.local>');
 
     store.close();
   });

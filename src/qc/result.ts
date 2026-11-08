@@ -28,44 +28,52 @@ export const QcResultSchema = z.object({
   confirm: ArrayOfStringsSchema,
 });
 
+function parseAndValidate(jsonStr: string): QcResult {
+  try {
+    const raw = JSON.parse(jsonStr);
+    const parsed = QcResultSchema.safeParse(raw);
+    if (!parsed.success) {
+      return createInvalidResult();
+    }
+
+    const data = parsed.data;
+    const verdict: 'pass' | 'fail' =
+      data.verdict === 'pass' && (data.bugs.length > 0 || data.fix.length > 0)
+        ? 'fail'
+        : data.verdict;
+
+    return {
+      verdict,
+      bugs: data.bugs,
+      fix: data.fix,
+      confirm: data.confirm,
+    };
+  } catch {
+    return createInvalidResult();
+  }
+}
+
 export function parseQcResult(text: string): QcResult {
   if (typeof text !== 'string') {
     return createInvalidResult();
   }
 
-  if (text.lastIndexOf('{') > text.lastIndexOf('}')) {
+  const jsonFenceRegex = /```json\s*([\s\S]*?)```/gi;
+  const matches = [...text.matchAll(jsonFenceRegex)];
+
+  if (matches.length > 0) {
+    const lastContent = matches[matches.length - 1][1].trim();
+    return parseAndValidate(lastContent);
+  }
+
+  if (text.includes('```')) {
     return createInvalidResult();
   }
 
-  const last = text.lastIndexOf('}');
-  if (last === -1) {
+  const trimmed = text.trim();
+  if (!trimmed) {
     return createInvalidResult();
   }
 
-  for (let i = text.indexOf('{'); i !== -1 && i < last; i = text.indexOf('{', i + 1)) {
-    try {
-      const raw = JSON.parse(text.slice(i, last + 1));
-      const parsed = QcResultSchema.safeParse(raw);
-      if (!parsed.success) {
-        return createInvalidResult();
-      }
-
-      const data = parsed.data;
-      const verdict: 'pass' | 'fail' =
-        data.verdict === 'pass' && (data.bugs.length > 0 || data.fix.length > 0)
-          ? 'fail'
-          : data.verdict;
-
-      return {
-        verdict,
-        bugs: data.bugs,
-        fix: data.fix,
-        confirm: data.confirm,
-      };
-    } catch {
-      // JSON.parse error, continue searching candidates
-    }
-  }
-
-  return createInvalidResult();
+  return parseAndValidate(trimmed);
 }
