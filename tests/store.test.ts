@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
-import { openStore, type Store } from '../src/store/db.ts';
+import { openStore, type Store, type BoardState, type QueueItem } from '../src/store/db.ts';
 
 describe('Store SQLite', () => {
   describe('in-memory store', () => {
@@ -306,7 +306,14 @@ describe('Store SQLite', () => {
 
       // Old session can be read without crashing
       const oldSession = oldStore.getSession(1);
-      expect(oldSession).toEqual({ id: 1, status: 'awaiting_approval' });
+      expect(oldSession).toEqual({
+        id: 1,
+        goals: ['old goal'],
+        status: 'awaiting_approval',
+        project: null,
+        started_at: '2026-01-01T00:00:00Z',
+        ended_at: null,
+      });
 
       // New session with project can be created and queried
       const s2 = oldStore.createSession(['New goal'], '/srv/agent-projects/proj-new');
@@ -321,6 +328,330 @@ describe('Store SQLite', () => {
 
       oldStore.close();
       rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('DB cũ (schema Kế hoạch 1 không có log_file, task_states, queue) mở được và dùng được các hàm mới', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'btm-old-p1-'));
+      const dbPath = join(tmpDir, 'old-p1.db');
+
+      // Khởi tạo DB với đúng schema Kế hoạch 1 (chưa có turns.log_file, chưa có task_states, chưa có queue)
+      const rawDb = new Database(dbPath);
+      rawDb.exec(`
+        CREATE TABLE active_project (
+          id INTEGER PRIMARY KEY CHECK(id = 1),
+          path TEXT NOT NULL
+        );
+        CREATE TABLE sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project TEXT,
+          goals_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          ended_at TEXT
+        );
+        CREATE TABLE turns (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id INTEGER NOT NULL,
+          seat TEXT NOT NULL,
+          agent TEXT NOT NULL,
+          task_id TEXT,
+          started_at TEXT NOT NULL,
+          ended_at TEXT,
+          result TEXT,
+          error TEXT
+        );
+        CREATE TABLE handoff_failures (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id INTEGER NOT NULL,
+          task_id TEXT NOT NULL,
+          reason TEXT NOT NULL,
+          at TEXT NOT NULL
+        );
+        INSERT INTO sessions (project, goals_json, status, started_at)
+        VALUES ('/srv/agent-projects/legacy', '["legacy goal 1", "legacy goal 2"]', 'running', '2026-11-01T10:00:00.000Z');
+        INSERT INTO turns (session_id, seat, agent, task_id, started_at)
+        VALUES (1, 'dev', 'jacky', 'T-001', '2026-11-01T10:01:00.000Z');
+      `);
+      rawDb.close();
+
+      const store = openStore(dbPath);
+
+      // getSession đọc lại session cũ đầy đủ các trường
+      const sess = store.getSession(1);
+      expect(sess).toEqual({
+        id: 1,
+        goals: ['legacy goal 1', 'legacy goal 2'],
+        status: 'running',
+        project: '/srv/agent-projects/legacy',
+        started_at: '2026-11-01T10:00:00.000Z',
+        ended_at: null,
+      });
+
+      // listTurns lúc đầu có log_file là null
+      const turnsInitial = store.listTurns(1);
+      expect(turnsInitial).toHaveLength(1);
+      expect(turnsInitial[0]).toMatchObject({
+        id: 1,
+        seat: 'dev',
+        agent: 'jacky',
+        task_id: 'T-001',
+        log_file: null,
+      });
+
+      // setTurnLog ghi log_file cho turn đã có
+      store.setTurnLog(1, '/var/log/btm/turn-1.log');
+      const turnsAfterLog = store.listTurns(1);
+      expect(turnsAfterLog[0].log_file).toBe('/var/log/btm/turn-1.log');
+
+      // setTaskState và listTaskStates trên bảng task_states vừa được migrate
+      store.setTaskState(1, 'T-001', 'pending', 0);
+      const states = store.listTaskStates(1);
+      expect(states).toHaveLength(1);
+      expect(states[0].task_id).toBe('T-001');
+      expect(states[0].state).toBe('pending');
+      expect(states[0].fix_rounds).toBe(0);
+
+      // enqueue và nextQueued trên bảng queue vừa được migrate
+      const qId = store.enqueue('dev', 'Fix something');
+      expect(typeof qId).toBe('number');
+      const item = store.nextQueued();
+      expect(item).toMatchObject({
+        id: qId,
+        to: 'dev',
+        text: 'Fix something',
+        status: 'queued',
+      });
+
+      store.close();
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('setTaskState gọi 2 lần cùng task → 1 dòng, state mới (upsert)', () => {
+      const dbPath = createTempDbFile();
+      const store = openStore(dbPath);
+      const sId = store.createSession(['Goal 1']);
+
+      store.setTaskState(sId, 'T-001', 'pending', 0);
+      let states = store.listTaskStates(sId);
+      expect(states).toHaveLength(1);
+      expect(states[0].task_id).toBe('T-001');
+      expect(states[0].state).toBe('pending');
+      expect(states[0].fix_rounds).toBe(0);
+
+      // Gọi lần 2 với cùng task_id T-001 -> cập nhật state thành in_dev, fix_rounds thành 1
+      store.setTaskState(sId, 'T-001', 'in_dev', 1);
+      states = store.listTaskStates(sId);
+      expect(states).toHaveLength(1);
+      expect(states[0].task_id).toBe('T-001');
+      expect(states[0].state).toBe('in_dev');
+      expect(states[0].fix_rounds).toBe(1);
+
+      // Thêm task khác thì tăng số dòng
+      store.setTaskState(sId, 'T-002', 'pending', 0);
+      states = store.listTaskStates(sId);
+      expect(states).toHaveLength(2);
+
+      store.close();
+    });
+
+    it('cancelQueued chỉ hủy queued, không đụng running', () => {
+      const dbPath = createTempDbFile();
+      const store = openStore(dbPath);
+
+      const id1 = store.enqueue('dev', 'command 1');
+      const id2 = store.enqueue('qc', 'command 2');
+      const id3 = store.enqueue('dev', 'command 3');
+
+      // Đặt id2 thành 'running'
+      store.setQueueStatus(id2, 'running');
+
+      // Hủy các mục đang queued
+      const cancelledCount = store.cancelQueued();
+      expect(cancelledCount).toBe(2);
+
+      // Kiểm tra trạng thái từng mục qua listQueue
+      const items = store.listQueue(10);
+      expect(items).toHaveLength(3);
+      const item1 = items.find((i) => i.id === id1);
+      const item2 = items.find((i) => i.id === id2);
+      const item3 = items.find((i) => i.id === id3);
+
+      expect(item1?.status).toBe('cancelled');
+      expect(item2?.status).toBe('running');
+      expect(item3?.status).toBe('cancelled');
+
+      // nextQueued không còn mục nào vì 2 mục bị cancelled, 1 mục running
+      expect(store.nextQueued()).toBeNull();
+
+      store.close();
+    });
+
+    it('nextQueued trả mục cũ nhất (FIFO)', () => {
+      const dbPath = createTempDbFile();
+      const store = openStore(dbPath);
+
+      const id1 = store.enqueue('pm', 'plan A');
+      const id2 = store.enqueue('dev', 'code B');
+      const id3 = store.enqueue('qc', 'test C');
+
+      // Mục cũ nhất phải là id1
+      const first = store.nextQueued();
+      expect(first?.id).toBe(id1);
+      expect(first?.to).toBe('pm');
+      expect(first?.text).toBe('plan A');
+
+      // Khi id1 xong, mục tiếp theo là id2
+      store.setQueueStatus(id1, 'done');
+      const second = store.nextQueued();
+      expect(second?.id).toBe(id2);
+      expect(second?.to).toBe('dev');
+
+      // Khi id2 đang chạy, mục tiếp theo là id3
+      store.setQueueStatus(id2, 'running');
+      const third = store.nextQueued();
+      expect(third?.id).toBe(id3);
+      expect(third?.to).toBe('qc');
+
+      // Khi id3 xong, không còn mục nào
+      store.setQueueStatus(id3, 'done');
+      expect(store.nextQueued()).toBeNull();
+
+      store.close();
+    });
+
+    it('listTurns, listHandoffFailures, listQueue và getSession hoạt động chuẩn xác', () => {
+      const dbPath = createTempDbFile();
+      const store = openStore(dbPath);
+
+      // getSession không tồn tại trả về null
+      expect(store.getSession(999)).toBeNull();
+
+      const sId = store.createSession(['Build lunar module'], '/srv/agent-projects/moon');
+      const t1 = store.startTurn(sId, 'pm', 'elon', null);
+      store.setTurnLog(t1, '/tmp/turn-pm.log');
+      store.endTurn(t1, 'ok');
+
+      const t2 = store.startTurn(sId, 'dev', 'jacky', 'T-001');
+      store.endTurn(t2, 'rejected', 'out of scope');
+
+      store.recordHandoffFailure(sId, 'T-001', 'scope violation');
+
+      const turns = store.listTurns(sId);
+      expect(turns).toHaveLength(2);
+      expect(turns[0]).toMatchObject({
+        id: t1,
+        seat: 'pm',
+        agent: 'elon',
+        task_id: null,
+        result: 'ok',
+        log_file: '/tmp/turn-pm.log',
+      });
+      expect(turns[1]).toMatchObject({
+        id: t2,
+        seat: 'dev',
+        agent: 'jacky',
+        task_id: 'T-001',
+        result: 'rejected',
+        error: 'out of scope',
+        log_file: null,
+      });
+
+      const failures = store.listHandoffFailures(sId);
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        task_id: 'T-001',
+        reason: 'scope violation',
+      });
+
+      const sess = store.getSession(sId);
+      expect(sess).toEqual({
+        id: sId,
+        goals: ['Build lunar module'],
+        status: 'running',
+        project: '/srv/agent-projects/moon',
+        started_at: sess?.started_at,
+        ended_at: null,
+      });
+
+      store.close();
+    });
+
+    it('listQueue(limit) trả mục MỚI NHẤT trước (ORDER BY id DESC LIMIT ?); test 5 mục, limit 2 → 2 mục id lớn nhất', () => {
+      const dbPath = createTempDbFile();
+      const store = openStore(dbPath);
+
+      const id1 = store.enqueue('dev', 'item 1');
+      const id2 = store.enqueue('qc', 'item 2');
+      const id3 = store.enqueue('pm', 'item 3');
+      const id4 = store.enqueue('dev', 'item 4');
+      const id5 = store.enqueue('qc', 'item 5');
+
+      const items = store.listQueue(2);
+      expect(items).toHaveLength(2);
+      expect(items[0].id).toBe(id5);
+      expect(items[1].id).toBe(id4);
+      expect(items[0].text).toBe('item 5');
+      expect(items[1].text).toBe('item 4');
+
+      store.close();
+    });
+
+    it('cách ly session: 2 session, listTaskStates/listTurns/listHandoffFailures của session 1 không chứa dữ liệu session 2', () => {
+      const dbPath = createTempDbFile();
+      const store = openStore(dbPath);
+
+      const s1 = store.createSession(['Goal S1']);
+      const s2 = store.createSession(['Goal S2']);
+
+      // Session 1 data
+      store.setTaskState(s1, 'T-001', 'in_dev', 0);
+      const t1 = store.startTurn(s1, 'dev', 'jacky', 'T-001');
+      store.endTurn(t1, 'ok');
+      store.recordHandoffFailure(s1, 'T-001', 's1 error');
+
+      // Session 2 data
+      store.setTaskState(s2, 'T-002', 'awaiting_qc', 1);
+      const t2 = store.startTurn(s2, 'qc', 'jenny', 'T-002');
+      store.endTurn(t2, 'rejected', 's2 reject');
+      store.recordHandoffFailure(s2, 'T-002', 's2 failure');
+
+      // Session 1 queries must not contain session 2 data
+      const states1 = store.listTaskStates(s1);
+      expect(states1).toHaveLength(1);
+      expect(states1[0].task_id).toBe('T-001');
+      expect(states1.some((st) => st.task_id === 'T-002')).toBe(false);
+
+      const turns1 = store.listTurns(s1);
+      expect(turns1).toHaveLength(1);
+      expect(turns1[0].id).toBe(t1);
+      expect(turns1[0].task_id).toBe('T-001');
+      expect(turns1.some((tr) => tr.id === t2 || tr.task_id === 'T-002')).toBe(false);
+
+      const failures1 = store.listHandoffFailures(s1);
+      expect(failures1).toHaveLength(1);
+      expect(failures1[0].task_id).toBe('T-001');
+      expect(failures1[0].reason).toBe('s1 error');
+      expect(failures1.some((f) => f.task_id === 'T-002' || f.reason === 's2 failure')).toBe(false);
+
+      // Session 2 queries must not contain session 1 data
+      const states2 = store.listTaskStates(s2);
+      expect(states2).toHaveLength(1);
+      expect(states2[0].task_id).toBe('T-002');
+      expect(states2.some((st) => st.task_id === 'T-001')).toBe(false);
+
+      const turns2 = store.listTurns(s2);
+      expect(turns2).toHaveLength(1);
+      expect(turns2[0].id).toBe(t2);
+      expect(turns2[0].task_id).toBe('T-002');
+      expect(turns2.some((tr) => tr.id === t1 || tr.task_id === 'T-001')).toBe(false);
+
+      const failures2 = store.listHandoffFailures(s2);
+      expect(failures2).toHaveLength(1);
+      expect(failures2[0].task_id).toBe('T-002');
+      expect(failures2[0].reason).toBe('s2 failure');
+      expect(failures2.some((f) => f.task_id === 'T-001' || f.reason === 's1 error')).toBe(false);
+
+      store.close();
     });
   });
 });

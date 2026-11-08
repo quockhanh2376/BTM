@@ -1,0 +1,2 @@
+Cần xác nhận: [db.ts:267](/srv/agent-projects/btm/src/store/db.ts:267) `listQueue(limit)` lấy các mục cũ nhất, kể cả `done/cancelled`; khi lịch sử đủ `limit`, lệnh mới sẽ không hiện. Dashboard cần hàng đợi hiện tại hay lịch sử mới nhất?
+Cần sửa: [store.test.ts:441](/srv/agent-projects/btm/tests/store.test.ts:441) thiếu test cách ly session cho `listTaskStates/listTurns/listHandoffFailures` và test `listQueue` thực sự giới hạn số dòng; hiện bỏ `WHERE session_id` hoặc `LIMIT` vẫn có thể pass.
