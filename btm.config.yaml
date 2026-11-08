@@ -30,21 +30,21 @@ turn:
   max_fix_rounds: 2                    # quá số vòng sửa thì dừng hỏi anh
 
 seats:                                 # ghế -> agent đang ngồi; anh đổi được trên dashboard
-  pm:  david
-  dev: vic
-  qc:  qeen
+  pm:  elon
+  dev: jacky
+  qc:  jenny
 
 agents:
-  david:
+  elon:
     tool: claude-code
     command: claude
     can_sit: [pm, qc]                  # ghế agent này được phép ngồi
-  vic:
+  jacky:
     tool: antigravity-cli
     command: agy
     needs_pty: true                    # agy không in output khi không phải TTY
     can_sit: [dev]
-  qeen:
+  jenny:
     tool: codex-cli
     command: codex
     can_sit: [qc, dev]

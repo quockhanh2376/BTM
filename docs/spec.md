@@ -24,9 +24,9 @@ v1.0 ưu tiên: **an toàn, chạy tuần tự, dễ quan sát**. Tốc độ v�
 
 | Ghế | Mặc định | Công cụ | Nhiệm vụ |
 |---|---|---|---|
-| PM | David | Claude Code (`claude -p`) | Đọc spec, đề xuất thay đổi (OpenSpec), tách task, viết prompt, đọc báo cáo, ghi nhật ký, cập nhật trí nhớ, commit khi đạt |
-| Dev | Vic | Antigravity CLI (`agy -p`) | Hiện thực đúng thẻ task, thay đổi tối thiểu, commit, nộp báo cáo Dev |
-| QC | Qeen | Codex CLI (`codex exec`) | Review diff, chạy unit test / TDD / E2E, đối chiếu tiêu chí nghiệm thu, nộp kết quả QC |
+| PM | Elon | Claude Code (`claude -p`) | Đọc spec, đề xuất thay đổi (OpenSpec), tách task, viết prompt, đọc báo cáo, ghi nhật ký, cập nhật trí nhớ, commit khi đạt |
+| Dev | Jacky | Antigravity CLI (`agy -p`) | Hiện thực đúng thẻ task, thay đổi tối thiểu, commit, nộp báo cáo Dev |
+| QC | Jenny | Codex CLI (`codex exec`) | Review diff, chạy unit test / TDD / E2E, đối chiếu tiêu chí nghiệm thu, nộp kết quả QC |
 
 Luật từng ghế viết một lần trong `team/roles/{pm,dev,qc}.md`. File riêng của từng công cụ (`CLAUDE.md`, `AGENTS.md`, file rules của Antigravity) chỉ trỏ về đó.
 
@@ -55,7 +55,7 @@ Luật từng ghế viết một lần trong `team/roles/{pm,dev,qc}.md`. File r
               SQLite (vận hành)   +   Git repo của project (nội dung)
 ```
 
-- **Core quyết định ai chạy**, PM chỉ trả về quyết định có cấu trúc (giao task nào, cho ghế nào, prompt ở file nào). PM không tự gọi Vic hay Qeen.
+- **Core quyết định ai chạy**, PM chỉ trả về quyết định có cấu trúc (giao task nào, cho ghế nào, prompt ở file nào). PM không tự gọi Jacky hay Jenny.
 - **Runner**: `child_process` cho `claude` và `codex`; `node-pty` cho `agy` (agy không in output khi stdout không phải TTY, và headless phải cấu hình quyền rõ ràng, nếu không thao tác bị từ chối ngầm mà vẫn báo thành công). Mỗi lượt có timeout; quá giờ thì dừng cả nhóm tiến trình.
 - **Không tin chữ "done"**: sau mỗi lượt Core kiểm tra bằng chứng thật (commit tồn tại, diff, file trong scope, build).
 
@@ -63,7 +63,7 @@ Luật từng ghế viết một lần trong `team/roles/{pm,dev,qc}.md`. File r
 
 ### 6.1 Lượt 0 – khởi tạo project
 
-1. Anh đặt tên project. PM tạo `/srv/agent-projects/<tên>`, `git init`, `openspec init`, tạo `team/`, `docs/`, file vai trò, `.gitignore`, commit "init".
+1. Anh đặt tên project (project thử nghiệm "Go to the Moon" tại `/srv/agent-projects/go-to-the-moon`). PM tạo `/srv/agent-projects/<tên>`, `git init`, `openspec init`, tạo `team/`, `docs/`, file vai trò, `.gitignore`, commit "init".
 2. Core ghi project active vào SQLite (bảng `active_project`). Không có project active hợp lệ thì Runner từ chối chạy.
 
 ### 6.2 Một phiên
@@ -80,7 +80,7 @@ Luật từng ghế viết một lần trong `team/roles/{pm,dev,qc}.md`. File r
 
 ### 6.3 Lệnh trực tiếp từ khung lệnh
 
-- Mặc định gửi cho PM. Anh có thể gửi thẳng cho Dev hoặc QC (ví dụ "Qeen check phần A của Project B").
+- Mặc định gửi cho PM. Anh có thể gửi thẳng cho Dev hoặc QC (ví dụ "Jenny check phần A của Project B").
 - Lệnh trực tiếp **xếp hàng sau lượt đang chạy**, không chạy chồng; PM vẫn ghi vào nhật ký.
 
 ## 7. Hợp đồng bàn giao
