@@ -33,6 +33,7 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
         '-o',
         o.outFile,
         ...imageArgs,
+        '--',
         prompt,
       ];
     }

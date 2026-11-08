@@ -69,6 +69,7 @@ describe('Runner Argv', () => {
         'read-only',
         '-o',
         '/tmp/qc.out',
+        '--',
         'review task',
       ]);
     });
@@ -86,6 +87,7 @@ describe('Runner Argv', () => {
         'workspace-write',
         '-o',
         '/tmp/dev.out',
+        '--',
         'implement task',
       ]);
     });
@@ -108,8 +110,23 @@ describe('Runner Argv', () => {
         'team/inbox/N-1.png',
         '-i',
         'team/inbox/N-2.jpg',
+        '--',
         'review task with image',
       ]);
+    });
+
+    it('always places -- right before prompt (with and without images)', () => {
+      const prompt = 'review task';
+      const withoutImages = buildArgv('codex-cli', prompt, defaultOpts);
+      expect(withoutImages[withoutImages.length - 1]).toBe(prompt);
+      expect(withoutImages[withoutImages.length - 2]).toBe('--');
+
+      const withImages = buildArgv('codex-cli', prompt, {
+        ...defaultOpts,
+        images: ['team/inbox/N-1.png', 'team/inbox/N-2.jpg'],
+      });
+      expect(withImages[withImages.length - 1]).toBe(prompt);
+      expect(withImages[withImages.length - 2]).toBe('--');
     });
   });
 
