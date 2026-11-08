@@ -98,7 +98,7 @@ export function createHost(d: HostDeps): HostApi & {
   }
 
   async function processQueue(): Promise<void> {
-    if (isBusy) {
+    if (isBusy || isStopping) {
       return;
     }
 
@@ -129,20 +129,8 @@ export function createHost(d: HostDeps): HostApi & {
         return;
       }
 
-      let latestSession = d.store.getLatestSession(undefined, activeProject);
-      if (!latestSession) {
-        const anyLatest = d.store.getLatestSession();
-        if (anyLatest && (!anyLatest.project || anyLatest.project === activeProject)) {
-          latestSession = anyLatest;
-        }
-      }
-
-      if (latestSession && (latestSession.status === 'running' || latestSession.status === 'awaiting_approval')) {
-        sessionId = latestSession.id;
-      } else {
-        sessionId = d.store.createSession(['Direct command'], activeProject);
-        createdSessionForTurn = true;
-      }
+      sessionId = d.store.createSession(['Direct command'], activeProject);
+      createdSessionForTurn = true;
 
       const taskId = `CMD-${item.id}`;
       const agent = d.cfg.seats[item.to];
@@ -156,6 +144,11 @@ export function createHost(d: HostDeps): HostApi & {
       let turnResult: 'done' | 'error' = 'error';
 
       if (item.to === 'dev') {
+        const author = { name: agent, email: `${agent}@btm.local` };
+        try {
+          commitAll(activeProject, `checkpoint before cmd ${item.id}`, author);
+        } catch {}
+
         const prompt = directPrompt('dev', item.text, d.cfg.runner.agy_allow_commands);
         const output = await d.runner('dev', agent, prompt, activeProject, logFile, {
           signal: abortController.signal,
@@ -182,16 +175,27 @@ export function createHost(d: HostDeps): HostApi & {
           d.store.setQueueStatus(item.id, 'done');
           turnResult = 'error';
         } else {
-          d.store.endTurn(turnId, 'ok');
+          let commitError: string | null = null;
           const commitMsg = `cmd ${item.id}: ${item.text.slice(0, 60)}`;
           const author = { name: agent, email: `${agent}@btm.local` };
           try {
             commitAll(activeProject, commitMsg, author);
-          } catch {
-            // commitAll failure should not crash host
+          } catch (err: any) {
+            commitError = err?.message || String(err);
           }
-          d.store.setQueueStatus(item.id, 'done');
-          turnResult = 'done';
+
+          if (commitError) {
+            d.store.endTurn(turnId, 'error', `commit_failed: ${commitError}`);
+            try {
+              appendFileSync(logFile, `\ncommitAll failed: ${commitError}\n`);
+            } catch {}
+            d.store.setQueueStatus(item.id, 'done');
+            turnResult = 'error';
+          } else {
+            d.store.endTurn(turnId, 'ok');
+            d.store.setQueueStatus(item.id, 'done');
+            turnResult = 'done';
+          }
         }
       } else if (item.to === 'qc') {
         const prompt = directPrompt('qc', item.text, d.cfg.runner.agy_allow_commands);
@@ -435,6 +439,12 @@ export function createHost(d: HostDeps): HostApi & {
       return { ok: false, error: 'Phiên đang chạy từ terminal, dừng bằng Ctrl-C' };
     }
 
+    const activeProject = d.store.getActiveProject();
+    const latest = d.store.getLatestSession(undefined, activeProject ?? undefined);
+    if (latest && latest.status === 'awaiting_approval') {
+      d.store.setSessionStatus(latest.id, 'stopped');
+    }
+
     if (!isBusy && !isStopping) {
       d.store.cancelQueued();
       notifyIfIdle();
@@ -462,8 +472,6 @@ export function createHost(d: HostDeps): HostApi & {
       currentTurnId = null;
     }
 
-    const activeProject = d.store.getActiveProject();
-    const latest = d.store.getLatestSession(undefined, activeProject ?? undefined);
     if (latest && (latest.status === 'running' || latest.status === 'awaiting_approval')) {
       d.store.setSessionStatus(latest.id, 'stopped');
       const turns = d.store.listTurns(latest.id);
@@ -482,6 +490,10 @@ export function createHost(d: HostDeps): HostApi & {
     to: Seat,
     text: string
   ): Promise<{ ok: boolean; id?: number; error?: string }> {
+    if (isStopping) {
+      return { ok: false, error: 'Đang dừng' };
+    }
+
     if (to !== 'pm' && to !== 'dev' && to !== 'qc') {
       return { ok: false, error: 'Người nhận không hợp lệ' };
     }

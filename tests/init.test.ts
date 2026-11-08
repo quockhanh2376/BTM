@@ -2,11 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { initProject } from '../src/project/init.ts';
-import { main, serve } from '../src/cli.ts';
+import { main, serve, acquireLock } from '../src/cli.ts';
 import { git, headSha, commitAll } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
 import * as storeModule from '../src/store/db.ts';
@@ -590,6 +591,51 @@ runner:
     expect(existsSync(lockPath)).toBe(false);
   });
 
+  it('acquireLock: ghi pid vào file tạm cùng thư mục rồi fs.linkSync (atomic), xóa tmp; pid chết → unlink rồi link lại', () => {
+    const testDir = mkdtempSync(join(tmpdir(), 'btm-lock-test-'));
+    const lockPath = join(testDir, 'btm.lock');
+    const linkSyncSpy = vi.spyOn(fs, 'linkSync');
+
+    // 1. Khóa lần đầu: linkSync được gọi với file tạm cùng thư mục
+    const release1 = acquireLock(testDir);
+    expect(release1).toBeTypeOf('function');
+    expect(linkSyncSpy).toHaveBeenCalled();
+    const [tmpUsed, targetLock] = linkSyncSpy.mock.calls[0];
+    expect(targetLock).toBe(lockPath);
+    expect(String(tmpUsed)).toMatch(/btm\.lock\.tmp\./);
+    expect(String(tmpUsed).startsWith(testDir)).toBe(true);
+    // File tạm phải được xóa
+    expect(existsSync(String(tmpUsed))).toBe(false);
+    // Lock file chứa PID hiện tại
+    expect(existsSync(lockPath)).toBe(true);
+    expect(readFileSync(lockPath, 'utf8').trim()).toBe(String(process.pid));
+
+    // Khóa lại khi PID còn sống → null
+    const failAcquire = acquireLock(testDir);
+    expect(failAcquire).toBeNull();
+
+    // Nhả khóa
+    release1!();
+    expect(existsSync(lockPath)).toBe(false);
+
+    // 2. Lock tồn tại với PID chết
+    writeFileSync(lockPath, '99999999');
+    linkSyncSpy.mockClear();
+
+    const unlinkSyncSpy = vi.spyOn(fs, 'unlinkSync');
+    const release2 = acquireLock(testDir);
+    expect(release2).toBeTypeOf('function');
+    // Phải unlink lock chết rồi linkSync lại
+    expect(unlinkSyncSpy).toHaveBeenCalledWith(lockPath);
+    expect(linkSyncSpy).toHaveBeenCalled();
+    expect(readFileSync(lockPath, 'utf8').trim()).toBe(String(process.pid));
+
+    release2!();
+    expect(existsSync(lockPath)).toBe(false);
+    linkSyncSpy.mockRestore();
+    unlinkSyncSpy.mockRestore();
+  });
+
   it('btm serve với env có OPENAI_API_KEY → exit 2', async () => {
     const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const exitCode = await main(
@@ -807,6 +853,13 @@ runner:
 
     expect(server.listening).toBe(true);
 
+    let serverCloseInitiatedTime = 0;
+    const origServerClose = server.close.bind(server);
+    server.close = (cb?: any) => {
+      serverCloseInitiatedTime = Date.now();
+      return origServerClose(cb);
+    };
+
     const projPath = initProject(tmpRoot, 'slow-proj', repoTemplates);
     capturedStore.setActiveProject(projPath);
 
@@ -826,6 +879,8 @@ runner:
 
     expect(runnerSettled).toBe(true);
     expect(storeClosed).toBe(true);
+    expect(serverCloseInitiatedTime).toBeGreaterThan(0);
+    expect(serverCloseInitiatedTime).toBeLessThanOrEqual(runnerSettleTime);
     expect(storeCloseTime).toBeGreaterThanOrEqual(runnerSettleTime);
     expect(server.listening).toBe(false);
     expect(exitSpy).toHaveBeenCalledWith(0);

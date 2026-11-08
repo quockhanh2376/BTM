@@ -2,7 +2,7 @@
 import { parseArgs } from 'node:util';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openSync, writeSync, closeSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import fs, { openSync, writeSync, closeSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, linkSync } from 'node:fs';
 import type http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import Database from 'better-sqlite3';
@@ -130,6 +130,14 @@ export async function serve(
     if (isShuttingDown) return;
     isShuttingDown = true;
 
+    clearInterval(tickTimer);
+    process.removeListener('SIGINT', sigListener);
+    process.removeListener('SIGTERM', sigListener);
+
+    const closeServerPromise = new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+
     try {
       await host.stop();
     } catch {}
@@ -140,13 +148,7 @@ export async function serve(
       } catch {}
     }
 
-    clearInterval(tickTimer);
-    process.removeListener('SIGINT', sigListener);
-    process.removeListener('SIGTERM', sigListener);
-
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
-    });
+    await closeServerPromise;
     closeStore();
     process.exit(0);
   };
@@ -162,7 +164,9 @@ export async function serve(
     clearInterval(tickTimer);
     process.removeListener('SIGINT', sigListener);
     process.removeListener('SIGTERM', sigListener);
-    closeStore();
+    if (!isShuttingDown) {
+      closeStore();
+    }
   });
 
   return server;
@@ -172,54 +176,78 @@ export function acquireLock(dataDir: string): (() => void) | null {
   const lockPath = join(dataDir, 'btm.lock');
   mkdirSync(dataDir, { recursive: true });
 
-  let fd: number | null = null;
-  try {
-    fd = openSync(lockPath, 'wx');
-    writeSync(fd, String(process.pid));
-    closeSync(fd);
-    fd = null;
-  } catch (err: any) {
-    if (err?.code === 'EEXIST') {
-      let isAlive = false;
-      let existingPid: number | null = null;
+  const tryCreateLock = (): boolean => {
+    const tmpPath = join(
+      dataDir,
+      `btm.lock.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`
+    );
+    try {
+      writeFileSync(tmpPath, String(process.pid));
+      fs.linkSync(tmpPath, lockPath);
       try {
-        const content = readFileSync(lockPath, 'utf8').trim();
-        existingPid = parseInt(content, 10);
-        if (!isNaN(existingPid)) {
-          process.kill(existingPid, 0);
-          isAlive = true;
-        }
-      } catch (killErr: any) {
-        if (killErr?.code === 'EPERM') {
-          isAlive = true;
-        } else if (killErr?.code === 'ESRCH') {
-          isAlive = false;
-        }
-      }
-
-      if (isAlive) {
-        return null;
-      }
-
-      // pid chết → ghi đè
+        fs.unlinkSync(tmpPath);
+      } catch {}
+      return true;
+    } catch (err: any) {
       try {
-        writeFileSync(lockPath, String(process.pid));
-      } catch {
-        return null;
+        fs.unlinkSync(tmpPath);
+      } catch {}
+      if (err?.code === 'EEXIST') {
+        return false;
       }
-    } else {
       throw err;
+    }
+  };
+
+  if (tryCreateLock()) {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      try {
+        fs.unlinkSync(lockPath);
+      } catch {}
+    };
+  }
+
+  let isAlive = false;
+  let existingPid: number | null = null;
+  try {
+    const content = readFileSync(lockPath, 'utf8').trim();
+    existingPid = parseInt(content, 10);
+    if (!isNaN(existingPid)) {
+      process.kill(existingPid, 0);
+      isAlive = true;
+    }
+  } catch (killErr: any) {
+    if (killErr?.code === 'EPERM') {
+      isAlive = true;
+    } else if (killErr?.code === 'ESRCH') {
+      isAlive = false;
     }
   }
 
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    try {
-      unlinkSync(lockPath);
-    } catch {}
-  };
+  if (isAlive) {
+    return null;
+  }
+
+  // pid chết → unlink rồi thử link lại một lần
+  try {
+    fs.unlinkSync(lockPath);
+  } catch {}
+
+  if (tryCreateLock()) {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      try {
+        fs.unlinkSync(lockPath);
+      } catch {}
+    };
+  }
+
+  return null;
 }
 
 export async function main(

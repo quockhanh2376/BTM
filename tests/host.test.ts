@@ -9,6 +9,7 @@ import { tmpRepo } from './helpers.ts';
 import type { Runner, TurnOutput } from '../src/runner/run.ts';
 import { directPrompt } from '../src/core/prompts.ts';
 import { git } from '../src/git.ts';
+import * as gitModule from '../src/git.ts';
 
 function deferred<T>() {
   let resolve!: (val: T | PromiseLike<T>) => void;
@@ -771,6 +772,241 @@ done_when: done
     const approveRes = await host.approve();
     expect(approveRes.ok).toBe(false);
     expect(approveRes.error).toBeDefined();
+  });
+
+  it('stop() khi phiên của project active đang awaiting_approval → đặt "stopped", approve sau đó báo không có phiên chờ duyệt', async () => {
+    const sId = store.createSession(['Plan awaiting goal'], repoDir);
+    store.setSessionStatus(sId, 'awaiting_approval');
+
+    const host = createHost({
+      cfg,
+      store,
+      runner: vi.fn(),
+      logDir,
+      dataDir,
+      env: {},
+    });
+
+    expect(host.busy()).toBe(false);
+
+    // Gọi stop()
+    const stopRes = await host.stop();
+    expect(stopRes.ok).toBe(true);
+
+    // Phiên của active project phải được đặt thành 'stopped'
+    const session = store.getSession(sId);
+    expect(session?.status).toBe('stopped');
+
+    // approve sau đó báo lỗi không có phiên chờ duyệt
+    const approveRes = await host.approve();
+    expect(approveRes.ok).toBe(false);
+    expect(approveRes.error).toMatch(/không có phiên chờ duyệt/i);
+  });
+
+  it('khi isStopping: command() trả {ok:false,error:"Đang dừng"} và tick() không chạy gì', async () => {
+    const runnerStarted = deferred<void>();
+    const runnerFinished = deferred<void>();
+
+    let callCount = 0;
+    const mockRunner: Runner = vi.fn().mockImplementation(
+      async (_seat, _agent, _prompt, _cwd, _logFile, opts) => {
+        callCount++;
+        if (callCount === 1) {
+          runnerStarted.resolve();
+          return new Promise<TurnOutput>((resolve) => {
+            opts?.signal?.addEventListener('abort', () => {
+              setTimeout(() => {
+                runnerFinished.resolve();
+                resolve({
+                  exitCode: 1,
+                  timedOut: false,
+                  durationMs: 20,
+                  output: 'aborted',
+                  lastMessage: 'aborted',
+                });
+              }, 50);
+            });
+          });
+        }
+        return {
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 10,
+          output: 'done',
+          lastMessage: 'done',
+        };
+      }
+    );
+
+    const host = createHost({
+      cfg,
+      store,
+      runner: mockRunner,
+      logDir,
+      dataDir,
+      env: {},
+    });
+
+    await host.command('dev', 'Lệnh đầu tiên');
+    await runnerStarted.promise;
+
+    // Bắt đầu stop()
+    const stopRes = await host.stop();
+    expect(stopRes.ok).toBe(true);
+
+    // Trong khi đang dừng (isStopping = true)
+    const cmdDevRes = await host.command('dev', 'Lệnh trong khi dừng');
+    expect(cmdDevRes).toEqual({ ok: false, error: 'Đang dừng' });
+
+    const cmdPmRes = await host.command('pm', 'Lệnh PM trong khi dừng');
+    expect(cmdPmRes).toEqual({ ok: false, error: 'Đang dừng' });
+
+    // Đưa 1 item vào hàng đợi bằng tay qua store để kiểm tra tick() không chạy
+    const manualQueueId = store.enqueue('qc', 'Manual queued item');
+    await host.tick();
+    const queuedItem = store.listQueue(10).find((q) => q.id === manualQueueId);
+    expect(queuedItem?.status).toBe('queued');
+
+    // Chờ hoàn tất stop
+    await runnerFinished.promise;
+    await host.whenIdle();
+  });
+
+  it('lượt trực tiếp KHÔNG dùng lại phiên awaiting_approval; tạo phiên riêng 1 lượt', async () => {
+    // Tạo 1 phiên awaiting_approval của active project
+    const awaitingSessionId = store.createSession(['Planning goals'], repoDir);
+    store.setSessionStatus(awaitingSessionId, 'awaiting_approval');
+
+    const mockRunner: Runner = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      timedOut: false,
+      durationMs: 15,
+      output: 'done',
+      lastMessage: 'done',
+    });
+
+    const host = createHost({
+      cfg,
+      store,
+      runner: mockRunner,
+      logDir,
+      dataDir,
+      env: {},
+    });
+
+    const cmdRes = await host.command('dev', 'Lệnh trực tiếp độc lập');
+    expect(cmdRes.ok).toBe(true);
+
+    await host.whenIdle();
+
+    // 1. Phiên awaiting_approval cũ vẫn giữ nguyên trạng thái awaiting_approval
+    const awaitingSession = store.getSession(awaitingSessionId);
+    expect(awaitingSession?.status).toBe('awaiting_approval');
+    const awaitingTurns = store.listTurns(awaitingSessionId);
+    expect(awaitingTurns.length).toBe(0);
+
+    // 2. Lượt trực tiếp tạo phiên riêng biệt (id khác)
+    const latestSession = store.getLatestSession(undefined, repoDir);
+    expect(latestSession).toBeDefined();
+    expect(latestSession?.id).not.toBe(awaitingSessionId);
+    expect(latestSession?.status).toBe('done');
+
+    // 3. Phiên riêng chỉ có 1 lượt
+    const turns = store.listTurns(latestSession!.id);
+    expect(turns.length).toBe(1);
+    expect(turns[0].task_id).toBe(`CMD-${cmdRes.id}`);
+  });
+
+  it('dev trực tiếp: commitAll checkpoint "checkpoint before cmd <id>" TRƯỚC khi chạy runner (nếu working tree bẩn)', async () => {
+    // Tạo working tree bẩn trong repo
+    writeFileSync(join(repoDir, 'dirty.txt'), 'dirty content before cmd');
+
+    let commitAtRunnerStart = '';
+    const mockRunner: Runner = vi.fn().mockImplementation(async () => {
+      // Đọc commit mới nhất ngay khi runner bắt đầu chạy
+      commitAtRunnerStart = git(repoDir, 'log', '-n', '1', '--format=%s').trim();
+      return {
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 10,
+        output: 'dev done',
+        lastMessage: 'dev done',
+      };
+    });
+
+    const host = createHost({
+      cfg,
+      store,
+      runner: mockRunner,
+      logDir,
+      dataDir,
+      env: {},
+    });
+
+    const cmdRes = await host.command('dev', 'Lệnh dev có dirty tree');
+    expect(cmdRes.ok).toBe(true);
+
+    await host.whenIdle();
+
+    expect(commitAtRunnerStart).toBe(`checkpoint before cmd ${cmdRes.id}`);
+  });
+
+  it('commitAll lỗi sau lượt trực tiếp → lượt "error", queue "done", phiên "error", trả lỗi lên log, không báo thành công', async () => {
+    const origCommitAll = gitModule.commitAll;
+    const commitSpy = vi.spyOn(gitModule, 'commitAll').mockImplementation((repo, msg, author) => {
+      if (msg.startsWith('cmd ')) {
+        throw new Error('Simulated git commit error after runner');
+      }
+      return origCommitAll(repo, msg, author);
+    });
+
+    try {
+      const mockRunner: Runner = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 10,
+        output: 'code changes done',
+        lastMessage: 'code changes done',
+      });
+
+      const host = createHost({
+        cfg,
+        store,
+        runner: mockRunner,
+        logDir,
+        dataDir,
+        env: {},
+      });
+
+      const cmdRes = await host.command('dev', 'Lệnh gây lỗi commitAll');
+      expect(cmdRes.ok).toBe(true);
+
+      await host.whenIdle();
+
+      // 1. Queue status phải là 'done'
+      const q = store.listQueue(10);
+      const qItem = q.find((it) => it.id === cmdRes.id);
+      expect(qItem?.status).toBe('done');
+
+      // 2. Lượt phải là 'error'
+      const latestSession = store.getLatestSession(undefined, repoDir);
+      expect(latestSession).toBeDefined();
+      const turns = store.listTurns(latestSession!.id);
+      expect(turns.length).toBe(1);
+      const turn = turns[0];
+      expect(turn.result).toBe('error');
+      expect(turn.error).toMatch(/commit/i);
+
+      // 3. Phiên phải là 'error' (không báo thành công)
+      expect(latestSession?.status).toBe('error');
+
+      // 4. Lỗi phải được ghi vào log của lượt
+      expect(turn.log_file).toBeDefined();
+      const logContent = readFileSync(turn.log_file!, 'utf8');
+      expect(logContent).toMatch(/commit/i);
+    } finally {
+      commitSpy.mockRestore();
+    }
   });
 
   it('stop giữa lượt Dev trực tiếp → phiên giữ "stopped", không ghi đè thành "error"', async () => {
