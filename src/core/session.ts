@@ -61,6 +61,180 @@ function authorForAgent(agentId: string): { name: string; email: string } {
   };
 }
 
+function loadCards(repo: string): TaskCard[] {
+  const tasksDir = join(repo, 'team', 'tasks');
+  const cards = loadTaskCards(tasksDir);
+  if (cards.length === 0) {
+    throw new CardError('No task cards created by PM');
+  }
+  return cards;
+}
+
+async function workOnCards(
+  d: SessionDeps,
+  sessionId: number,
+  cards: TaskCard[],
+  tasks: Record<string, TaskState>
+): Promise<SessionOutcome> {
+  for (const card of cards) {
+    const base = headSha(d.repo);
+    let fixNotes: string[] = [];
+    let fixRounds = 0;
+    const coders = new Set<string>();
+
+    while (true) {
+      const devAgent = d.cfg.seats.dev;
+      const devAuthor = authorForAgent(devAgent);
+      coders.add(devAgent);
+
+      if (isOutOfTurns(d.store, sessionId, d.cfg, 'dev')) {
+        return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
+      }
+
+      const devTurnId = d.store.startTurn(sessionId, 'dev', devAgent, card.id);
+      const devPromptText = devPrompt(card, fixNotes);
+      let devOutput;
+      try {
+        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        d.store.endTurn(devTurnId, 'error', reason);
+        try {
+          commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
+        } catch {
+          // commitAll error: keep needs_owner, do not throw
+        }
+        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+      }
+
+      if (devOutput.timedOut || devOutput.exitCode !== 0) {
+        const result: TurnResult = devOutput.timedOut ? 'timeout' : 'error';
+        const reason = devOutput.timedOut ? 'timeout' : `exit_${devOutput.exitCode}`;
+        d.store.endTurn(devTurnId, result, reason);
+        try {
+          commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
+        } catch {
+          // commitAll error: keep needs_owner, do not throw
+        }
+        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+      }
+
+      const devText = (devOutput.lastMessage || '') + ' ' + (devOutput.output || '');
+      if (devText.includes('BLOCKED')) {
+        d.store.endTurn(devTurnId, 'ok');
+        try {
+          commitAll(d.repo, `${card.id}: blocked`, devAuthor);
+        } catch {
+          // commitAll error: keep needs_owner, do not throw
+        }
+        tasks[card.id] = 'blocked';
+        return { status: 'needs_owner', sessionId, tasks, notes: ['Dev reported BLOCKED'] };
+      }
+
+      d.store.endTurn(devTurnId, 'ok');
+      try {
+        commitAll(d.repo, `${card.id}: dev implementation`, devAuthor);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
+      }
+
+      const gateResult = runGate(d.repo, card, base, d.cfg.gate.commands);
+      if (!gateResult.ok) {
+        d.store.endTurn(devTurnId, 'rejected', gateResult.reasons.join('; '));
+        for (const reason of gateResult.reasons) {
+          d.store.recordHandoffFailure(sessionId, card.id, reason);
+        }
+        fixNotes = [...gateResult.reasons];
+        fixRounds++;
+        if (fixRounds > d.cfg.turn.max_fix_rounds) {
+          tasks[card.id] = 'failed';
+          return {
+            status: 'needs_owner',
+            sessionId,
+            tasks,
+            notes: [
+              `Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${gateResult.reasons.join(', ')}`,
+            ],
+          };
+        }
+        continue;
+      }
+
+      // Rule 8: coder_cannot_qc_same_task
+      const qcAgent = d.cfg.seats.qc;
+      if (d.cfg.rules.coder_cannot_qc_same_task && coders.has(qcAgent)) {
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: [`Seat 'qc' is occupied by '${qcAgent}', who also coded task '${card.id}'`],
+        };
+      }
+
+      if (isOutOfTurns(d.store, sessionId, d.cfg, 'qc')) {
+        return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
+      }
+
+      const qcAuthor = authorForAgent(qcAgent);
+      const qcTurnId = d.store.startTurn(sessionId, 'qc', qcAgent, card.id);
+      const qcPromptText = qcPrompt(card, base);
+      let qcOutput;
+      try {
+        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        d.store.endTurn(qcTurnId, 'error', reason);
+        try {
+          commitAll(d.repo, `WIP ${card.id}: ${reason}`, qcAuthor);
+        } catch {
+          // commitAll error: keep needs_owner, do not throw
+        }
+        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+      }
+
+      if (qcOutput.timedOut || qcOutput.exitCode !== 0) {
+        const result: TurnResult = qcOutput.timedOut ? 'timeout' : 'error';
+        const reason = qcOutput.timedOut ? 'timeout' : `exit_${qcOutput.exitCode}`;
+        d.store.endTurn(qcTurnId, result, reason);
+        try {
+          commitAll(d.repo, `WIP ${card.id}: ${reason}`, qcAuthor);
+        } catch {
+          // commitAll error: keep needs_owner, do not throw
+        }
+        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+      }
+
+      d.store.endTurn(qcTurnId, 'ok');
+
+      const qcResult = parseQcResult(qcOutput.lastMessage);
+      if (qcResult.verdict === 'pass') {
+        tasks[card.id] = 'passed';
+        break;
+      }
+
+      fixRounds++;
+      fixNotes = [...qcResult.bugs, ...qcResult.fix];
+      if (fixRounds > d.cfg.turn.max_fix_rounds) {
+        tasks[card.id] = 'failed';
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: [`Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${fixNotes.join(', ')}`],
+        };
+      }
+    }
+  }
+
+  return {
+    status: 'done',
+    sessionId,
+    tasks,
+    notes: [],
+  };
+}
+
 export async function runSession(
   d: SessionDeps,
   goals: string[],
@@ -96,7 +270,7 @@ export async function runSession(
   }
 
   // 2. Create session and checkout session/<id> branch
-  const sessionId = d.store.createSession(goals);
+  const sessionId = d.store.createSession(goals, d.repo);
   let sessionStatus: SessionOutcome['status'] = 'needs_owner';
   const tasks: Record<string, TaskState> = {};
 
@@ -152,13 +326,9 @@ export async function runSession(
       return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
     }
 
-    const tasksDir = join(d.repo, 'team', 'tasks');
     let cards: TaskCard[];
     try {
-      cards = loadTaskCards(tasksDir);
-      if (cards.length === 0) {
-        throw new CardError('No task cards created by PM');
-      }
+      cards = loadCards(d.repo);
     } catch (err) {
       if (err instanceof CardError) {
         sessionStatus = 'needs_owner';
@@ -188,175 +358,77 @@ export async function runSession(
     }
 
     // 5. Work on cards
-    for (const card of cards) {
-      const base = headSha(d.repo);
-      let fixNotes: string[] = [];
-      let fixRounds = 0;
-      const coders = new Set<string>();
+    const outcome = await workOnCards(d, sessionId, cards, tasks);
+    sessionStatus = outcome.status;
+    return outcome;
+  } finally {
+    d.store.setSessionStatus(sessionId, sessionStatus);
+  }
+}
 
-      while (true) {
-        const devAgent = d.cfg.seats.dev;
-        const devAuthor = authorForAgent(devAgent);
-        coders.add(devAgent);
+export async function resumeSession(
+  d: SessionDeps,
+  sessionId: number
+): Promise<SessionOutcome> {
+  // 1. Validate environment and repo path
+  const forbidden = checkForbiddenEnv(d.env, d.cfg.login.forbidden_env);
+  if (forbidden.length > 0) {
+    return {
+      status: 'refused',
+      sessionId,
+      tasks: {},
+      notes: [`Forbidden environment variables: ${forbidden.join(', ')}`],
+    };
+  }
 
-        if (isOutOfTurns(d.store, sessionId, d.cfg, 'dev')) {
-          sessionStatus = 'out_of_turns';
-          return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
-        }
+  if (!isRepoInsideProjectsRoot(d.repo, d.cfg.host.projects_root)) {
+    return {
+      status: 'refused',
+      sessionId,
+      tasks: {},
+      notes: [`Repository path is not inside host.projects_root (${d.cfg.host.projects_root})`],
+    };
+  }
 
-        const devTurnId = d.store.startTurn(sessionId, 'dev', devAgent, card.id);
-        const devPromptText = devPrompt(card, fixNotes);
-        let devOutput;
-        try {
-          devOutput = await d.runner('dev', devAgent, devPromptText, d.repo);
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          d.store.endTurn(devTurnId, 'error', reason);
-          try {
-            commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
-          } catch {
-            // commitAll error: keep needs_owner, do not throw
-          }
-          sessionStatus = 'needs_owner';
-          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-        }
+  const session = d.store.getSession(sessionId);
+  if (!session || session.status !== 'awaiting_approval') {
+    throw new Error(`Session ${sessionId} is not in awaiting_approval status`);
+  }
 
-        if (devOutput.timedOut || devOutput.exitCode !== 0) {
-          const result: TurnResult = devOutput.timedOut ? 'timeout' : 'error';
-          const reason = devOutput.timedOut ? 'timeout' : `exit_${devOutput.exitCode}`;
-          d.store.endTurn(devTurnId, result, reason);
-          try {
-            commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
-          } catch {
-            // commitAll error: keep needs_owner, do not throw
-          }
-          sessionStatus = 'needs_owner';
-          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-        }
+  if (session.project && session.project !== d.repo) {
+    throw new Error(`Session ${sessionId} belongs to project "${session.project}", not "${d.repo}"`);
+  }
 
-        const devText = (devOutput.lastMessage || '') + ' ' + (devOutput.output || '');
-        if (devText.includes('BLOCKED')) {
-          d.store.endTurn(devTurnId, 'ok');
-          try {
-            commitAll(d.repo, `${card.id}: blocked`, devAuthor);
-          } catch {
-            // commitAll error: keep needs_owner, do not throw
-          }
-          tasks[card.id] = 'blocked';
-          sessionStatus = 'needs_owner';
-          return { status: 'needs_owner', sessionId, tasks, notes: ['Dev reported BLOCKED'] };
-        }
+  d.store.setSessionStatus(sessionId, 'running');
+  let sessionStatus: SessionOutcome['status'] = 'needs_owner';
+  const tasks: Record<string, TaskState> = {};
 
-        d.store.endTurn(devTurnId, 'ok');
-        try {
-          commitAll(d.repo, `${card.id}: dev implementation`, devAuthor);
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          sessionStatus = 'needs_owner';
-          return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
-        }
+  try {
+    git(d.repo, 'checkout', `session/${sessionId}`);
 
-        const gateResult = runGate(d.repo, card, base, d.cfg.gate.commands);
-        if (!gateResult.ok) {
-          d.store.endTurn(devTurnId, 'rejected', gateResult.reasons.join('; '));
-          for (const reason of gateResult.reasons) {
-            d.store.recordHandoffFailure(sessionId, card.id, reason);
-          }
-          fixNotes = [...gateResult.reasons];
-          fixRounds++;
-          if (fixRounds > d.cfg.turn.max_fix_rounds) {
-            tasks[card.id] = 'failed';
-            sessionStatus = 'needs_owner';
-            return {
-              status: 'needs_owner',
-              sessionId,
-              tasks,
-              notes: [
-                `Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${gateResult.reasons.join(', ')}`,
-              ],
-            };
-          }
-          continue;
-        }
-
-        // Rule 8: coder_cannot_qc_same_task
-        const qcAgent = d.cfg.seats.qc;
-        if (d.cfg.rules.coder_cannot_qc_same_task && coders.has(qcAgent)) {
-          sessionStatus = 'needs_owner';
-          return {
-            status: 'needs_owner',
-            sessionId,
-            tasks,
-            notes: [`Seat 'qc' is occupied by '${qcAgent}', who also coded task '${card.id}'`],
-          };
-        }
-
-        if (isOutOfTurns(d.store, sessionId, d.cfg, 'qc')) {
-          sessionStatus = 'out_of_turns';
-          return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
-        }
-
-        const qcAuthor = authorForAgent(qcAgent);
-        const qcTurnId = d.store.startTurn(sessionId, 'qc', qcAgent, card.id);
-        const qcPromptText = qcPrompt(card, base);
-        let qcOutput;
-        try {
-          qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo);
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          d.store.endTurn(qcTurnId, 'error', reason);
-          try {
-            commitAll(d.repo, `WIP ${card.id}: ${reason}`, qcAuthor);
-          } catch {
-            // commitAll error: keep needs_owner, do not throw
-          }
-          sessionStatus = 'needs_owner';
-          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-        }
-
-        if (qcOutput.timedOut || qcOutput.exitCode !== 0) {
-          const result: TurnResult = qcOutput.timedOut ? 'timeout' : 'error';
-          const reason = qcOutput.timedOut ? 'timeout' : `exit_${qcOutput.exitCode}`;
-          d.store.endTurn(qcTurnId, result, reason);
-          try {
-            commitAll(d.repo, `WIP ${card.id}: ${reason}`, qcAuthor);
-          } catch {
-            // commitAll error: keep needs_owner, do not throw
-          }
-          sessionStatus = 'needs_owner';
-          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-        }
-
-        d.store.endTurn(qcTurnId, 'ok');
-
-        const qcResult = parseQcResult(qcOutput.lastMessage);
-        if (qcResult.verdict === 'pass') {
-          tasks[card.id] = 'passed';
-          break;
-        }
-
-        fixRounds++;
-        fixNotes = [...qcResult.bugs, ...qcResult.fix];
-        if (fixRounds > d.cfg.turn.max_fix_rounds) {
-          tasks[card.id] = 'failed';
-          sessionStatus = 'needs_owner';
-          return {
-            status: 'needs_owner',
-            sessionId,
-            tasks,
-            notes: [`Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${fixNotes.join(', ')}`],
-          };
-        }
+    let cards: TaskCard[];
+    try {
+      cards = loadCards(d.repo);
+    } catch (err) {
+      if (err instanceof CardError) {
+        sessionStatus = 'needs_owner';
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: [`CardError: ${err.message}`],
+        };
       }
+      throw err;
     }
 
-    sessionStatus = 'done';
-    return {
-      status: 'done',
-      sessionId,
-      tasks,
-      notes: [],
-    };
+    for (const card of cards) {
+      tasks[card.id] = 'pending';
+    }
+
+    const outcome = await workOnCards(d, sessionId, cards, tasks);
+    sessionStatus = outcome.status;
+    return outcome;
   } finally {
     d.store.setSessionStatus(sessionId, sessionStatus);
   }

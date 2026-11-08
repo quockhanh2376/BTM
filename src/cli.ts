@@ -6,11 +6,12 @@ import Database from 'better-sqlite3';
 import { loadConfig, checkForbiddenEnv } from './config.ts';
 import { openStore } from './store/db.ts';
 import { initProject } from './project/init.ts';
-import { runSession, type SessionOutcome } from './core/session.ts';
+import { runSession, resumeSession, type SessionOutcome } from './core/session.ts';
 import { makeRunner, type Runner } from './runner/run.ts';
 
 export interface CliDeps {
   runSession?: typeof runSession;
+  resumeSession?: typeof resumeSession;
   runner?: Runner;
   env?: NodeJS.ProcessEnv;
 }
@@ -25,7 +26,7 @@ export async function main(
   let effectiveEnv: NodeJS.ProcessEnv;
   let effectiveDeps: CliDeps | undefined;
 
-  if (env && ('runSession' in env || 'runner' in env)) {
+  if (env && ('runSession' in env || 'resumeSession' in env || 'runner' in env)) {
     effectiveDeps = env as CliDeps;
     effectiveEnv = effectiveDeps.env ?? process.env;
   } else {
@@ -151,7 +152,9 @@ Options:
 
     if (command === 'run') {
       const goals = (values.goal as string[] | undefined) ?? [];
-      if (goals.length === 0) {
+      const approved = Boolean(values.approved);
+
+      if (goals.length === 0 && !approved) {
         console.error('Error: At least one --goal is required. Usage: btm run --goal "<g>" [--goal …]');
         process.exitCode = 1;
         return 1;
@@ -174,7 +177,43 @@ Options:
           return 2;
         }
 
-        const approved = Boolean(values.approved);
+        if (goals.length === 0 && approved) {
+          const latestAwaiting = store.getLatestSession('awaiting_approval', activeProject);
+          if (!latestAwaiting) {
+            console.error('Error: No session awaiting approval found to resume.');
+            process.exitCode = 1;
+            return 1;
+          }
+
+          const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'));
+          const resumeFn = effectiveDeps?.resumeSession ?? resumeSession;
+
+          const outcome = await resumeFn(
+            {
+              cfg,
+              store,
+              runner,
+              repo: activeProject,
+              env: effectiveEnv,
+            },
+            latestAwaiting.id
+          );
+
+          console.log(JSON.stringify(outcome, null, 2));
+
+          let exitCode = 1;
+          if (outcome.status === 'done' || outcome.status === 'awaiting_approval') {
+            exitCode = 0;
+          } else if (outcome.status === 'refused') {
+            exitCode = 2;
+          } else {
+            exitCode = 1;
+          }
+
+          process.exitCode = exitCode;
+          return exitCode;
+        }
+
         const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'));
         const sessionFn = effectiveDeps?.runSession ?? runSession;
 

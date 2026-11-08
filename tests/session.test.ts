@@ -13,6 +13,7 @@ import {
 } from '../src/core/prompts.ts';
 import {
   runSession,
+  resumeSession,
   type SessionOutcome,
   type SessionDeps,
 } from '../src/core/session.ts';
@@ -84,7 +85,7 @@ function makeDeps(repo: string, customCfg?: Partial<Config>): { deps: SessionDep
 }
 
 describe('Prompts', () => {
-  it('pmPrompt is <= 6 lines, Vietnamese, mentions front matter YAML and quoting strings with ": ", and forbids git commit and push', () => {
+  it('pmPrompt is <= 6 lines, Vietnamese, mentions front matter YAML and quoting strings with ": ", forbids git commit and push, and instructs bare scope paths', () => {
     const prompt = pmPrompt(['Mục tiêu 1', 'Mục tiêu 2']);
     const lines = prompt.split('\n');
     expect(lines.length).toBeLessThanOrEqual(6);
@@ -92,6 +93,7 @@ describe('Prompts', () => {
     expect(prompt).toContain('front matter YAML hợp lệ');
     expect(prompt).toContain("': '");
     expect(prompt).toMatch(/cấm.*commit.*push/i);
+    expect(prompt).toMatch(/đường dẫn trần.*không chú thích/i);
   });
 
   it('devPrompt is <= 6 lines, Vietnamese, mentions reading task file with acceptance, reports path, fix notes, merges newlines, and forbids git commit and push', () => {
@@ -1213,5 +1215,113 @@ done_when: done
 
     directDb.close();
     customStore.close();
+  });
+
+  describe('resumeSession', () => {
+    it('chỉ cho session awaiting_approval: throw khi session khác awaiting_approval hoặc không tồn tại', async () => {
+      const repo = tmpRepo({});
+      const { deps, store } = makeDeps(repo);
+
+      await expect(resumeSession(deps, 999)).rejects.toThrow(/awaiting_approval/);
+
+      const sId = store.createSession(['Goal 1']);
+      store.setSessionStatus(sId, 'done');
+      await expect(resumeSession(deps, sId)).rejects.toThrow(/awaiting_approval/);
+
+      store.close();
+    });
+
+    it('resumeSession từ chối session khác project mà KHÔNG đổi status của nó', async () => {
+      const repoA = tmpRepo({});
+      const repoB = tmpRepo({});
+      const { deps: depsA, store } = makeDeps(repoA);
+      const depsB: SessionDeps = {
+        ...depsA,
+        repo: repoB,
+      };
+
+      const sId = store.createSession(['Goal 1'], repoA);
+      store.setSessionStatus(sId, 'awaiting_approval');
+
+      await expect(resumeSession(depsB, sId)).rejects.toThrow(/belongs to project/i);
+
+      // Status must not change
+      expect(store.getSession(sId)?.status).toBe('awaiting_approval');
+
+      store.close();
+    });
+
+    it('resumeSession checkout session/<id>, bỏ qua lượt PM (PM không gọi lần 2), chạy tiếp từ Dev', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'console.log("hello");' });
+      const { deps, store } = makeDeps(repo);
+
+      let pmCallCount = 0;
+      let devCallCount = 0;
+      let qcCallCount = 0;
+
+      const { runner } = createFakeRunner([
+        // 1. PM in runSession
+        (_s, _a, _p, cwd) => {
+          pmCallCount++;
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Add feature
+scope: [src/app.ts]
+acceptance:
+  - app works
+done_when: done
+---
+`
+          );
+        },
+        // 2. Dev in resumeSession
+        (_s, _a, _p, cwd) => {
+          devCallCount++;
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'console.log("updated");');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // 3. QC in resumeSession
+        () => {
+          qcCallCount++;
+          return {
+            lastMessage: '{"verdict":"pass","bugs":[],"fix":[],"confirm":[]}',
+          };
+        },
+      ]);
+      deps.runner = runner;
+
+      // First run pauses with awaiting_approval
+      const pauseOutcome = await runSession(deps, ['Goal 1'], { approved: false });
+      expect(pauseOutcome.status).toBe('awaiting_approval');
+      expect(pauseOutcome.sessionId).toBe(1);
+      expect(pmCallCount).toBe(1);
+      expect(devCallCount).toBe(0);
+
+      // Checkout main to test that resumeSession checks out session/<id>
+      git(repo, 'checkout', 'main');
+
+      // Now resume
+      const resumeOutcome = await resumeSession(deps, 1);
+      expect(resumeOutcome.status).toBe('done');
+      expect(resumeOutcome.tasks['T-001']).toBe('passed');
+
+      // PM must NOT be called a second time
+      expect(pmCallCount).toBe(1);
+      expect(devCallCount).toBe(1);
+      expect(qcCallCount).toBe(1);
+
+      // Verify branch is session/1
+      const currentBranch = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+      expect(currentBranch).toBe('session/1');
+
+      // Verify DB status
+      expect(store.getLatestSession()?.status).toBe('done');
+
+      store.close();
+    });
   });
 });

@@ -7,6 +7,7 @@ export function pmPrompt(goals: string[]): string {
     `Chỉ ghi thẻ vào team/tasks/, không sửa file khác, cấm git commit và push.`,
     `Mỗi task tối đa 5 acceptance. Thẻ bắt buộc có front matter YAML hợp lệ, chuỗi có ': ' đặt trong nháy.`,
     `Định dạng thẻ: id, goal, scope (mảng), acceptance (mảng), done_when.`,
+    `Scope chỉ là đường dẫn trần (file, hoặc thư mục kết thúc '/'), không chú thích.`,
   ].join('\n');
 }
 

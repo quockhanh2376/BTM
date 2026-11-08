@@ -5,11 +5,19 @@ import type { Seat } from '../config.ts';
 
 export type TurnResult = 'ok' | 'timeout' | 'error' | 'rejected';
 
+export interface SessionRow {
+  id: number;
+  status: string;
+  project?: string | null;
+}
+
 export interface Store {
   setActiveProject(path: string): void;
   getActiveProject(): string | null;
-  createSession(goals: string[]): number;
+  createSession(goals: string[], project?: string | null): number;
   setSessionStatus(id: number, status: string): void;
+  getLatestSession(status?: string, project?: string): SessionRow | null;
+  getSession(id: number): SessionRow | null;
   startTurn(sessionId: number, seat: Seat, agent: string, taskId: string | null): number;
   endTurn(turnId: number, result: TurnResult, error?: string): void;
   countTurns(sessionId: number, seat?: Seat): number;
@@ -39,6 +47,7 @@ export function openStore(file: string): Store {
 
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT,
       goals_json TEXT NOT NULL,
       status TEXT NOT NULL,
       started_at TEXT NOT NULL,
@@ -66,6 +75,12 @@ export function openStore(file: string): Store {
     );
   `);
 
+  const cols = db.pragma('table_info(sessions)') as Array<{ name: string }>;
+  const hasProject = cols.some((c) => c.name.toLowerCase() === 'project');
+  if (!hasProject) {
+    db.exec('ALTER TABLE sessions ADD COLUMN project TEXT');
+  }
+
   const setActiveProjectStmt = db.prepare(`
     INSERT INTO active_project (id, path) VALUES (1, ?)
     ON CONFLICT(id) DO UPDATE SET path = excluded.path
@@ -76,8 +91,8 @@ export function openStore(file: string): Store {
   `);
 
   const createSessionStmt = db.prepare(`
-    INSERT INTO sessions (goals_json, status, started_at, ended_at)
-    VALUES (?, 'running', ?, NULL)
+    INSERT INTO sessions (project, goals_json, status, started_at, ended_at)
+    VALUES (?, ?, 'running', ?, NULL)
   `);
 
   const updateSessionStatusTerminalStmt = db.prepare(`
@@ -86,6 +101,26 @@ export function openStore(file: string): Store {
 
   const updateSessionStatusStmt = db.prepare(`
     UPDATE sessions SET status = ? WHERE id = ?
+  `);
+
+  const getLatestSessionStmt = db.prepare(`
+    SELECT id, status, project FROM sessions ORDER BY id DESC LIMIT 1
+  `);
+
+  const getLatestSessionWithStatusStmt = db.prepare(`
+    SELECT id, status, project FROM sessions WHERE status = ? ORDER BY id DESC LIMIT 1
+  `);
+
+  const getLatestSessionWithProjectStmt = db.prepare(`
+    SELECT id, status, project FROM sessions WHERE project = ? ORDER BY id DESC LIMIT 1
+  `);
+
+  const getLatestSessionWithStatusAndProjectStmt = db.prepare(`
+    SELECT id, status, project FROM sessions WHERE status = ? AND project = ? ORDER BY id DESC LIMIT 1
+  `);
+
+  const getSessionStmt = db.prepare(`
+    SELECT id, status, project FROM sessions WHERE id = ?
   `);
 
   const startTurnStmt = db.prepare(`
@@ -120,9 +155,9 @@ export function openStore(file: string): Store {
       return row ? row.path : null;
     },
 
-    createSession(goals: string[]): number {
+    createSession(goals: string[], project?: string | null): number {
       const now = new Date().toISOString();
-      const info = createSessionStmt.run(JSON.stringify(goals), now);
+      const info = createSessionStmt.run(project ?? null, JSON.stringify(goals), now);
       return Number(info.lastInsertRowid);
     },
 
@@ -133,6 +168,35 @@ export function openStore(file: string): Store {
       } else {
         updateSessionStatusStmt.run(status, id);
       }
+    },
+
+    getLatestSession(status?: string, project?: string): SessionRow | null {
+      let row: { id: number; status: string; project?: string | null } | undefined;
+      if (status !== undefined && project !== undefined) {
+        row = getLatestSessionWithStatusAndProjectStmt.get(status, project) as { id: number; status: string; project?: string | null } | undefined;
+      } else if (status !== undefined) {
+        row = getLatestSessionWithStatusStmt.get(status) as { id: number; status: string; project?: string | null } | undefined;
+      } else if (project !== undefined) {
+        row = getLatestSessionWithProjectStmt.get(project) as { id: number; status: string; project?: string | null } | undefined;
+      } else {
+        row = getLatestSessionStmt.get() as { id: number; status: string; project?: string | null } | undefined;
+      }
+      if (!row) return null;
+      const res: SessionRow = { id: Number(row.id), status: String(row.status) };
+      if (row.project !== null && row.project !== undefined) {
+        res.project = String(row.project);
+      }
+      return res;
+    },
+
+    getSession(id: number): SessionRow | null {
+      const row = getSessionStmt.get(id) as { id: number; status: string; project?: string | null } | undefined;
+      if (!row) return null;
+      const res: SessionRow = { id: Number(row.id), status: String(row.status) };
+      if (row.project !== null && row.project !== undefined) {
+        res.project = String(row.project);
+      }
+      return res;
     },
 
     startTurn(sessionId: number, seat: Seat, agent: string, taskId: string | null): number {

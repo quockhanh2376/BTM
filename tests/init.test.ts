@@ -332,6 +332,71 @@ runner:
     consoleErrSpy.mockRestore();
   });
 
+  it('run --approved không có --goal và không có session awaiting_approval → lỗi exit 1', async () => {
+    await main(['init', 'project-resume-none', '--config', configPath]);
+    const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exitCode = await main(['run', '--approved', '--config', configPath]);
+    expect(exitCode).toBe(1);
+    expect(consoleErrSpy).toHaveBeenCalled();
+    consoleErrSpy.mockRestore();
+  });
+
+  it('run --approved không có --goal và có session awaiting_approval → resume session mới nhất', async () => {
+    await main(['init', 'project-resume-ok', '--config', configPath]);
+    const projectPath = join(tmpRoot, 'project-resume-ok');
+    const store = openStore(join(dataDir, 'btm.db'));
+    const s1 = store.createSession(['Goal 1'], projectPath);
+    store.setSessionStatus(s1, 'done');
+    const s2 = store.createSession(['Goal 2'], projectPath);
+    store.setSessionStatus(s2, 'awaiting_approval');
+    store.close();
+
+    const fakeResumeSession = vi.fn().mockResolvedValue({
+      status: 'done',
+      sessionId: s2,
+      tasks: { 'T-001': 'passed' },
+      notes: [],
+    });
+
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const exitCode = await main(
+      ['run', '--approved', '--config', configPath],
+      { resumeSession: fakeResumeSession }
+    );
+    expect(exitCode).toBe(0);
+    expect(fakeResumeSession).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: join(tmpRoot, 'project-resume-ok') }),
+      s2
+    );
+    const parsed = JSON.parse(consoleSpy.mock.calls[0][0]);
+    expect(parsed.status).toBe('done');
+    expect(parsed.sessionId).toBe(s2);
+    consoleSpy.mockRestore();
+  });
+
+  it('A chờ duyệt, active là B → run --approved báo lỗi exit 1, session A vẫn awaiting_approval', async () => {
+    await main(['init', 'project-a', '--config', configPath]);
+    const projectAPath = join(tmpRoot, 'project-a');
+
+    const store = openStore(join(dataDir, 'btm.db'));
+    const sessionA = store.createSession(['Goal A'], projectAPath);
+    store.setSessionStatus(sessionA, 'awaiting_approval');
+    store.close();
+
+    await main(['init', 'project-b', '--config', configPath]);
+
+    const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exitCode = await main(['run', '--approved', '--config', configPath]);
+
+    expect(exitCode).toBe(1);
+    expect(consoleErrSpy).toHaveBeenCalled();
+    consoleErrSpy.mockRestore();
+
+    const verifyStore = openStore(join(dataDir, 'btm.db'));
+    expect(verifyStore.getSession(sessionA)?.status).toBe('awaiting_approval');
+    verifyStore.close();
+  });
+
   it('checkForbiddenEnv trước tiên: init với env cấm → exit 2', async () => {
     const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const exitCode = await main(

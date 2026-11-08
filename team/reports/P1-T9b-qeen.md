@@ -1,0 +1,1 @@
+Bug: [cli.ts:181](/srv/agent-projects/btm/src/cli.ts:181) chọn session chờ duyệt trên toàn DB, không gắn project. Sau khi A chờ duyệt rồi `init B`, `run --approved` checkout session của A trong B; thất bại còn đổi trạng thái session A thành `needs_owner`. Cần lưu và kiểm tra project của session trước khi resume.

@@ -27,6 +27,10 @@ const ScopePathSchema = z
   .refine(
     (p) => !p.startsWith('/') && !p.includes('..'),
     { message: 'Scope item must be a relative path and cannot contain ".." or start with "/"' }
+  )
+  .refine(
+    (p) => !/\s|\(/.test(p),
+    { message: 'Scope item cannot contain whitespace or "("' }
   );
 
 export const TaskCardSchema = z.object({

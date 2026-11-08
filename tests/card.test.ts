@@ -137,6 +137,42 @@ done_when: xong
       expect(() => parseTaskCard(markdown)).toThrow(CardError);
     });
 
+    it("rejects scope item containing whitespace or '(' but allows Unicode like é", () => {
+      const cardWithSpace = `---
+id: T-005
+goal: Chứa khoảng trắng trong scope
+scope: ['src/app test.ts']
+acceptance:
+  - Test 1
+done_when: xong
+---
+`;
+      expect(() => parseTaskCard(cardWithSpace)).toThrow(CardError);
+
+      const cardWithOpenParen = `---
+id: T-006
+goal: Chứa dấu mở ngoặc trong scope
+scope: ['src/core(utils).ts']
+acceptance:
+  - Test 1
+done_when: xong
+---
+`;
+      expect(() => parseTaskCard(cardWithOpenParen)).toThrow(CardError);
+
+      const cardWithUnicode = `---
+id: T-007
+goal: Scope chứa kí tự Unicode
+scope: ['src/tép.ts', 'thư_mục/hướng_dẫn.md']
+acceptance:
+  - Test 1
+done_when: xong
+---
+`;
+      const parsed = parseTaskCard(cardWithUnicode);
+      expect(parsed.scope).toEqual(['src/tép.ts', 'thư_mục/hướng_dẫn.md']);
+    });
+
     it('rejects missing front matter', () => {
       expect(() => parseTaskCard('')).toThrow(CardError);
       expect(() => parseTaskCard('# Just markdown without front matter')).toThrow(CardError);
