@@ -1,4 +1,5 @@
 import type { TaskCard } from '../task/card.ts';
+import type { Seat } from '../config.ts';
 
 export function pmPrompt(goals: string[]): string {
   const goalText = goals.map((g) => g.replace(/\r?\n/g, ' ')).join('; ');
@@ -42,4 +43,27 @@ export function qcPrompt(card: TaskCard, base: string): string {
     `Đánh giá code và báo cáo Dev theo tiêu chuẩn nghiệm thu, cấm git commit và push.`,
     `JSON QcResult đặt trong khối \`\`\`json ở cuối câu trả lời theo mẫu: \`\`\`json {"verdict":"pass"|"fail","bugs":[],"fix":[],"confirm":[]} \`\`\`.`,
   ].join('\n');
+}
+
+export function directPrompt(to: Seat, text: string, allow: string[] = []): string {
+  const cleanText = text.replace(/\r?\n/g, ' ').trim();
+  if (to === 'dev') {
+    const allowText = allow.join(', ');
+    const allowLine = `Lệnh được phép: ${allowText}; mỗi lệnh riêng lẻ, không nối &&/;/|, không commit, đọc file bằng công cụ đọc file.`;
+    return [
+      `Bạn là Dev. Hãy thực hiện yêu cầu trực tiếp sau: ${cleanText}`,
+      `Phạm vi cho phép: toàn repo trừ .git.`,
+      allowLine,
+      `Chỉ sửa file trong phạm vi, cấm git commit và push. Bị nghẽn trả lời BLOCKED.`,
+      `Báo cáo kết quả theo mẫu (Bug / Cần sửa / Cần xác nhận; ổn ghi OK).`,
+    ].join('\n');
+  }
+  if (to === 'qc') {
+    return [
+      `Bạn là QC (chỉ đọc). Hãy kiểm tra yêu cầu trực tiếp sau: ${cleanText}`,
+      `Chỉ đọc, không sửa file, cấm git commit và push.`,
+      `Trả lời ngắn: Bug / Cần sửa / Cần xác nhận; ổn ghi OK.`,
+    ].join('\n');
+  }
+  return cleanText;
 }

@@ -9,7 +9,7 @@ import { buildSnapshot } from './snapshot.ts';
 export interface HostApi {
   start(goals: string[]): Promise<{ ok: boolean; error?: string }>;
   approve(): Promise<{ ok: boolean; error?: string }>;
-  stop(): { ok: boolean } | Promise<{ ok: boolean }>;
+  stop(): { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
   command(
     to: Seat,
     text: string

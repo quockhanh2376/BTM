@@ -18,6 +18,60 @@ export interface CliDeps {
   abortController?: AbortController;
 }
 
+export function acquireLock(dataDir: string): (() => void) | null {
+  const lockPath = join(dataDir, 'btm.lock');
+  mkdirSync(dataDir, { recursive: true });
+
+  let fd: number | null = null;
+  try {
+    fd = openSync(lockPath, 'wx');
+    writeSync(fd, String(process.pid));
+    closeSync(fd);
+    fd = null;
+  } catch (err: any) {
+    if (err?.code === 'EEXIST') {
+      let isAlive = false;
+      let existingPid: number | null = null;
+      try {
+        const content = readFileSync(lockPath, 'utf8').trim();
+        existingPid = parseInt(content, 10);
+        if (!isNaN(existingPid)) {
+          process.kill(existingPid, 0);
+          isAlive = true;
+        }
+      } catch (killErr: any) {
+        if (killErr?.code === 'EPERM') {
+          isAlive = true;
+        } else if (killErr?.code === 'ESRCH') {
+          isAlive = false;
+        }
+      }
+
+      if (isAlive) {
+        return null;
+      }
+
+      // pid chết → ghi đè
+      try {
+        writeFileSync(lockPath, String(process.pid));
+      } catch {
+        return null;
+      }
+    } else {
+      throw err;
+    }
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    try {
+      unlinkSync(lockPath);
+    } catch {}
+  };
+}
+
 export async function main(
   argv?: string[],
   env?: NodeJS.ProcessEnv | CliDeps,
@@ -153,54 +207,13 @@ Options:
     }
 
     if (command === 'run') {
-      const lockPath = join(cfg.host.data_dir, 'btm.lock');
-      mkdirSync(cfg.host.data_dir, { recursive: true });
-
-      let releaseLock: (() => void) | null = null;
+      let releaseLock = acquireLock(cfg.host.data_dir);
+      if (!releaseLock) {
+        console.error('Error: Another btm process is running.');
+        process.exitCode = 1;
+        return 1;
+      }
       try {
-        let fd: number | null = null;
-        try {
-          fd = openSync(lockPath, 'wx');
-          writeSync(fd, String(process.pid));
-          closeSync(fd);
-          fd = null;
-        } catch (err: any) {
-          if (err?.code === 'EEXIST') {
-            let isAlive = false;
-            let existingPid: number | null = null;
-            try {
-              const content = readFileSync(lockPath, 'utf8').trim();
-              existingPid = parseInt(content, 10);
-              if (!isNaN(existingPid)) {
-                process.kill(existingPid, 0);
-                isAlive = true;
-              }
-            } catch (killErr: any) {
-              if (killErr?.code === 'EPERM') {
-                isAlive = true;
-              } else if (killErr?.code === 'ESRCH') {
-                isAlive = false;
-              }
-            }
-
-            if (isAlive) {
-              console.error(`Error: Another btm process (PID ${existingPid}) is running.`);
-              process.exitCode = 1;
-              return 1;
-            }
-
-            // pid chết → ghi đè
-            writeFileSync(lockPath, String(process.pid));
-          } else {
-            throw err;
-          }
-        }
-
-        releaseLock = () => {
-          try {
-            unlinkSync(lockPath);
-          } catch {}
-        };
 
         const goals = (values.goal as string[] | undefined) ?? [];
         const approved = Boolean(values.approved);

@@ -1,0 +1,8 @@
+- Bug: `host.ts:344–348` nhả khóa trước khi runner dừng; `stop(); start()` có thể chạy chồng, và `finally` phiên cũ còn đặt `isBusy=false` khi phiên mới đang chạy.
+- Bug: `host.ts:331–340` sửa phiên/lượt mới nhất dù host không sở hữu; gọi stop khi CLI chạy sẽ ghi `stopped/error` nhưng không dừng agent CLI.
+- Bug: `host.ts:370–373` xếp lệnh khi CLI giữ khóa nhưng không có cơ chế chạy lại sau khi CLI nhả khóa; hàng đợi bị treo.
+- Bug: `host.ts:215,276` tạo thư mục log ngoài `try/finally`; nếu `logDir` là file hoặc thiếu quyền, khóa bị giữ vĩnh viễn.
+- Bug: `host.ts:115` dùng `devPrompt` yêu cầu đọc `team/tasks/CMD-<id>.md` không tồn tại; chưa đáp ứng prompt tự do cho thẻ ảo.
+- Bug: `host.ts:95` tạo phiên cho lượt trực tiếp nhưng không kết thúc phiên; chạy xong dashboard vẫn báo phiên `running`.
+- Cần sửa: `host.ts:357–358` bỏ qua giới hạn text cho PM; `command('pm', '')` hoặc chuỗi >2.000 ký tự vẫn mở phiên.
+- Cần sửa: `tests/host.test.ts` thiếu kiểm tra các ca trên và Dev commit đúng message; test stop hiện chờ runner xong rồi tạo host khác nên bỏ lọt race trên cùng host.
