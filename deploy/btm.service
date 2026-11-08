@@ -1,0 +1,15 @@
+[Unit]
+Description=BTM dashboard
+After=network.target
+
+[Service]
+User=agent
+WorkingDirectory=/srv/agent-projects/btm
+Environment=PATH=/home/agent/.local/bin:/home/agent/.npm-global/bin:/usr/bin:/bin
+ExecStart=/usr/bin/npx tsx src/cli.ts serve
+KillMode=control-group
+Restart=on-failure
+UMask=0002
+
+[Install]
+WantedBy=multi-user.target

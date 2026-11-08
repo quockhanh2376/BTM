@@ -1,14 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { initProject } from '../src/project/init.ts';
-import { main } from '../src/cli.ts';
+import { main, serve } from '../src/cli.ts';
 import { git, headSha, commitAll } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
 import * as storeModule from '../src/store/db.ts';
 import { openStore } from '../src/store/db.ts';
+import { createHost } from '../src/server/host.ts';
+import type { Runner, TurnOutput } from '../src/runner/run.ts';
+
+function deferred<T>() {
+  let resolve!: (val: T | PromiseLike<T>) => void;
+  let reject!: (err?: any) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 describe('Project Init (initProject)', () => {
   let tmpRoot: string;
@@ -574,5 +588,263 @@ runner:
     );
     expect(exitCode2).toBe(0);
     expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('btm serve với env có OPENAI_API_KEY → exit 2', async () => {
+    const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exitCode = await main(
+      ['serve', '--config', configPath],
+      { OPENAI_API_KEY: 'sk-forbidden' }
+    );
+    expect(exitCode).toBe(2);
+    expect(consoleErrSpy).toHaveBeenCalledWith(expect.stringContaining('Forbidden environment variables'));
+    consoleErrSpy.mockRestore();
+  });
+
+  it('btm serve với port 0 trả server lắng nghe trên 127.0.0.1 và in URL', async () => {
+    const cfgPort0Path = join(dataDir, 'test-port0.config.yaml');
+    const port0Cfg = readFileSync(configPath, 'utf8').replace('port: 8080', 'port: 0');
+    writeFileSync(cfgPort0Path, port0Cfg, 'utf8');
+
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const res = await main(['serve', '--config', cfgPort0Path]);
+    expect(res).toBeInstanceOf(http.Server);
+    const server = res as http.Server;
+    expect(server.listening).toBe(true);
+
+    const addr = server.address() as AddressInfo;
+    expect(addr.address).toBe('127.0.0.1');
+    expect(addr.port).toBeGreaterThan(0);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`BTM dashboard: http://127.0.0.1:${addr.port}`);
+
+    // Fetch snapshot
+    const fetchRes = await fetch(`http://127.0.0.1:${addr.port}/api/state`);
+    expect(fetchRes.status).toBe(200);
+
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    expect(server.listening).toBe(false);
+    consoleLogSpy.mockRestore();
+  });
+
+  it('tách serve() trả Server để test, gọi host.tick() mỗi 2s và dọn timer khi server close', async () => {
+    const cfgPort0Path = join(dataDir, 'test-serve-port0.config.yaml');
+    const port0Cfg = readFileSync(configPath, 'utf8').replace('port: 8080', 'port: 0');
+    writeFileSync(cfgPort0Path, port0Cfg, 'utf8');
+
+    let tickCalls = 0;
+    const fakeHost: any = {
+      start: vi.fn(),
+      approve: vi.fn(),
+      stop: vi.fn().mockReturnValue({ ok: true }),
+      command: vi.fn(),
+      busy: vi.fn().mockReturnValue(false),
+      tick: vi.fn().mockImplementation(async () => {
+        tickCalls++;
+      }),
+    };
+
+    const server = await serve({
+      configPath: cfgPort0Path,
+      deps: {
+        createHost: () => fakeHost,
+      },
+    });
+
+    expect(server.listening).toBe(true);
+
+    // Chờ 2.1s để tick được gọi ít nhất 1 lần
+    await new Promise((r) => setTimeout(r, 2100));
+    expect(tickCalls).toBeGreaterThanOrEqual(1);
+    const prevTicks = tickCalls;
+
+    // Đóng server
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    expect(server.listening).toBe(false);
+
+    // Chờ thêm 2.1s để đảm bảo timer đã được clear (không tăng thêm tick)
+    await new Promise((r) => setTimeout(r, 2100));
+    expect(tickCalls).toBe(prevTicks);
+  });
+
+  it('btm serve xử lý SIGTERM/SIGINT: dừng host, đóng server, đóng store, exit 0', async () => {
+    const cfgPort0Path = join(dataDir, 'test-sig-port0.config.yaml');
+    const port0Cfg = readFileSync(configPath, 'utf8').replace('port: 8080', 'port: 0');
+    writeFileSync(cfgPort0Path, port0Cfg, 'utf8');
+
+    const fakeHost: any = {
+      start: vi.fn(),
+      approve: vi.fn(),
+      stop: vi.fn().mockReturnValue({ ok: true }),
+      command: vi.fn(),
+      busy: vi.fn().mockReturnValue(false),
+      tick: vi.fn(),
+    };
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+
+    const server = await serve({
+      configPath: cfgPort0Path,
+      deps: {
+        createHost: () => fakeHost,
+      },
+    });
+
+    expect(server.listening).toBe(true);
+
+    // Phát tín hiệu SIGTERM
+    process.emit('SIGTERM');
+
+    // Chờ callback đóng server hoàn tất
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(fakeHost.stop).toHaveBeenCalled();
+    expect(server.listening).toBe(false);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+
+    exitSpy.mockRestore();
+  });
+
+  it('serve(path, deps) dùng deps.env cho checkForbiddenEnv', async () => {
+    await expect(
+      serve(configPath, {
+        env: { OPENAI_API_KEY: 'sk-forbidden' },
+      })
+    ).rejects.toThrow(/Forbidden environment variables/);
+  });
+
+  it('btm serve xử lý SIGINT như SIGTERM: dừng host, đóng server, đóng store, exit 0', async () => {
+    const cfgPort0Path = join(dataDir, 'test-sigint-port0.config.yaml');
+    const port0Cfg = readFileSync(configPath, 'utf8').replace('port: 8080', 'port: 0');
+    writeFileSync(cfgPort0Path, port0Cfg, 'utf8');
+
+    const fakeHost: any = {
+      start: vi.fn(),
+      approve: vi.fn(),
+      stop: vi.fn().mockReturnValue({ ok: true }),
+      command: vi.fn(),
+      busy: vi.fn().mockReturnValue(false),
+      tick: vi.fn(),
+      whenIdle: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+
+    const server = await serve({
+      configPath: cfgPort0Path,
+      deps: {
+        createHost: () => fakeHost,
+      },
+    });
+
+    expect(server.listening).toBe(true);
+
+    // Phát tín hiệu SIGINT
+    process.emit('SIGINT');
+
+    // Chờ callback đóng server hoàn tất
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(fakeHost.stop).toHaveBeenCalled();
+    expect(fakeHost.whenIdle).toHaveBeenCalled();
+    expect(server.listening).toBe(false);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+
+    exitSpy.mockRestore();
+  });
+
+  it('serve: tắt giữa lượt Dev giả (runner chậm, tôn trọng abort) → store đóng sau khi runner settle', async () => {
+    const cfgPort0Path = join(dataDir, 'test-slow-runner.config.yaml');
+    const port0Cfg = readFileSync(configPath, 'utf8').replace('port: 8080', 'port: 0');
+    writeFileSync(cfgPort0Path, port0Cfg, 'utf8');
+
+    let runnerSettled = false;
+    let storeClosed = false;
+    let runnerSettleTime = 0;
+    let storeCloseTime = 0;
+
+    const runnerStarted = deferred<void>();
+
+    const slowRunner: Runner = vi.fn().mockImplementation(async (_role, _agent, _prompt, _repo, _log, opts) => {
+      runnerStarted.resolve();
+      return new Promise<TurnOutput>((resolve) => {
+        opts?.signal?.addEventListener('abort', () => {
+          setTimeout(() => {
+            runnerSettled = true;
+            runnerSettleTime = Date.now();
+            resolve({
+              exitCode: 1,
+              timedOut: false,
+              durationMs: 60,
+              output: 'aborted',
+              lastMessage: 'aborted',
+            });
+          }, 60);
+        });
+      });
+    });
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+
+    let capturedStore: any;
+    let capturedHost: any;
+    const server = await serve({
+      configPath: cfgPort0Path,
+      deps: {
+        runner: slowRunner,
+        createHost: (hostDeps) => {
+          capturedStore = hostDeps.store;
+          const origClose = hostDeps.store.close.bind(hostDeps.store);
+          hostDeps.store.close = () => {
+            storeClosed = true;
+            storeCloseTime = Date.now();
+            return origClose();
+          };
+          capturedHost = createHost(hostDeps);
+          return capturedHost;
+        },
+      },
+    });
+
+    expect(server.listening).toBe(true);
+
+    const projPath = initProject(tmpRoot, 'slow-proj', repoTemplates);
+    capturedStore.setActiveProject(projPath);
+
+    // Kích hoạt 1 lệnh Dev giả
+    await capturedHost.command('dev', 'Lệnh dev chậm');
+
+    // Chờ runner bắt đầu
+    await runnerStarted.promise;
+    expect(runnerSettled).toBe(false);
+    expect(storeClosed).toBe(false);
+
+    // Phát tín hiệu SIGTERM giữa lượt Dev
+    process.emit('SIGTERM');
+
+    // Chờ shutdown hoàn tất (runner settle 60ms + store close)
+    await new Promise((r) => setTimeout(r, 150));
+
+    expect(runnerSettled).toBe(true);
+    expect(storeClosed).toBe(true);
+    expect(storeCloseTime).toBeGreaterThanOrEqual(runnerSettleTime);
+    expect(server.listening).toBe(false);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+
+    exitSpy.mockRestore();
+  });
+
+  it('deploy/btm.service tồn tại và đúng cấu hình systemd unit', () => {
+    const servicePath = join(process.cwd(), 'deploy', 'btm.service');
+    expect(existsSync(servicePath)).toBe(true);
+    const content = readFileSync(servicePath, 'utf8');
+    expect(content).toContain('Description=BTM dashboard');
+    expect(content).toContain('User=agent');
+    expect(content).toContain('WorkingDirectory=/srv/agent-projects/btm');
+    expect(content).toContain('Environment=PATH=/home/agent/.local/bin:/home/agent/.npm-global/bin:/usr/bin:/bin');
+    expect(content).toContain('ExecStart=/usr/bin/npx tsx src/cli.ts serve');
+    expect(content).toContain('KillMode=control-group');
+    expect(content).toContain('Restart=on-failure');
+    expect(content).toContain('UMask=0002');
+    expect(content).toContain('WantedBy=multi-user.target');
   });
 });

@@ -21,13 +21,37 @@ export interface HostDeps {
   resumeSession?: typeof resumeSession;
 }
 
-export function createHost(d: HostDeps): HostApi & { busy(): boolean; tick(): Promise<void> } {
+export function createHost(d: HostDeps): HostApi & {
+  busy(): boolean;
+  tick(): Promise<void>;
+  whenIdle(): Promise<void>;
+} {
   let isBusy = false;
   let isStopping = false;
   let activeReleaseLock: (() => void) | null = null;
   let currentAbortController: AbortController | null = null;
   let currentTurnId: number | null = null;
   let currentQueueItemId: number | null = null;
+  const idleResolvers: Array<() => void> = [];
+
+  function notifyIfIdle(): void {
+    if (!isBusy && !isStopping && idleResolvers.length > 0) {
+      const resolvers = [...idleResolvers];
+      idleResolvers.length = 0;
+      for (const res of resolvers) {
+        res();
+      }
+    }
+  }
+
+  function whenIdle(): Promise<void> {
+    if (!isBusy && !isStopping) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      idleResolvers.push(resolve);
+    });
+  }
 
   function busy(): boolean {
     if (isBusy || isStopping) {
@@ -242,6 +266,9 @@ export function createHost(d: HostDeps): HostApi & { busy(): boolean; tick(): Pr
       isStopping = false;
       // Continue draining queue
       void tick();
+      if (!isBusy) {
+        notifyIfIdle();
+      }
     }
   }
 
@@ -281,6 +308,7 @@ export function createHost(d: HostDeps): HostApi & { busy(): boolean; tick(): Pr
       }
       isBusy = false;
       isStopping = false;
+      notifyIfIdle();
       return { ok: false, error: err?.message || String(err) };
     }
 
@@ -312,6 +340,9 @@ export function createHost(d: HostDeps): HostApi & { busy(): boolean; tick(): Pr
         isBusy = false;
         isStopping = false;
         void tick();
+        if (!isBusy) {
+          notifyIfIdle();
+        }
       }
     })();
 
@@ -359,6 +390,7 @@ export function createHost(d: HostDeps): HostApi & { busy(): boolean; tick(): Pr
       }
       isBusy = false;
       isStopping = false;
+      notifyIfIdle();
       return { ok: false, error: err?.message || String(err) };
     }
 
@@ -389,6 +421,9 @@ export function createHost(d: HostDeps): HostApi & { busy(): boolean; tick(): Pr
         isBusy = false;
         isStopping = false;
         void tick();
+        if (!isBusy) {
+          notifyIfIdle();
+        }
       }
     })();
 
@@ -402,6 +437,7 @@ export function createHost(d: HostDeps): HostApi & { busy(): boolean; tick(): Pr
 
     if (!isBusy && !isStopping) {
       d.store.cancelQueued();
+      notifyIfIdle();
       return { ok: true };
     }
 
@@ -478,5 +514,6 @@ export function createHost(d: HostDeps): HostApi & { busy(): boolean; tick(): Pr
     command,
     busy,
     tick,
+    whenIdle,
   };
 }

@@ -12,7 +12,7 @@ export const HostSchema = z.object({
   run_as_user: z.string(),
   projects_root: z.string(),
   dashboard: z.object({
-    bind: z.string(),
+    bind: z.literal('127.0.0.1'),
     port: z.number().int(),
   }).strict(),
   data_dir: z.string(),

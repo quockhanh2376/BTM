@@ -115,6 +115,13 @@ describe('Config', () => {
     writeFileSync(badFile, ': invalid: yaml: [', 'utf8');
     expect(() => loadConfig(badFile)).toThrow(ConfigError);
   });
+
+  it('rejects host.dashboard.bind not equal to 127.0.0.1 (e.g. 0.0.0.0) with ConfigError', () => {
+    const configFile = writeTestConfig((raw) => {
+      raw.host.dashboard.bind = '0.0.0.0';
+    });
+    expect(() => loadConfig(configFile)).toThrow(ConfigError);
+  });
 });
 
 describe('checkForbiddenEnv', () => {

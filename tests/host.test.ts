@@ -846,4 +846,120 @@ done_when: done
     expect(host.busy()).toBe(false);
     expect(existsSync(join(dataDir, 'btm.lock'))).toBe(false);
   });
+
+  it('whenIdle() resolve ngay khi không có phiên/lượt chạy', async () => {
+    const host = createHost({
+      cfg,
+      store,
+      runner: vi.fn(),
+      logDir,
+      dataDir,
+      env: {},
+    });
+    expect(host.busy()).toBe(false);
+    let resolved = false;
+    await host.whenIdle().then(() => {
+      resolved = true;
+    });
+    expect(resolved).toBe(true);
+  });
+
+  it('whenIdle() chờ lượt Dev chạy xong mới resolve', async () => {
+    const runnerStarted = deferred<void>();
+    const runnerFinished = deferred<void>();
+    let isRunnerDone = false;
+
+    const mockRunner: Runner = vi.fn().mockImplementation(async () => {
+      runnerStarted.resolve();
+      await runnerFinished.promise;
+      isRunnerDone = true;
+      return {
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 10,
+        output: 'done',
+        lastMessage: 'done',
+      } as TurnOutput;
+    });
+
+    const host = createHost({
+      cfg,
+      store,
+      runner: mockRunner,
+      logDir,
+      dataDir,
+      env: {},
+    });
+
+    await host.command('dev', 'Lệnh chạy Dev');
+    await runnerStarted.promise;
+
+    let idleResolved = false;
+    const idlePromise = host.whenIdle().then(() => {
+      idleResolved = true;
+    });
+
+    // Lúc này runner chưa xong, idlePromise chưa resolve
+    await new Promise((r) => setTimeout(r, 20));
+    expect(idleResolved).toBe(false);
+    expect(isRunnerDone).toBe(false);
+
+    // Cho runner xong
+    runnerFinished.resolve();
+    await idlePromise;
+    expect(idleResolved).toBe(true);
+    expect(isRunnerDone).toBe(true);
+    expect(host.busy()).toBe(false);
+  });
+
+  it('whenIdle() chờ runner settle khi bị stop() giữa chừng', async () => {
+    const runnerStarted = deferred<void>();
+    let runnerAbortedAndSettled = false;
+
+    const mockRunner: Runner = vi.fn().mockImplementation(async (_role, _agent, _prompt, _repo, _log, opts) => {
+      runnerStarted.resolve();
+      return new Promise<TurnOutput>((resolve) => {
+        opts?.signal?.addEventListener('abort', () => {
+          setTimeout(() => {
+            runnerAbortedAndSettled = true;
+            resolve({
+              exitCode: 1,
+              timedOut: false,
+              durationMs: 50,
+              output: 'aborted',
+              lastMessage: 'aborted',
+            });
+          }, 50);
+        });
+      });
+    });
+
+    const host = createHost({
+      cfg,
+      store,
+      runner: mockRunner,
+      logDir,
+      dataDir,
+      env: {},
+    });
+
+    await host.command('dev', 'Chạy lệnh chậm');
+    await runnerStarted.promise;
+
+    host.stop();
+
+    let idleResolved = false;
+    const idlePromise = host.whenIdle().then(() => {
+      idleResolved = true;
+    });
+
+    // Ngay sau stop(), runner đang settle trong 50ms, idlePromise chưa resolve
+    expect(idleResolved).toBe(false);
+    expect(runnerAbortedAndSettled).toBe(false);
+
+    await idlePromise;
+    expect(idleResolved).toBe(true);
+    expect(runnerAbortedAndSettled).toBe(true);
+    expect(host.busy()).toBe(false);
+  });
 });

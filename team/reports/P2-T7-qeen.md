@@ -1,0 +1,5 @@
+- Bug: [src/cli.ts:95](/srv/agent-projects/btm/src/cli.ts:95) chấp nhận `bind: 0.0.0.0`/`::`, mở dashboard ra mạng, trái Global Constraints; cần bắt buộc `127.0.0.1` và thêm test input này.
+- Bug: [src/cli.ts:131](/srv/agent-projects/btm/src/cli.ts:131) gọi `host.stop()` rồi đóng DB/exit ngay, không đợi runner kết thúc; agent bỏ qua SIGTERM có thể sống sót vì timer SIGKILL bị mất khi process thoát.
+- Cần sửa: [tests/init.test.ts:657](/srv/agent-projects/btm/tests/init.test.ts:657) chỉ thử SIGTERM với host giả rảnh; chưa kiểm tra SIGINT, store thực sự đóng, hoặc shutdown giữa lượt Dev và không còn process agent.
+- Bug: [src/cli.ts:52](/srv/agent-projects/btm/src/cli.ts:52) bỏ qua `configOrOptions.deps.env` và `deps.env` khi dùng dạng `serve(path, deps)`; môi trường kiểm tra biến cấm khác môi trường caller truyền.
+- Cần xác nhận: Task 7 Step 6 — demo systemd/tunnel, duyệt thẻ và kiểm tra không còn agent sau `systemctl stop` chưa có bằng chứng trong báo cáo `P2-T7-dev.md`.
