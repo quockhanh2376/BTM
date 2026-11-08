@@ -1,0 +1,1 @@
+Cần sửa: `tests/run.test.ts:284,319` chưa kiểm tra log thực sự được ghi đúng `logFile` truyền vào; thêm assertion đọc file và đối chiếu stdout để bắt lỗi runner tự chọn đường dẫn khác.

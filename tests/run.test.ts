@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, chmodSync, mkdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { runProcess, makeRunner } from '../src/runner/run.ts';
 import { loadConfig } from '../src/config.ts';
 
@@ -275,16 +275,18 @@ describe('Runner Run', () => {
       );
       chmodSync(mockAgy, 0o755);
 
-      const runner = makeRunner(cfg, logDir);
+      const runner = makeRunner(cfg);
 
       const originalPath = process.env.PATH;
       process.env.PATH = `${binDir}:${originalPath}`;
       try {
-        const out = await runner('dev', 'jacky', 'Fix something', tmpDir);
+        const logFile = join(logDir, 'turn-1.log');
+        const out = await runner('dev', 'jacky', 'Fix something', tmpDir, logFile);
         expect(out.exitCode).toBe(0);
         expect(out.timedOut).toBe(false);
         expect(out.output).toContain('agy executed successfully');
         expect(out.lastMessage).toContain('agy executed successfully');
+        expect(readFileSync(logFile, 'utf8')).toContain('agy executed successfully');
       } finally {
         process.env.PATH = originalPath;
       }
@@ -309,15 +311,17 @@ echo "codex stdout line"
       );
       chmodSync(mockCodex, 0o755);
 
-      const runner = makeRunner(cfg, logDir);
+      const runner = makeRunner(cfg);
 
       const originalPath = process.env.PATH;
       process.env.PATH = `${binDir}:${originalPath}`;
       try {
-        const out = await runner('qc', 'jenny', 'Verify task', tmpDir);
+        const logFile = join(logDir, 'turn-2.log');
+        const out = await runner('qc', 'jenny', 'Verify task', tmpDir, logFile);
         expect(out.exitCode).toBe(0);
         expect(out.output).toContain('codex stdout line');
         expect(out.lastMessage).toContain('"verdict":"pass"');
+        expect(readFileSync(logFile, 'utf8')).toContain('codex stdout line');
       } finally {
         process.env.PATH = originalPath;
       }
@@ -325,13 +329,13 @@ echo "codex stdout line"
 
     it('throws error for unknown agentId', async () => {
       const cfg = loadConfig('btm.config.yaml');
-      const runner = makeRunner(cfg, join(tmpDir, 'logs'));
+      const runner = makeRunner(cfg);
       await expect(
-        runner('dev', 'nonexistent', 'prompt', tmpDir)
+        runner('dev', 'nonexistent', 'prompt', tmpDir, join(tmpDir, 'turn-0.log'))
       ).rejects.toThrow(/Agent 'nonexistent' not found/);
     });
 
-    it('resolves relative logDir before use and ensures outFile is absolute', async () => {
+    it('resolves relative logFile before use and ensures outFile is absolute', async () => {
       const cfg = loadConfig('btm.config.yaml');
       const binDir = join(tmpDir, 'bin');
       mkdirSync(binDir, { recursive: true });
@@ -348,15 +352,15 @@ echo '{"verdict":"pass"}' > "$outFile"
       );
       chmodSync(mockCodex, 0o755);
 
-      const relLogDir = 'test-relative-log-dir';
-      const expectedAbsLogDir = resolve(relLogDir);
+      const relLogFile = 'test-relative-dir/turn-1.log';
+      const expectedAbsLogDir = dirname(resolve(relLogFile));
 
-      const runner = makeRunner(cfg, relLogDir);
+      const runner = makeRunner(cfg);
 
       const originalPath = process.env.PATH;
       process.env.PATH = `${binDir}:${originalPath}`;
       try {
-        const out = await runner('qc', 'jenny', 'Verify task', tmpDir);
+        const out = await runner('qc', 'jenny', 'Verify task', tmpDir, relLogFile);
         expect(out.exitCode).toBe(0);
         expect(out.lastMessage).toContain('"verdict":"pass"');
 

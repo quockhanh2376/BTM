@@ -342,17 +342,17 @@ export type Runner = (
   agentId: string,
   prompt: string,
   cwd: string,
+  logFile: string,
   options?: { signal?: AbortSignal }
 ) => Promise<TurnOutput>;
 
-export function makeRunner(cfg: Config, logDir: string, defaultSignal?: AbortSignal): Runner {
-  const resolvedLogDir = resolve(logDir);
-
+export function makeRunner(cfg: Config, defaultSignal?: AbortSignal): Runner {
   return async (
     seat: Seat,
     agentId: string,
     prompt: string,
     cwd: string,
+    logFile: string,
     options?: { signal?: AbortSignal }
   ): Promise<TurnOutput> => {
     const agent = cfg.agents[agentId];
@@ -364,11 +364,11 @@ export function makeRunner(cfg: Config, logDir: string, defaultSignal?: AbortSig
     const timeoutMs = timeoutMin * 60 * 1000;
     const allow = cfg.runner.agy_allow_commands;
 
-    mkdirSync(resolvedLogDir, { recursive: true });
-    const timestamp = Date.now();
-    const rand = Math.random().toString(36).slice(2, 8);
-    const logFile = join(resolvedLogDir, `${seat}-${agentId}-${timestamp}-${rand}.log`);
-    const outFile = join(resolvedLogDir, `${seat}-${agentId}-${timestamp}-${rand}.out`);
+    const absLogFile = resolve(logFile);
+    mkdirSync(dirname(absLogFile), { recursive: true });
+    const outFile = absLogFile.endsWith('.log')
+      ? absLogFile.slice(0, -4) + '.out'
+      : `${absLogFile}.out`;
 
     const argv = buildArgv(agent.tool, prompt, {
       seat,
@@ -380,7 +380,7 @@ export function makeRunner(cfg: Config, logDir: string, defaultSignal?: AbortSig
     const result = await runProcess(argv, {
       cwd,
       timeoutMs,
-      logFile,
+      logFile: absLogFile,
       env: process.env,
       signal: options?.signal ?? defaultSignal,
     });

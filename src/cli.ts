@@ -312,7 +312,7 @@ Options:
             }
 
             activeSessionId = latestAwaiting.id;
-            const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'), abortController.signal);
+            const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal);
             const resumeFn = effectiveDeps?.resumeSession ?? resumeSession;
 
             const outcome = await resumeFn(
@@ -322,6 +322,7 @@ Options:
                 runner,
                 repo: activeProject,
                 env: effectiveEnv,
+                logDir: join(cfg.host.data_dir, 'logs'),
                 signal: abortController.signal,
               },
               latestAwaiting.id
@@ -348,7 +349,7 @@ Options:
             return exitCode;
           }
 
-          const runner = effectiveDeps?.runner ?? makeRunner(cfg, join(cfg.host.data_dir, 'logs'), abortController.signal);
+          const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal);
           const sessionFn = effectiveDeps?.runSession ?? runSession;
 
           const outcome = await sessionFn(
@@ -358,6 +359,7 @@ Options:
               runner,
               repo: activeProject,
               env: effectiveEnv,
+              logDir: join(cfg.host.data_dir, 'logs'),
               signal: abortController.signal,
             },
             goals,
