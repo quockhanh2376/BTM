@@ -22,6 +22,11 @@
       --border-subtle: #ECECE7;
       --badge-bg: #EEEEEC;
       --badge-text: #55554F;
+      --tab-active-bg: var(--accent);
+      --tab-active-text: #FFFFFF;
+      --tab-inactive-bg: #E5E5DF;
+      --tab-inactive-text: #55554F;
+      --tab-inactive-hover-bg: #ECECE7;
       --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       --radius: 12px;
@@ -49,6 +54,11 @@
       --border-subtle: #272724;
       --badge-bg: #2B2B28;
       --badge-text: #B5B5AE;
+      --tab-active-bg: var(--accent);
+      --tab-active-text: #141413;
+      --tab-inactive-bg: #2B2B28;
+      --tab-inactive-text: #B5B5AE;
+      --tab-inactive-hover-bg: #333330;
     }
 
     *, *::before, *::after {
@@ -434,79 +444,151 @@
       align-items: start;
     }
 
-    /* 5 Task columns */
-    .task-columns-grid {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 12px;
-      overflow-x: auto;
-      padding-bottom: 4px;
-    }
-
-    .task-col {
-      background-color: var(--bg);
-      border-radius: 12px;
-      border: 1px solid var(--border-subtle);
-      padding: 12px;
+    /* Task Board Tab Navigation and Panel */
+    .task-board-section {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      min-width: 140px;
-      box-sizing: border-box;
     }
 
-    .task-col-header {
+    .task-tabs-nav {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text);
+      align-items: flex-end;
+      position: relative;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 4px 4px 0 4px;
+      gap: 0;
+      border-bottom: 2px solid var(--accent);
+      scrollbar-width: thin;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
     }
 
-    .task-col-count {
+    .task-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      margin-right: -6px;
+      border-radius: 12px 12px 0 0;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      background-color: var(--tab-inactive-bg);
+      color: var(--tab-inactive-text);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      position: relative;
+      z-index: 1;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background-color 0.15s ease, color 0.15s ease;
+      outline: none;
+    }
+
+    .task-tab:hover {
+      background-color: var(--tab-inactive-hover-bg);
+    }
+
+    .task-tab:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+
+    .task-tab[aria-selected="true"] {
+      background-color: var(--tab-active-bg, var(--accent));
+      color: var(--tab-active-text);
+      border-color: var(--accent);
+      border-bottom: none;
+      z-index: 3;
+      padding-top: 10px;
+      padding-bottom: 10px;
+      margin-bottom: -2px;
+      box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.08);
+    }
+
+    .task-tab-count {
       font-size: 11px;
       padding: 2px 6px;
       border-radius: 10px;
+      background-color: rgba(0, 0, 0, 0.08);
+      color: inherit;
+    }
+
+    .task-tab[aria-selected="true"] .task-tab-count {
+      background-color: #1e3f99;
+      color: #ffffff;
+    }
+
+    [data-theme="dark"] .task-tab[aria-selected="true"] .task-tab-count {
+      background-color: #141413;
+      color: #8aaeff;
+    }
+
+    .task-tabpanel {
       background-color: var(--card-bg);
       border: 1px solid var(--border);
-      color: var(--text-muted);
+      border-top: none;
+      border-radius: 0 0 12px 12px;
+      padding: 16px;
+      box-sizing: border-box;
+      width: 100%;
     }
 
-    .task-card-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      min-height: 40px;
-    }
-
-    .task-item {
-      background-color: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .task-item-id {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--accent);
-      font-family: var(--font-mono);
-    }
-
-    .task-item-goal {
-      font-size: 12px;
-      color: var(--text);
+    .task-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
       word-break: break-word;
     }
 
-    .task-item-meta {
-      font-size: 11px;
+    .task-table th {
+      padding: 8px 6px;
+      font-weight: 600;
       color: var(--text-muted);
-      margin-top: 2px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+
+    .task-table td {
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text);
+      vertical-align: top;
+    }
+
+    .task-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .task-table .col-id {
+      width: 55px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+
+    .task-table .col-goal {
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: normal;
+    }
+
+    .task-table .col-fixes {
+      width: 55px;
+      white-space: nowrap;
+    }
+
+    .task-table .col-updated {
+      width: 65px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
     }
 
     /* Log section */
@@ -847,9 +929,6 @@
       .board-and-log-layout {
         grid-template-columns: 1fr;
       }
-      .task-columns-grid {
-        grid-template-columns: repeat(5, minmax(130px, 1fr));
-      }
     }
 
     @media (max-width: 600px) {
@@ -1014,56 +1093,49 @@
       </div>
     </section>
 
-    <!-- Bảng task 5 cột & Nhật ký -->
+    <!-- Bảng task dạng tab & Nhật ký -->
     <div class="board-and-log-layout">
-      <!-- Bảng task 5 cột -->
-      <section class="card">
+      <!-- Bảng task dạng tab thẻ hồ sơ -->
+      <section class="card task-board-section">
         <h2 class="section-title">Bảng task</h2>
-        <div class="task-columns-grid">
-          <!-- Cột 1: Chờ -->
-          <div class="task-col">
-            <div class="task-col-header">
-              <span>Chờ</span>
-              <span class="task-col-count" id="count-pending">0</span>
-            </div>
-            <div class="task-card-list" id="col-pending"></div>
-          </div>
-
-          <!-- Cột 2: Đang làm -->
-          <div class="task-col">
-            <div class="task-col-header">
-              <span>Đang làm</span>
-              <span class="task-col-count" id="count-in_dev">0</span>
-            </div>
-            <div class="task-card-list" id="col-in_dev"></div>
-          </div>
-
-          <!-- Cột 3: Chờ test -->
-          <div class="task-col">
-            <div class="task-col-header">
-              <span>Chờ test</span>
-              <span class="task-col-count" id="count-awaiting_qc">0</span>
-            </div>
-            <div class="task-card-list" id="col-awaiting_qc"></div>
-          </div>
-
-          <!-- Cột 4: Đạt -->
-          <div class="task-col">
-            <div class="task-col-header">
-              <span>Đạt</span>
-              <span class="task-col-count" id="count-passed">0</span>
-            </div>
-            <div class="task-card-list" id="col-passed"></div>
-          </div>
-
-          <!-- Cột 5: Trả về -->
-          <div class="task-col">
-            <div class="task-col-header">
-              <span>Trả về</span>
-              <span class="task-col-count" id="count-returned">0</span>
-            </div>
-            <div class="task-card-list" id="col-returned"></div>
-          </div>
+        <div class="task-tabs-nav" role="tablist" aria-label="Bảng task" id="task-tablist">
+          <button type="button" role="tab" id="tab-pending" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="pending">
+            <span>Chờ</span>
+            <span class="task-tab-count" id="count-pending">0</span>
+          </button>
+          <button type="button" role="tab" id="tab-in_dev" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="in_dev">
+            <span>Đang làm</span>
+            <span class="task-tab-count" id="count-in_dev">0</span>
+          </button>
+          <button type="button" role="tab" id="tab-awaiting_qc" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="awaiting_qc">
+            <span>Chờ test</span>
+            <span class="task-tab-count" id="count-awaiting_qc">0</span>
+          </button>
+          <button type="button" role="tab" id="tab-passed" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="passed">
+            <span>Đạt</span>
+            <span class="task-tab-count" id="count-passed">0</span>
+          </button>
+          <button type="button" role="tab" id="tab-returned" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="returned">
+            <span>Trả về</span>
+            <span class="task-tab-count" id="count-returned">0</span>
+          </button>
+        </div>
+        <div class="task-tabpanel" id="task-tabpanel" role="tabpanel" aria-labelledby="tab-pending" tabindex="0">
+          <table class="task-table">
+            <thead>
+              <tr>
+                <th scope="col" class="col-id">ID</th>
+                <th scope="col" class="col-goal">Mục tiêu</th>
+                <th scope="col" class="col-fixes">Vòng sửa</th>
+                <th scope="col" class="col-updated">Cập nhật</th>
+              </tr>
+            </thead>
+            <tbody id="task-table-body">
+              <tr>
+                <td colspan="4" class="empty-placeholder">Không có thẻ</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -1336,17 +1408,183 @@
       var logList = document.getElementById('log-list');
       var queueList = document.getElementById('queue-list');
 
-      var colPending = document.getElementById('col-pending');
-      var colInDev = document.getElementById('col-in_dev');
-      var colAwaitingQc = document.getElementById('col-awaiting_qc');
-      var colPassed = document.getElementById('col-passed');
-      var colReturned = document.getElementById('col-returned');
+      var taskTablist = document.getElementById('task-tablist');
+      var taskTabpanel = document.getElementById('task-tabpanel');
+      var taskTableBody = document.getElementById('task-table-body');
 
       var countPending = document.getElementById('count-pending');
       var countInDev = document.getElementById('count-in_dev');
       var countAwaitingQc = document.getElementById('count-awaiting_qc');
       var countPassed = document.getElementById('count-passed');
       var countReturned = document.getElementById('count-returned');
+
+      var tabCounts = {
+        pending: countPending,
+        in_dev: countInDev,
+        awaiting_qc: countAwaitingQc,
+        passed: countPassed,
+        returned: countReturned
+      };
+
+      var TASK_TAB_KEYS = ['pending', 'in_dev', 'awaiting_qc', 'passed', 'returned'];
+      var userSelectedTab = null;
+      var lastTasksFingerprint = null;
+      var currentActiveTab = 'pending';
+      var latestTasks = [];
+
+      function getTasksFingerprint(tasks) {
+        if (!Array.isArray(tasks)) return '';
+        var map = {};
+        for (var i = 0; i < tasks.length; i++) {
+          var t = tasks[i];
+          if (t && t.id) {
+            map[t.id] = t.state || '';
+          }
+        }
+        var keys = Object.keys(map).sort();
+        var parts = [];
+        for (var j = 0; j < keys.length; j++) {
+          var k = keys[j];
+          parts.push(k + ':' + map[k]);
+        }
+        return parts.join('|');
+      }
+
+      function resolveActiveTab(tasks) {
+        var currentFingerprint = getTasksFingerprint(tasks);
+        if (lastTasksFingerprint !== null && currentFingerprint !== lastTasksFingerprint) {
+          userSelectedTab = null;
+        }
+        lastTasksFingerprint = currentFingerprint;
+
+        if (userSelectedTab) {
+          return userSelectedTab;
+        }
+
+        var list = Array.isArray(tasks) ? tasks : [];
+        for (var i = 0; i < list.length; i++) {
+          if (list[i] && list[i].state === 'in_dev') return 'in_dev';
+        }
+        for (var j = 0; j < list.length; j++) {
+          if (list[j] && list[j].state === 'awaiting_qc') return 'awaiting_qc';
+        }
+
+        var tabOrder = ['pending', 'in_dev', 'awaiting_qc', 'passed', 'returned'];
+        for (var k = 0; k < tabOrder.length; k++) {
+          var tabKey = tabOrder[k];
+          for (var m = 0; m < list.length; m++) {
+            var s = list[m].state;
+            if (tabKey === 'returned') {
+              if (s === 'returned' || (s !== 'pending' && s !== 'in_dev' && s !== 'awaiting_qc' && s !== 'passed')) return 'returned';
+            } else if (s === tabKey) {
+              return tabKey;
+            }
+          }
+        }
+        return 'pending';
+      }
+
+      function updateTabUI(activeKey) {
+        TASK_TAB_KEYS.forEach(function (key) {
+          var tabBtn = document.getElementById('tab-' + key);
+          if (tabBtn) {
+            var isActive = (key === activeKey);
+            tabBtn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            tabBtn.tabIndex = isActive ? 0 : -1;
+          }
+        });
+        if (taskTabpanel) {
+          taskTabpanel.setAttribute('aria-labelledby', 'tab-' + activeKey);
+        }
+      }
+
+      function renderTaskTable(tasks, activeKey) {
+        if (!taskTableBody) return;
+        clearChildren(taskTableBody);
+
+        var list = Array.isArray(tasks) ? tasks : [];
+        var filtered = list.filter(function (t) {
+          if (activeKey === 'returned') {
+            return t.state === 'returned' || (t.state !== 'pending' && t.state !== 'in_dev' && t.state !== 'awaiting_qc' && t.state !== 'passed');
+          }
+          return t.state === activeKey;
+        });
+
+        if (filtered.length === 0) {
+          var tr = document.createElement('tr');
+          var td = document.createElement('td');
+          td.colSpan = 4;
+          td.className = 'empty-placeholder';
+          td.textContent = 'Không có thẻ';
+          tr.appendChild(td);
+          taskTableBody.appendChild(tr);
+          return;
+        }
+
+        filtered.forEach(function (t) {
+          var tr = document.createElement('tr');
+
+          var tdId = document.createElement('td');
+          tdId.className = 'col-id';
+          tdId.textContent = t.id || '—';
+          tr.appendChild(tdId);
+
+          var tdGoal = document.createElement('td');
+          tdGoal.className = 'col-goal';
+          tdGoal.textContent = t.goal || '(Chưa có mô tả)';
+          tr.appendChild(tdGoal);
+
+          var tdFixes = document.createElement('td');
+          tdFixes.className = 'col-fixes';
+          tdFixes.textContent = String(t.fixRounds != null ? t.fixRounds : 0);
+          tr.appendChild(tdFixes);
+
+          var tdUpdated = document.createElement('td');
+          tdUpdated.className = 'col-updated';
+          tdUpdated.textContent = (t.updatedAt || t.updated) ? formatTime(t.updatedAt || t.updated) : '—';
+          tr.appendChild(tdUpdated);
+
+          taskTableBody.appendChild(tr);
+        });
+      }
+
+      function selectTab(tabKey, focus) {
+        userSelectedTab = tabKey;
+        currentActiveTab = tabKey;
+        updateTabUI(tabKey);
+        renderTaskTable(latestTasks, tabKey);
+        if (focus) {
+          var btn = document.getElementById('tab-' + tabKey);
+          if (btn) btn.focus();
+        }
+      }
+
+      function handleTabKeydown(e) {
+        var currentIdx = TASK_TAB_KEYS.indexOf(currentActiveTab);
+        if (currentIdx === -1) currentIdx = 0;
+
+        if (e.key === 'ArrowRight' || e.key === 'Right') {
+          e.preventDefault();
+          var nextIdx = (currentIdx + 1) % TASK_TAB_KEYS.length;
+          selectTab(TASK_TAB_KEYS[nextIdx], true);
+        } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
+          e.preventDefault();
+          var prevIdx = (currentIdx - 1 + TASK_TAB_KEYS.length) % TASK_TAB_KEYS.length;
+          selectTab(TASK_TAB_KEYS[prevIdx], true);
+        }
+      }
+
+      if (taskTablist) {
+        taskTablist.addEventListener('keydown', handleTabKeydown);
+      }
+      TASK_TAB_KEYS.forEach(function (key) {
+        var tabBtn = document.getElementById('tab-' + key);
+        if (tabBtn) {
+          tabBtn.addEventListener('click', function () {
+            selectTab(key, false);
+          });
+        }
+      });
 
       var notesList = document.getElementById('notes-list');
       var recipientRadios = document.getElementById('recipient-radios');
@@ -1694,62 +1932,25 @@
         renderSeat('qc', seatsMap['qc'], state.holder === 'qc');
 
         // Task Board
-        var cols = {
-          pending: { el: colPending, countEl: countPending, items: [] },
-          in_dev: { el: colInDev, countEl: countInDev, items: [] },
-          awaiting_qc: { el: colAwaitingQc, countEl: countAwaitingQc, items: [] },
-          passed: { el: colPassed, countEl: countPassed, items: [] },
-          returned: { el: colReturned, countEl: countReturned, items: [] }
-        };
+        latestTasks = Array.isArray(state.tasks) ? state.tasks : [];
 
-        if (Array.isArray(state.tasks)) {
-          state.tasks.forEach(function (task) {
-            if (task.state === 'pending') cols.pending.items.push(task);
-            else if (task.state === 'in_dev') cols.in_dev.items.push(task);
-            else if (task.state === 'awaiting_qc') cols.awaiting_qc.items.push(task);
-            else if (task.state === 'passed') cols.passed.items.push(task);
-            else cols.returned.items.push(task);
-          });
-        }
-
-        Object.keys(cols).forEach(function (k) {
-          var colObj = cols[k];
-          if (colObj.countEl) colObj.countEl.textContent = String(colObj.items.length);
-          if (colObj.el) {
-            clearChildren(colObj.el);
-            if (colObj.items.length === 0) {
-              var emptyEl = document.createElement('div');
-              emptyEl.className = 'empty-placeholder';
-              emptyEl.textContent = '—';
-              colObj.el.appendChild(emptyEl);
-            } else {
-              colObj.items.forEach(function (t) {
-                var card = document.createElement('div');
-                card.className = 'task-item';
-
-                var idEl = document.createElement('div');
-                idEl.className = 'task-item-id';
-                idEl.textContent = t.id;
-                card.appendChild(idEl);
-
-                var goalEl = document.createElement('div');
-                goalEl.className = 'task-item-goal';
-                goalEl.textContent = t.goal || '(Chưa có mô tả)';
-                card.appendChild(goalEl);
-
-                if (k === 'returned' || t.fixRounds > 0) {
-                  var metaEl = document.createElement('div');
-                  metaEl.className = 'task-item-meta';
-                  var stateLabel = formatStatus(t.state);
-                  metaEl.textContent = stateLabel + (t.fixRounds > 0 ? (' · Sửa lần ' + t.fixRounds) : '');
-                  card.appendChild(metaEl);
-                }
-
-                colObj.el.appendChild(card);
-              });
-            }
-          }
+        var counts = { pending: 0, in_dev: 0, awaiting_qc: 0, passed: 0, returned: 0 };
+        latestTasks.forEach(function (t) {
+          if (t.state === 'pending') counts.pending++;
+          else if (t.state === 'in_dev') counts.in_dev++;
+          else if (t.state === 'awaiting_qc') counts.awaiting_qc++;
+          else if (t.state === 'passed') counts.passed++;
+          else counts.returned++;
         });
+
+        TASK_TAB_KEYS.forEach(function (k) {
+          var el = tabCounts[k];
+          if (el) el.textContent = String(counts[k]);
+        });
+
+        currentActiveTab = resolveActiveTab(latestTasks);
+        updateTabUI(currentActiveTab);
+        renderTaskTable(latestTasks, currentActiveTab);
 
         // Logs
         if (logList) {
