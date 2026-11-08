@@ -92,7 +92,7 @@ async function workOnCards(
       }
 
       const devTurnId = d.store.startTurn(sessionId, 'dev', devAgent, card.id);
-      const devPromptText = devPrompt(card, fixNotes);
+      const devPromptText = devPrompt(card, fixNotes, d.cfg.runner.agy_allow_commands);
       let devOutput;
       try {
         devOutput = await d.runner('dev', devAgent, devPromptText, d.repo);
@@ -107,9 +107,9 @@ async function workOnCards(
         return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
       }
 
-      if (devOutput.timedOut || devOutput.exitCode !== 0) {
-        const result: TurnResult = devOutput.timedOut ? 'timeout' : 'error';
-        const reason = devOutput.timedOut ? 'timeout' : `exit_${devOutput.exitCode}`;
+      if (devOutput.timedOut) {
+        const result: TurnResult = 'timeout';
+        const reason = 'timeout';
         d.store.endTurn(devTurnId, result, reason);
         try {
           commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
@@ -120,6 +120,22 @@ async function workOnCards(
       }
 
       const devText = (devOutput.lastMessage || '') + ' ' + (devOutput.output || '');
+      const hasAutoDenied =
+        (devOutput.output || '').includes('auto-denied') ||
+        (devOutput.lastMessage || '').includes('auto-denied');
+
+      if (!hasAutoDenied && devOutput.exitCode !== 0) {
+        const result: TurnResult = 'error';
+        const reason = `exit_${devOutput.exitCode}`;
+        d.store.endTurn(devTurnId, result, reason);
+        try {
+          commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
+        } catch {
+          // commitAll error: keep needs_owner, do not throw
+        }
+        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+      }
+
       if (devText.includes('BLOCKED')) {
         d.store.endTurn(devTurnId, 'ok');
         try {
@@ -140,12 +156,25 @@ async function workOnCards(
       }
 
       const gateResult = runGate(d.repo, card, base, d.cfg.gate.commands);
-      if (!gateResult.ok) {
-        d.store.endTurn(devTurnId, 'rejected', gateResult.reasons.join('; '));
-        for (const reason of gateResult.reasons) {
+      if (!gateResult.ok || hasAutoDenied) {
+        const failureReasons: string[] = [];
+        if (hasAutoDenied) {
+          failureReasons.push('command_denied');
+        }
+        if (!gateResult.ok) {
+          failureReasons.push(...gateResult.reasons);
+        }
+
+        d.store.endTurn(devTurnId, 'rejected', failureReasons.join('; '));
+        for (const reason of failureReasons) {
           d.store.recordHandoffFailure(sessionId, card.id, reason);
         }
-        fixNotes = [...gateResult.reasons];
+
+        const deniedNote = 'command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ';
+        fixNotes = [
+          ...(hasAutoDenied ? [deniedNote] : []),
+          ...(!gateResult.ok ? gateResult.reasons : []),
+        ];
         fixRounds++;
         if (fixRounds > d.cfg.turn.max_fix_rounds) {
           tasks[card.id] = 'failed';
@@ -154,7 +183,7 @@ async function workOnCards(
             sessionId,
             tasks,
             notes: [
-              `Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${gateResult.reasons.join(', ')}`,
+              `Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${failureReasons.join(', ')}`,
             ],
           };
         }

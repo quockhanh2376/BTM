@@ -94,4 +94,4 @@ plugins:                               # "đồ nghề theo ghế"; bật dần,
   later: [ui-ux-pro-max, superpowers]  # chưa bật ở v1.0
 
 runner:
-  agy_allow_commands: [cat, ls, grep, head, tail, wc, git status, git diff, git log, git ls-files, npm test, npx vitest, npx tsc]
+  agy_allow_commands: [cat, ls, grep, head, tail, wc, git status, git diff, git log, git ls-files, git branch, git grep, git show, npm test, npx vitest, npx tsc, node]

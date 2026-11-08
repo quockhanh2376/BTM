@@ -96,7 +96,7 @@ describe('Prompts', () => {
     expect(prompt).toMatch(/đường dẫn trần.*không chú thích/i);
   });
 
-  it('devPrompt is <= 6 lines, Vietnamese, mentions reading task file with acceptance, reports path, fix notes, merges newlines, and forbids git commit and push', () => {
+  it('devPrompt is <= 6 lines, Vietnamese, mentions reading task file with acceptance, reports path, fix notes, merges newlines, forbids git commit and push, and lists allowed commands with restrictions', () => {
     const card: TaskCard = {
       id: 'T-001',
       goal: 'Hiện thực\ntính năng',
@@ -104,7 +104,8 @@ describe('Prompts', () => {
       acceptance: ['chạy được'],
       done_when: 'test pass\n',
     };
-    const promptWithNotes = devPrompt(card, ['Lỗi syntax', 'out_of_scope:other.ts']);
+    const allowCommands = ['cat', 'ls', 'grep', 'git status', 'npx vitest'];
+    const promptWithNotes = devPrompt(card, ['Lỗi syntax', 'out_of_scope:other.ts'], allowCommands);
     const lines = promptWithNotes.split('\n');
     expect(lines.length).toBeLessThanOrEqual(6);
     expect(promptWithNotes).toContain('T-001');
@@ -118,7 +119,14 @@ describe('Prompts', () => {
     expect(lines[0]).toContain('Hiện thực tính năng');
     expect(lines[1]).toContain('src/a.ts, src/b.ts');
 
-    const promptNoNotes = devPrompt(card, []);
+    // Requirements for Task 9c:
+    expect(promptWithNotes).toContain('cat, ls, grep, git status, npx vitest');
+    expect(promptWithNotes).toContain('mỗi lệnh chạy riêng lẻ');
+    expect(promptWithNotes).toContain('không nối &&/;/|');
+    expect(promptWithNotes).toContain('không find/sed/rm');
+    expect(promptWithNotes).toContain('đọc file bằng công cụ đọc file');
+
+    const promptNoNotes = devPrompt(card, [], allowCommands);
     expect(promptNoNotes.split('\n').length).toBeLessThanOrEqual(6);
   });
 
@@ -1320,6 +1328,170 @@ done_when: done
 
       // Verify DB status
       expect(store.getLatestSession()?.status).toBe('done');
+
+      store.close();
+    });
+
+    it('session passes cfg.runner.agy_allow_commands into devPrompt', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '1' });
+      const customAllow = ['cat', 'git status', 'npx vitest'];
+      const { deps, store } = makeDeps(repo, {
+        runner: {
+          ...loadConfig('btm.config.yaml').runner,
+          agy_allow_commands: customAllow,
+        },
+      });
+
+      let devPromptReceived = '';
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev
+        (_s, _a, prompt, cwd) => {
+          devPromptReceived = prompt;
+          writeFileSync(join(cwd, 'src', 'app.ts'), '2');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal'], { approved: true });
+      expect(outcome.status).toBe('done');
+      expect(devPromptReceived).toContain('cat, git status, npx vitest');
+      expect(devPromptReceived).toContain('mỗi lệnh chạy riêng lẻ');
+      expect(devPromptReceived).toContain('không nối &&/;/|');
+      expect(devPromptReceived).toContain('không find/sed/rm');
+      expect(devPromptReceived).toContain('đọc file bằng công cụ đọc file');
+
+      store.close();
+    });
+
+    it('Dev output containing auto-denied records handoff failure command_denied and adds fixNote for next round', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '1' });
+      const { deps, store } = makeDeps(repo);
+      const recordSpy = vi.spyOn(store, 'recordHandoffFailure');
+
+      let devRound2Prompt = '';
+      const { runner, calls } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev round 1: command auto-denied by agy headless
+        () => ({
+          exitCode: 0,
+          output: 'tool bash: auto-denied command "find . -name *.ts"',
+          lastMessage: 'auto-denied',
+        }),
+        // Dev round 2: receives fixNote and implements properly
+        (_s, _a, prompt, cwd) => {
+          devRound2Prompt = prompt;
+          writeFileSync(join(cwd, 'src', 'app.ts'), '2');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal'], { approved: true });
+
+      expect(outcome.status).toBe('done');
+      expect(outcome.tasks['T-001']).toBe('passed');
+      expect(calls.length).toBe(4); // PM, Dev r1, Dev r2, QC
+
+      expect(recordSpy).toHaveBeenCalledWith(1, 'T-001', 'command_denied');
+      expect(devRound2Prompt).toContain('command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ');
+
+      store.close();
+    });
+
+    it('Dev output containing auto-denied with non-zero exit code is handled as command_denied fix round', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '1' });
+      const { deps, store } = makeDeps(repo);
+      const recordSpy = vi.spyOn(store, 'recordHandoffFailure');
+
+      let devRound2Prompt = '';
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---
+id: T-001
+goal: Goal
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: done
+---
+`
+          );
+        },
+        // Dev round 1: agy aborts on auto-denied with exitCode 1
+        () => ({
+          exitCode: 1,
+          output: 'Error: auto-denied tool execution outside whitelist',
+          lastMessage: 'Terminated',
+        }),
+        // Dev round 2: fixes
+        (_s, _a, prompt, cwd) => {
+          devRound2Prompt = prompt;
+          writeFileSync(join(cwd, 'src', 'app.ts'), '2');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(join(cwd, 'team', 'reports', 'T-001-dev.md'), 'OK');
+        },
+        // QC
+        () => ({
+          lastMessage: JSON.stringify({ verdict: 'pass', bugs: [], fix: [], confirm: [] }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal'], { approved: true });
+
+      expect(outcome.status).toBe('done');
+      expect(outcome.tasks['T-001']).toBe('passed');
+      expect(recordSpy).toHaveBeenCalledWith(1, 'T-001', 'command_denied');
+      expect(devRound2Prompt).toContain('command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ');
 
       store.close();
     });
