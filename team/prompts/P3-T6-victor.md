@@ -18,4 +18,4 @@ Plan: docs/superpowers/plans/2026-11-08-btm-v1-energy-accounts.md, Task 6.
 
 **Xong khi:** `npx vitest run` không tăng số fail (hiện ~21 fail Windows), `npx tsc --noEmit` sạch.
 
-**Luật:** không commit, không đổi nhánh, không cài package. Báo cáo → `team/reports/P3-T6-dev.md` (Bug / Cần sửa / Cần xác nhận, hoặc OK). Rồi sửa dòng P3-T6·V trong team/board.md thành `done`.
+**Báo cáo:** `team/reports/P3-T6-dev.md`.

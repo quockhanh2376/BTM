@@ -10,4 +10,6 @@
 5. pmPrompt chỉ thêm dòng OpenSpec khi `hasOpenspec` true.
 6. `npx vitest run` không tăng fail so với ~21 fail Windows; `npx tsc --noEmit` sạch.
 
-**Luật:** read-only. Báo cáo → `team/reports/P3-T6-qeen.md`, mỗi dòng `Bug|Cần sửa|Cần xác nhận: <file:dòng> — <mô tả>`, ổn ghi OK. Rồi sửa dòng P3-T6·Q trong team/board.md thành `reviewed`.
+**Báo cáo:** `team/reports/P3-T6-qeen.md`.
+
+Ghi chú Cheki: line ending CRLF do Antigravity tạo đã được đổi về LF; bỏ qua khác biệt line ending.
