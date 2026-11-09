@@ -25,7 +25,7 @@ prompt="$(cat "$prompt_file")"
 if [ -s "$conv_file" ]; then conv_args=(--conversation "$(cat "$conv_file")"); else prompt="$(cat "team/prompts/rules-$who.md")
 $prompt"; fi
 # Mỗi lượt nhắc lại: lệnh ngoài danh sách bị chặn và agy dừng CẢ lượt (đã mất 3 lượt vì git diff <file>, git grep).
-prompt="NHẮC: terminal chỉ chạy được NGUYÊN VĂN: git status | git status --short | git diff | git diff --stat | git log --oneline -10 | npx vitest run | npx tsc --noEmit. Không thêm tham số, không git grep. Tìm/đọc file bằng công cụ tìm kiếm/đọc file của bạn.
+prompt="NHẮC: terminal chỉ chạy được NGUYÊN VĂN: git status | git status --short | git diff | git diff --stat | git log --oneline -10 | npx vitest run | npx tsc --noEmit. Không thêm tham số, không git grep. Tìm/đọc file bằng công cụ tìm kiếm/đọc file của bạn. KHÔNG xoá test hay tính năng cũ (a11y, phím tắt, layout…) trừ khi prompt cho phép rõ – thay đổi giao diện thì viết lại test cho giao diện mới.
 
 $prompt"
 

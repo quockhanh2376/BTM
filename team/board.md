@@ -25,8 +25,9 @@
 | P4-T7 | Q | accepted | team/prompts/P4-T7-qeen.md | team/reports/P4-T7-qeen.md |
 | P4-T8 | V | accepted | team/prompts/P4-T8-victor.md | team/reports/P4-T8-dev.md |
 | P4-T8 | Q | accepted | team/prompts/P4-T8-qeen.md | team/reports/P4-T8-qeen.md |
-| P4-T9 | V | running | team/prompts/P4-T9-victor.md | team/reports/P4-T9-dev.md |
-| P4-T9 | Q | waiting (sau V) | team/prompts/P4-T9-qeen.md | team/reports/P4-T9-qeen.md |
-| P4-T10 | V→Q | waiting | docs/superpowers/plans/2026-11-09-btm-v1-tickets.md | – |
+| P4-T9 | V | accepted | team/prompts/P4-T9-victor.md | team/reports/P4-T9-dev.md |
+| P4-T9 | Q | accepted | team/prompts/P4-T9-qeen.md | team/reports/P4-T9-qeen.md |
+| P4-T10 | V | running | team/prompts/P4-T10-victor.md | team/reports/P4-T10-dev.md |
+| P4-T10 | Q | waiting (sau V) | team/prompts/P4-T10-qeen.md | team/reports/P4-T10-qeen.md |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).

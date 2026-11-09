@@ -53,3 +53,8 @@
 - 2026-11-09 17:25 · Zon yêu cầu canh thanh Energy thẳng hàng. Cheki: fix/seat-energy-align (.seat-footer margin-top:auto), VM 544/544 ×2, PR #7 Cheki tự merge (e2fb242, luật nhánh nhỏ), deploy VM không cần restart (HTML đọc mỗi request); đo 3 thẻ cùng y=357. Gộp main vào plan4-tickets sau khi V xong P4-T8 (T9 sửa web/index.html)
 - 2026-11-09 17:34 · V · P4-T8 xong (OK): approveGoal + btm goal list\/approve, 18 test mới. Cheki: tsc sạch; Windows 612/630; VM 630/630 ×3. Giao Q review
 - 2026-11-09 17:41 · Q · P4-T8 review OK. Cheki: accepted, commit; merge main (PR #7) vào plan4-tickets; giao P4-T9 (dashboard theo goal) cho V
+- 2026-11-09 18:24 · V · P4-T9 xong (báo OK) nhưng mất tablist/phím ←→/colgroup của 5 tab và xoá 18 test web (63→51). Cheki: trả fix1 khôi phục + viết lại test
+- 2026-11-09 18:53 · V · P4-T9 fix1 xong: web.test 51→69, khôi phục tablist/←→/colgroup. Cheki: tsc sạch; Windows 611/626 (15 – card.test symlink đã xoá); VM 626/626 ×3. Giao Q review
+- 2026-11-09 18:55 · Cheki · Demo dashboard mới (dữ liệu mẫu, VM /tmp/btm-demo, port 8090, không đụng BTM thật): pipeline + nút Duyệt merge + chống XSS OK; LỖI: .ticket-row display:flex làm bảng vỡ cột (cột Mục tiêu bị bóp, chữ xuống dòng từng từ), ID lặp 2 lần. Chờ Q xong để gửi V fix2
+- 2026-11-09 19:03 · Q · P4-T9 review OK (không thấy lỗi giao diện – Q chỉ đọc code). Cheki: trả V fix2 (bỏ display:flex ở .ticket-row, bỏ ID lặp, thêm test)
+- 2026-11-09 19:16 · V · P4-T9 fix2 xong (web.test 70). Cheki: demo 8090 đo cột th=td 72/315/80/96, lịch sử ticket mở đúng; VM 627/627 ×3 → accepted, commit. Giao P4-T10 (btm migrate)

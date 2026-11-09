@@ -9,6 +9,7 @@ import { directPrompt } from '../core/prompts.ts';
 import { commitAll } from '../git.ts';
 import { acquireLock } from '../cli.ts';
 import { inboxPath } from './inbox.ts';
+import { approveGoal as approveGoalFn, type ApproveGoalResult } from '../ticket/goal.ts';
 import { createMonitor } from '../energy/monitor.ts';
 import { readEnergy } from '../energy/quota.ts';
 import { checkLogin } from '../energy/login.ts';
@@ -22,6 +23,7 @@ export interface HostDeps {
   env: NodeJS.ProcessEnv;
   runSession?: typeof runSession;
   resumeSession?: typeof resumeSession;
+  approveGoal?: typeof approveGoalFn;
   monitor?: ReturnType<typeof createMonitor>;
 }
 
@@ -782,9 +784,22 @@ export function createHost(d: HostDeps): HostApi & {
     return { ok: true };
   }
 
+  function approveGoal(n: number): ApproveGoalResult {
+    if (busy()) {
+      return { ok: false, code: 'busy', message: 'Phiên/lượt đang chạy' };
+    }
+    const activeProject = d.store.getActiveProject();
+    if (!activeProject) {
+      return { ok: false, code: 'not_ready', message: 'Chưa có dự án active' };
+    }
+    const fn = d.approveGoal ?? approveGoalFn;
+    return fn(d.store, activeProject, d.cfg, n);
+  }
+
   return {
     start,
     approve,
+    approveGoal,
     resume,
     stop,
     command,

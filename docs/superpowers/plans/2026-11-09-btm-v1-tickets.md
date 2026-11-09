@@ -187,9 +187,9 @@ Luồng: goal `qc_done` + có ghế audit → agent audit ≠ mọi coder của 
 - Stage: `open`→intake, có PM đang chạy/chưa ticket→plan, có ticket `in_dev`/`returned`→build, `awaiting_qc`→verify, `qc_done` có ghế audit→audit, `qc_done`(không audit)/`audit_passed`/`approved`/`merged`→release.
 - `GET /api/tickets/<id>/history` → `ticketHistory`; `POST /api/goal/approve {goal: "G1"}` → `approveGoal`; `not_ready`/`busy` → 409, `conflict`/`dirty` → 409 kèm message.
 - Web: thanh pipeline 6 chặng tiếng Việt (Tiếp nhận · Lập kế hoạch · Đang làm · Kiểm thử · Kiểm tra bảo mật · Phát hành); mỗi goal một nhóm tiêu đề `G1 · <tiêu đề> · 6/9 đạt`; dòng ticket `#3/9 · GTM-0012`; bấm dòng → dòng thời gian lịch sử; nút `<button>` **Duyệt merge** chỉ hiện khi goal sẵn sàng, có hộp xác nhận.
-- [ ] **Step 1: Test:** snapshot từ store có 1 goal 2 ticket (1 passed) → `passed 1 / total 2`, stage đúng từng trạng thái; POST approve thiếu `x-btm` → 403; goal chưa sẵn sàng → 409; history trả đúng thứ tự thời gian; web có đủ 6 nhãn chặng và nút Duyệt merge là `<button>`; tương phản nhãn chặng ≥ 4.5:1 cả hai theme.
-- [ ] **Step 2–4:** FAIL → implement → PASS.
-- [ ] **Step 5:** Commit `feat: dashboard goals, pipeline, ticket history, approve merge (P4 Task 9)`.
+- [x] **Step 1: Test:** snapshot từ store có 1 goal 2 ticket (1 passed) → `passed 1 / total 2`, stage đúng từng trạng thái; POST approve thiếu `x-btm` → 403; goal chưa sẵn sàng → 409; history trả đúng thứ tự thời gian; web có đủ 6 nhãn chặng và nút Duyệt merge là `<button>`; tương phản nhãn chặng ≥ 4.5:1 cả hai theme.
+- [x] **Step 2–4:** FAIL → implement → PASS.
+- [x] **Step 5:** Commit `feat: dashboard goals, pipeline, ticket history, approve merge (P4 Task 9)`.
 
 ### Task 10: Chuyển đổi project cũ (`btm migrate`)
 

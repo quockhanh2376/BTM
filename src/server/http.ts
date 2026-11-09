@@ -9,6 +9,7 @@ import { buildSnapshot } from './snapshot.ts';
 import { commitAll } from '../git.ts';
 import { inboxPath, detectImage, readInboxFile } from './inbox.ts';
 import type { createMonitor } from '../energy/monitor.ts';
+import { approveGoal, type ApproveGoalResult } from '../ticket/goal.ts';
 
 export interface HostApi {
   start(
@@ -34,6 +35,7 @@ export interface HostApi {
     seat: Seat,
     agent: string
   ): { ok: boolean; status?: number; error?: string };
+  approveGoal?(n: number): ApproveGoalResult | Promise<ApproveGoalResult>;
 }
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
@@ -199,6 +201,20 @@ export function createServer(o: {
         return;
       }
 
+      // Ticket history route
+      const ticketHistoryMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/history$/);
+      if (method === 'GET' && ticketHistoryMatch) {
+        const ticketId = ticketHistoryMatch[1];
+        const activeProject = o.store.getActiveProject();
+        if (!activeProject) {
+          sendJson(res, 404, { error: 'No active project' });
+          return;
+        }
+        const history = o.store.ticketHistory(activeProject, ticketId);
+        sendJson(res, 200, history);
+        return;
+      }
+
       // SSE event stream route
       if (method === 'GET' && pathname === '/api/events') {
         res.writeHead(200, {
@@ -330,6 +346,40 @@ export function createServer(o: {
           }
           const result = await o.host.approve();
           sendJson(res, 200, result);
+          return;
+        }
+
+        if (pathname === '/api/goal/approve') {
+          const GoalApproveSchema = z.object({
+            goal: z.string().regex(/^G?(\d+)$/i, { message: 'Invalid goal format, expected G<n>' }),
+          });
+          const parsed = GoalApproveSchema.safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
+            return;
+          }
+          if (o.host.busy?.()) {
+            sendJson(res, 409, { ok: false, code: 'busy', error: 'Phiên/lượt đang chạy', message: 'Phiên/lượt đang chạy' });
+            return;
+          }
+          const match = parsed.data.goal.match(/^G?(\d+)$/i);
+          const goalNumber = parseInt(match![1], 10);
+          let resGoal: ApproveGoalResult;
+          if (o.host.approveGoal) {
+            resGoal = await o.host.approveGoal(goalNumber);
+          } else {
+            const activeProject = o.store.getActiveProject();
+            if (!activeProject) {
+              sendJson(res, 409, { ok: false, code: 'not_ready', error: 'Chưa có dự án active', message: 'Chưa có dự án active' });
+              return;
+            }
+            resGoal = approveGoal(o.store, activeProject, o.cfg, goalNumber);
+          }
+          if (resGoal.ok) {
+            sendJson(res, 200, resGoal);
+          } else {
+            sendJson(res, 409, { ok: false, code: resGoal.code, message: resGoal.message, error: resGoal.message });
+          }
           return;
         }
 

@@ -11,3 +11,4 @@
 6. `npx tsc --noEmit` sạch; `npx vitest run` không tăng fail (18 Windows).
 
 **Báo cáo:** team/reports/P4-T9-qeen.md
+Ghi chú Cheki: sau fix1 web.test 51→69, tablist/phím ←→/colgroup đã khôi phục; Ubuntu 626/626 ×3.
