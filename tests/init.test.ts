@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { initProject } from '../src/project/init.ts';
+import { pmPrompt } from '../src/core/prompts.ts';
 import { main, serve, acquireLock } from '../src/cli.ts';
 import { git, headSha, commitAll } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
@@ -114,6 +115,70 @@ describe('Project Init (initProject)', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it('openspec giả thành công → được gọi đúng tham số + cwd, openspec/ nằm trong commit init', () => {
+    const fakeRunOpenspec = vi.fn().mockImplementation((args: string[], opts: { cwd: string; timeout?: number }) => {
+      fs.mkdirSync(join(opts.cwd, 'openspec'), { recursive: true });
+      fs.writeFileSync(join(opts.cwd, 'openspec', 'openspec.json'), '{"tools": ["claude", "codex", "antigravity"]}\n');
+    });
+
+    const projectPath = initProject(tmpRoot, 'moon-openspec-ok', repoTemplates, {
+      runOpenspec: fakeRunOpenspec,
+    });
+
+    expect(fakeRunOpenspec).toHaveBeenCalledTimes(1);
+    expect(fakeRunOpenspec).toHaveBeenCalledWith(
+      ['init', '--tools', 'claude,codex,antigravity', '--language', 'vi', '--no-animation'],
+      { cwd: projectPath, timeout: 60000 }
+    );
+
+    const filesInCommit = git(projectPath, 'ls-tree', '-r', '--name-only', 'HEAD')
+      .trim()
+      .split(/\r?\n/)
+      .map((s) => s.replace(/\\/g, '/'));
+    expect(filesInCommit).toContain('openspec/openspec.json');
+    expect(existsSync(join(projectPath, 'docs', 'README-btm.md'))).toBe(false);
+  });
+
+  it('openspec giả lỗi → init vẫn thành công, có docs/README-btm.md chứa cảnh báo', () => {
+    const fakeRunOpenspec = vi.fn().mockImplementation(() => {
+      throw new Error('Command failed: openspec not found');
+    });
+
+    const projectPath = initProject(tmpRoot, 'moon-openspec-err', repoTemplates, {
+      runOpenspec: fakeRunOpenspec,
+    });
+
+    expect(fakeRunOpenspec).toHaveBeenCalledTimes(1);
+    expect(existsSync(projectPath)).toBe(true);
+
+    const readmePath = join(projectPath, 'docs', 'README-btm.md');
+    expect(existsSync(readmePath)).toBe(true);
+    const content = readFileSync(readmePath, 'utf8');
+    expect(content).toMatch(/cảnh báo/i);
+    expect(content).toContain('openspec not found');
+
+    const filesInCommit = git(projectPath, 'ls-tree', '-r', '--name-only', 'HEAD')
+      .trim()
+      .split(/\r?\n/)
+      .map((s) => s.replace(/\\/g, '/'));
+    expect(filesInCommit).toContain('docs/README-btm.md');
+  });
+});
+
+describe('pmPrompt OpenSpec', () => {
+  it('pmPrompt có/không có dòng OpenSpec theo hasOpenspec', () => {
+    const withoutOpenspec = pmPrompt(['Mục tiêu 1']);
+    expect(withoutOpenspec).not.toContain('openspec');
+
+    const withFalse = pmPrompt(['Mục tiêu 1'], undefined, false);
+    expect(withFalse).not.toContain('openspec');
+
+    const withTrue = pmPrompt(['Mục tiêu 1'], undefined, true);
+    expect(withTrue).toContain('openspec/changes/<tên>');
+    expect(withTrue).toContain('openspec_change: <tên>');
+    expect(withTrue).toMatch(/đề xuất thay đổi bằng openspec/i);
   });
 });
 

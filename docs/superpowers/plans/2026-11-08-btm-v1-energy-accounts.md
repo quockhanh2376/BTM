@@ -124,7 +124,7 @@ export function createMonitor(d: { cfg: Config; store: Store; readEnergy: typeof
 
 - `initProject`: sau `git init`, chạy `openspec init --tools claude,codex,antigravity --language vi --no-animation` trong thư mục project (timeout 60 s); lỗi → ghi cảnh báo vào `docs/README-btm.md` và tiếp tục (không chặn init). Commit "init" gồm cả `openspec/`.
 - `pmPrompt`: nếu project có thư mục `openspec/` → dặn PM đề xuất thay đổi bằng OpenSpec (`openspec/changes/<tên>`), mỗi thẻ ghi `openspec_change: <tên>`.
-- [ ] **Step 1: Test** với `openspec` giả trên PATH (script ghi file đánh dấu) → init gọi đúng tham số; openspec lỗi → init vẫn thành công + có cảnh báo; pmPrompt có/không có dòng OpenSpec theo thư mục.
+- [x] **Step 1: Test** với `openspec` giả trên PATH (script ghi file đánh dấu) → init gọi đúng tham số; openspec lỗi → init vẫn thành công + có cảnh báo; pmPrompt có/không có dòng OpenSpec theo thư mục.
 - [ ] **Step 2–4:** FAIL → implement → PASS. **Step 5:** Commit "feat: openspec on project init". **Step 6 (Cheki):** tạo project thử `moon-lab`, kiểm tra `openspec/` có thật.
 
 ---

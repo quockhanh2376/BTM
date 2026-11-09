@@ -770,7 +770,8 @@ export async function runSession(
         },
       ];
     }
-    const pmPromptText = pmPrompt(goals, promptNotes);
+    const hasOpenspec = existsSync(join(d.repo, 'openspec'));
+    const pmPromptText = pmPrompt(goals, promptNotes, hasOpenspec);
     const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
     let pmOutput;
     try {

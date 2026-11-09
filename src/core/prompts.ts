@@ -9,7 +9,11 @@ export interface PromptNote {
   image?: string;
 }
 
-export function pmPrompt(goals: string[], notes?: Array<string | PromptNote>): string {
+export function pmPrompt(
+  goals: string[],
+  notes?: Array<string | PromptNote>,
+  hasOpenspec = false
+): string {
   const goalText = goals.map((g) => g.replace(/\r?\n/g, ' ')).join('; ');
   const lines = [
     `Bạn là PM. Hãy lập các thẻ task tại team/tasks/T-xxx.md cho mục tiêu: ${goalText}`,
@@ -19,6 +23,10 @@ export function pmPrompt(goals: string[], notes?: Array<string | PromptNote>): s
     `Scope chỉ là đường dẫn trần (file, hoặc thư mục kết thúc '/'), không chú thích.`,
     `acceptance và done_when chỉ mô tả kết quả sản phẩm kiểm tra được; KHÔNG ghi quy trình git (commit, push, git status, nhánh) vì Core tự lo; kết thúc bằng báo cáo ≤ 5 dòng chỉ Bug / Cần sửa / Cần xác nhận, ổn ghi OK.`,
   ];
+
+  if (hasOpenspec) {
+    lines.push('Đề xuất thay đổi bằng OpenSpec (openspec/changes/<tên>), mỗi thẻ ghi openspec_change: <tên>.');
+  }
 
   if (notes && notes.length > 0) {
     for (const item of notes) {
