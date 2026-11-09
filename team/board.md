@@ -35,7 +35,7 @@
 | P4-FIX-C | V+Q | accepted |
 | P4-REVIEW-2 | reviewer độc lập | done – 10/10 cũ đã sửa; 9 lỗi mới (3 High) | – | team/reviews/P4-review-2.md | team/prompts/P4-FIXC-victor.md | team/reports/P4-FIXC-dev.md |
 | P4-FIX-D | V+Q | accepted | team/prompts/P4-FIXD-victor.md | team/reports/P4-FIXD-dev.md |
-| P4-FIX-E | V | running | team/prompts/P4-FIXE-victor.md | team/reports/P4-FIXE-dev.md |
+| P4-FIX-E | V | BLOCKED – agy hết quota (hồi ~14/11) | team/prompts/P4-FIXE-victor.md | team/reports/P4-FIXE-dev.md |
 | P5 (đội hình linh hoạt) | V→Q | waiting (sau khi Plan 4 merge) | docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).

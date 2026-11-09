@@ -80,3 +80,4 @@
 - 2026-11-09 23:23 · Review 2: 10/10 lỗi cũ đã sửa; 9 lỗi mới (B1 tag tên main che nhánh, B2 nhánh goal khác/không ghim sha khi approve, B3 git hook – đều High). team/reviews/P4-review-2.md. Chia FIX-D (B1 B2 B3 B7 – bảo vệ main) → FIX-E (B4 B5 B6 B8 B9). Giao FIX-D
 - 2026-11-09 23:50 · V · FIX-D xong (refs/heads, reviewed_sha, guard nhánh goal khác, tắt hook, khôi phục nhánh bị xoá; +8 test). Cheki: tsc sạch; VM 665/665 ×3; còn hở: approve cho merge khi reviewed_sha rỗng → đưa vào FIX-E. Giao Q review
 - 2026-11-10 00:03 · Q · FIX-D review OK. Cheki: accepted, commit. Giao FIX-E
+- 2026-11-10 00:03 · V · FIX-E dừng ngay: tài khoản Antigravity hết quota (RESOURCE_EXHAUSTED 429), hồi sau ~105h50m (~14/11). V và Q dùng chung tài khoản agy → cả hai bị chặn. Không có thay đổi code. Nguyên nhân phụ: giữ 1 hội thoại dài cho mọi task (3691 bước, ~265M token cache đọc lại mỗi lượt) → từ nay mỗi task 1 hội thoại mới

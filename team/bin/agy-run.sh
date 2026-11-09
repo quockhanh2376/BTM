@@ -21,8 +21,9 @@ settings="{\"permissions\":{\"allow\":$allow}}"
 conv_file="team/runs/$who.conv"
 conv_args=()
 prompt="$(cat "$prompt_file")"
-# Hội thoại mới → gắn luật cố định ở đầu; hội thoại cũ đã có luật.
-if [ -s "$conv_file" ]; then conv_args=(--conversation "$(cat "$conv_file")"); else prompt="$(cat "team/prompts/rules-$who.md")
+# Mặc định MỖI TASK 1 HỘI THOẠI MỚI (giữ 1 hội thoại dài đã đốt hết quota agy: ~265M token cache/lượt, 2026-11-10).
+# Chỉ tiếp tục hội thoại cũ khi gọi với CONTINUE=1 (vd vòng fix ngay sau task, cần ngữ cảnh).
+if [ "${CONTINUE:-0}" = "1" ] && [ -s "$conv_file" ]; then conv_args=(--conversation "$(cat "$conv_file")"); else prompt="$(cat "team/prompts/rules-$who.md")
 $prompt"; fi
 # Mỗi lượt nhắc lại: lệnh ngoài danh sách bị chặn và agy dừng CẢ lượt (đã mất 3 lượt vì git diff <file>, git grep).
 prompt="NHẮC: terminal chỉ chạy được NGUYÊN VĂN: git status | git status --short | git diff | git diff --stat | git log --oneline -10 | npx vitest run | npx tsc --noEmit. Không thêm tham số, không git grep. Tìm/đọc file bằng công cụ tìm kiếm/đọc file của bạn. KHÔNG xoá test hay tính năng cũ (a11y, phím tắt, layout…) trừ khi prompt cho phép rõ – thay đổi giao diện thì viết lại test cho giao diện mới.
