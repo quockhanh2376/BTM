@@ -134,3 +134,20 @@ export function createMonitor(d: { cfg: Config; store: Store; readEnergy: typeof
 - Energy của Claude qua endpoint không công khai (cần token) — chỉ làm khi anh yêu cầu.
 - Đăng nhập lại ngay trên dashboard (chuyển tiếp link/mã) — hiện dùng lệnh SSH có nút sao chép.
 - Tự đề xuất người thay khi một agent "nghỉ" (v2.x).
+
+---
+
+## Bổ sung: Task 4b – Energy của Claude qua `/usage` (anh Zon yêu cầu, 2026-11-09)
+
+Đã thử thật (Claude Code 2.1.319, tài khoản Team): `claude -p "/usage" --output-format json` chạy lệnh nội bộ (`"local_command":"usage"`, `total_cost_usd: 0`, 0 token) và trả trong `result`:
+```
+Current session: 4% used · resets Nov 9, 5:40am (UTC)
+Current week (all models): 3% used · resets Nov 15, 9am (UTC)
+Current week (Fable): 0% used · resets Nov 15, 9am (UTC)
+```
+**Chưa có trong tài liệu chính thức** (docs chỉ liệt kê `/usage` cho chế độ tương tác; trường `rate_limits` có tài liệu chỉ ở statusline). Vì vậy coi là best-effort: lỗi/không parse được → `unknown`, không chặn phiên (Global Constraints).
+
+**Files:** `src/energy/quota.ts`, `tests/quota.test.ts`.
+- `parseClaudeUsage(json: string, now: Date): EnergyWindow[] | null`: JSON hợp lệ, `local_command === 'usage'`, `is_error === false`; dòng `Current session: N% used · resets <Mon D, h(:mm)?am|pm> (UTC)` → `5h`, `Current week (all models): …` → `week`; `remainingPercent = 100 - N` (0–100, không làm tròn); ngày không có năm → năm của `now`, nếu kết quả sớm hơn `now` quá 1 ngày thì cộng 1 năm; thiếu một trong hai dòng → `null`.
+- `readEnergy` cho `claude-code`: chạy `['claude','-p','/usage','--output-format','json']` (cwd `os.tmpdir()`, timeout 60 s) → `parseClaudeUsage`; lỗi → `unknown` với note "Claude /usage không đọc được (lệnh chưa có trong tài liệu)".
+- Test với output mẫu ở trên (now = 2026-11-09T01:00Z → `5h` 96 %, resetsAt `2026-11-09T05:40:00.000Z`; `week` 97 %, `2026-11-15T09:00:00.000Z`); `is_error: true` → null; dòng đổi định dạng → null; ngày `Jan 2` khi now là 30/12 → năm sau.
