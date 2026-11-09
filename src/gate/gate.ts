@@ -2,7 +2,8 @@ import { existsSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { TaskCard } from '../task/card.ts';
-import { changedFiles } from '../git.ts';
+import type { Ticket } from '../ticket/ticket.ts';
+import { changedFiles, git } from '../git.ts';
 
 export interface GateResult {
   ok: boolean;
@@ -24,6 +25,53 @@ function matchesScopeItem(file: string, item: string): boolean {
 export function outsideScope(changed: string[], scope: string[]): string[] {
   const bad = changed.filter((file) => !scope.some((s) => matchesScopeItem(file, s)));
   return Array.from(new Set(bad));
+}
+
+export function commitsMissingTicketId(repo: string, base: string, id: string): string[] {
+  const out = git(repo, 'log', '--format=%H%x00%s', `${base}..HEAD`);
+  if (!out || !out.trim()) {
+    return [];
+  }
+
+  const expectedPrefix = `${id}: `;
+  const missing: string[] = [];
+
+  const lines = out.trim().split(/\r?\n/);
+  for (const line of lines) {
+    if (!line) continue;
+    const nullIdx = line.indexOf('\0');
+    if (nullIdx === -1) continue;
+    const sha = line.slice(0, nullIdx);
+    const subject = line.slice(nullIdx + 1);
+    if (!subject.startsWith(expectedPrefix)) {
+      missing.push(sha);
+    }
+  }
+
+  return missing;
+}
+
+export function reportHeaderOk(repo: string, t: Ticket): boolean {
+  const reportPath = join(repo, 'team', 'reports', `${t.id}-dev.md`);
+  if (!existsSync(reportPath)) {
+    return false;
+  }
+
+  let content: string;
+  try {
+    content = readFileSync(reportPath, 'utf8');
+  } catch {
+    return false;
+  }
+
+  const lines = content.split(/\r?\n/);
+  const firstNonEmpty = lines.find((l) => l.trim().length > 0);
+  if (!firstNonEmpty) {
+    return false;
+  }
+
+  const expectedPrefix = `${t.id} · ${t.goal}#${t.number}/${t.of} · `;
+  return firstNonEmpty.trimStart().startsWith(expectedPrefix);
 }
 
 export function runGate(

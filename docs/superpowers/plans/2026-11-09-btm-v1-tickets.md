@@ -116,9 +116,9 @@
 - `reportHeaderOk(repo, t: Ticket): boolean` – dòng không rỗng đầu tiên của `team/reports/<id>-dev.md` bắt đầu bằng `<ID> · G<n>#<k>/<of> · ` (bỏ qua tên agent); thiếu file → false.
 - `runGate` **chưa đổi chữ ký** ở task này (session còn dùng `TaskCard` tới Task 6). Task 6 đổi `runGate` sang `Ticket` và thêm lý do `commit_missing_ticket_id`, `report_header_invalid` dùng 2 hàm trên.
 
-- [ ] **Step 1: Test:** `commitsMissingTicketId`: commit `GTM-0012: x` → `[]`; thêm commit `WIP x` → trả đúng sha đó; commit `GTM-00123: x` (ID khác) → bị trả. `reportHeaderOk`: dòng đầu `GTM-0012 · G1#3/9 · Jacky-Dev` → true; `OK` → false; dòng trống đầu file rồi header → true; thiếu file → false.
-- [ ] **Step 2–4:** FAIL → implement → PASS.
-- [ ] **Step 5:** Commit `feat: ticket id in commits, report header gate (P4 Task 4)`.
+- [x] **Step 1: Test:** `commitsMissingTicketId`: commit `GTM-0012: x` → `[]`; thêm commit `WIP x` → trả đúng sha đó; commit `GTM-00123: x` (ID khác) → bị trả. `reportHeaderOk`: dòng đầu `GTM-0012 · G1#3/9 · Jacky-Dev` → true; `OK` → false; dòng trống đầu file rồi header → true; thiếu file → false.
+- [x] **Step 2–4:** FAIL → implement → PASS.
+- [x] **Step 5:** Commit `feat: ticket id in commits, report header gate (P4 Task 4)`.
 
 ### Task 5: Prompt PM/Dev/QC + kết quả QC theo ticket
 

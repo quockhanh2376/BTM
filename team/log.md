@@ -22,3 +22,6 @@
 - 2026-11-09 14:19 · Q · P4-T3 review OK. Cheki: accepted, commit. Giao P4-T4 cho V
 - 2026-11-09 14:19 · Cheki · VM Ubuntu: test PR #4 (bản clone tạm /tmp/btm-pr4-test, user agent): tsc sạch; 21 test fail-Windows đều PASS trên Linux; NHƯNG tests/host.test.ts chập chờn 5/6 lần (lỗi race hàng đợi dev→qc = P3-race, laptop cũ chưa sửa xong). PR #4 chưa nên merge
 - 2026-11-09 14:19 · Cheki · VM /srv/agent-projects/btm có việc dở chưa push: commit 40d4022 (tickets §7, trùng nội dung c70198e) + diff chưa commit P3-T6 (bản song song) và P3-race (host.ts). Không đụng. VM git fetch GitHub lỗi (key github-btm của agent)
+- 2026-11-09 14:30 · Cheki · P3-race: nguyên nhân thật (log DIAG trên VM) = test host gọi checkLogin THẬT (createHost không truyền monitor) → qc bị gate login:relogin khi máy tải nặng; KHÔNG phải race hàng đợi. Sửa: wrapper createHost trong tests/host.test.ts mặc định monitor giả OK. VM 10/10 lần full suite 541/541 xanh. Commit 3845e57 lên plan3-energy (PR #4)
+- 2026-11-09 14:30 · V · P4-T4 xong (OK). Cheki: tsc sạch, vitest 553/574 (21 Windows). Giao Q review
+- 2026-11-09 14:34 · Q · P4-T4 review OK. Cheki: accepted, commit; merge plan3-energy (fix test 3845e57) vào plan4-tickets

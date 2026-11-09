@@ -4,8 +4,9 @@ import { writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpRepo } from './helpers.ts';
 import { git, headSha, commitAll, changedFiles } from '../src/git.ts';
-import { runGate, outsideScope } from '../src/gate/gate.ts';
+import { runGate, outsideScope, commitsMissingTicketId, reportHeaderOk } from '../src/gate/gate.ts';
 import type { TaskCard } from '../src/task/card.ts';
+import type { Ticket } from '../src/ticket/ticket.ts';
 
 const TEST_AUTHOR = ['-c', 'user.name=test', '-c', 'user.email=test@btm.local'];
 
@@ -534,5 +535,82 @@ describe('runGate', () => {
 
     expect(result.reasons).not.toContain('report_too_long');
     expect(result.ok).toBe(true);
+  });
+
+  describe('Plan 4 Task 4: commitsMissingTicketId & reportHeaderOk', () => {
+    it('commitsMissingTicketId: nhận diện commit đúng hoặc thiếu ticket id', () => {
+      const repo = tmpRepo({ 'src/a.ts': 'v1' });
+      const base = headSha(repo);
+
+      // 1. Commit với đúng Ticket ID
+      writeFileSync(join(repo, 'src/a.ts'), 'v2');
+      execFileSync('git', ['add', '-A'], { cwd: repo });
+      execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0012: add login form'], { cwd: repo });
+
+      expect(commitsMissingTicketId(repo, base, 'GTM-0012')).toEqual([]);
+
+      // 2. Thêm commit không bắt đầu bằng ID (WIP x)
+      writeFileSync(join(repo, 'src/a.ts'), 'v3');
+      execFileSync('git', ['add', '-A'], { cwd: repo });
+      execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'WIP x'], { cwd: repo });
+      const wipSha = headSha(repo);
+
+      const missing1 = commitsMissingTicketId(repo, base, 'GTM-0012');
+      expect(missing1).toEqual([wipSha]);
+
+      // 3. Commit với ID khác (GTM-00123: x)
+      writeFileSync(join(repo, 'src/a.ts'), 'v4');
+      execFileSync('git', ['add', '-A'], { cwd: repo });
+      execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-00123: another id'], { cwd: repo });
+      const otherIdSha = headSha(repo);
+
+      const missing2 = commitsMissingTicketId(repo, base, 'GTM-0012');
+      expect(missing2).toEqual([otherIdSha, wipSha]);
+    });
+
+    it('reportHeaderOk: kiểm tra dòng đầu báo cáo theo chuẩn ticket', () => {
+      const repo = tmpRepo({ 'src/a.ts': 'v1' });
+      const ticket: Ticket = {
+        id: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
+        of: 9,
+        title: 'Reset password form',
+        type: 'feat',
+        size: 'M',
+        scope: ['src/a.ts'],
+        acceptance: ['ok'],
+        done_when: 'ok',
+        depends_on: [],
+        from_audit: false,
+      };
+
+      mkdirSync(join(repo, 'team', 'reports'), { recursive: true });
+      const reportPath = join(repo, 'team', 'reports', 'GTM-0012-dev.md');
+
+      // 1. Dòng đầu đúng header → true
+      writeFileSync(reportPath, 'GTM-0012 · G1#3/9 · Jacky-Dev\nOK\n');
+      expect(reportHeaderOk(repo, ticket)).toBe(true);
+
+      // 2. Dòng đầu chỉ là "OK" (thiếu header) → false
+      writeFileSync(reportPath, 'OK\n');
+      expect(reportHeaderOk(repo, ticket)).toBe(false);
+
+      // 3. Dòng trống đầu file rồi header → true
+      writeFileSync(reportPath, '\n  \n\nGTM-0012 · G1#3/9 · Jacky-Dev\nOK\n');
+      expect(reportHeaderOk(repo, ticket)).toBe(true);
+
+      // 4. Header với agent name khác (Jenny-Dev) → true (bỏ qua tên agent)
+      writeFileSync(reportPath, 'GTM-0012 · G1#3/9 · Jenny-Dev\nOK\n');
+      expect(reportHeaderOk(repo, ticket)).toBe(true);
+
+      // 5. Header với sai số thứ tự hoặc goal → false
+      writeFileSync(reportPath, 'GTM-0012 · G1#4/9 · Jacky-Dev\nOK\n');
+      expect(reportHeaderOk(repo, ticket)).toBe(false);
+
+      // 6. Thiếu file báo cáo → false
+      unlinkSync(reportPath);
+      expect(reportHeaderOk(repo, ticket)).toBe(false);
+    });
   });
 });
