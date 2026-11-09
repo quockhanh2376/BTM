@@ -77,3 +77,4 @@
 - 2026-11-09 22:30 · Cheki · Giao FIX-C: lệnh trực tiếp dashboard (host.ts processQueue) qua guard, chỉ chạy trên nhánh goal, tách guard ra src/core/guard.ts
 - 2026-11-09 23:08 · V · FIX-C xong (guard.ts tách riêng; lệnh trực tiếp chỉ chạy trên nhánh goal, có guard; host 34→38 test). Cheki: tsc sạch; VM 657/657 ×3. Giao Q review
 - 2026-11-09 23:16 · Q · FIX-C review OK. Cheki: accepted, commit. Bắt đầu review độc lập lần 2 toàn nhánh
+- 2026-11-09 23:23 · Review 2: 10/10 lỗi cũ đã sửa; 9 lỗi mới (B1 tag tên main che nhánh, B2 nhánh goal khác/không ghim sha khi approve, B3 git hook – đều High). team/reviews/P4-review-2.md. Chia FIX-D (B1 B2 B3 B7 – bảo vệ main) → FIX-E (B4 B5 B6 B8 B9). Giao FIX-D
