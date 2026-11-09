@@ -26,3 +26,7 @@
 - 2026-11-09 14:30 · V · P4-T4 xong (OK). Cheki: tsc sạch, vitest 553/574 (21 Windows). Giao Q review
 - 2026-11-09 14:34 · Q · P4-T4 review OK. Cheki: accepted, commit; merge plan3-energy (fix test 3845e57) vào plan4-tickets
 - 2026-11-09 14:35 · Cheki · Sửa plan Task 5/6/7: Task 5 thêm hàm mới (pmTicketPrompt, devTicketPrompt, qcTicketPrompt, parseTicketQcResult) + AuditFinding ở ticket.ts; Task 6 chuyển session sang và xoá hàm cũ (tránh tsc gãy). Giao P4-T5 cho V
+- 2026-11-09 14:44 · V · P4-T5 xong (OK). Cheki: tsc sạch, vitest 563/581 (18 fail Windows; giảm từ 21 nhờ fix monitor giả). Giao Q review
+- 2026-11-09 14:49 · Q · P4-T5 review OK (bỏ sót: auditFindings chưa lọc xuống dòng). Cheki: trả V fix1
+- 2026-11-09 14:51 · Zon · Merge PR #4 (Plan 3) vào main (8fc36a2)
+- 2026-11-09 14:51 · Cheki · VM /srv/agent-projects/btm (user agent): backup việc dở → nhánh backup/vm-20261109 (7cb6641) + /srv/agent-projects/btm-backup-20261109.patch + ...-untracked.tgz; rồi checkout main 8fc36a2 (qua bundle vì VM không fetch được GitHub). deps không đổi, tsc sạch, vitest 541/541. Service btm vẫn chạy code cũ (khởi động 02:19 UTC) – chưa restart
