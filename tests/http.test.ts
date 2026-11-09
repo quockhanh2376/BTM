@@ -41,6 +41,7 @@ describe('HTTP Server & SSE', () => {
     startCalls: string[][];
     startOpts: any[];
     approveCalls: number;
+    resumeCalls: number;
     stopCalls: number;
     commandCalls: { to: string; text: string }[];
     autoApproveCalls: boolean[];
@@ -55,6 +56,7 @@ describe('HTTP Server & SSE', () => {
       startCalls: [],
       startOpts: [],
       approveCalls: 0,
+      resumeCalls: 0,
       stopCalls: 0,
       commandCalls: [],
       autoApproveCalls: [],
@@ -75,6 +77,10 @@ describe('HTTP Server & SSE', () => {
       },
       async approve() {
         host.approveCalls++;
+        return { ok: true };
+      },
+      async resume() {
+        host.resumeCalls++;
         return { ok: true };
       },
       stop() {
@@ -590,6 +596,52 @@ describe('HTTP Server & SSE', () => {
     });
   });
 
+  describe('POST /api/resume', () => {
+    it('calls host.resume() and returns 200', async () => {
+      const res = await fetch(`${baseUrl}/api/resume`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(host.resumeCalls).toBe(1);
+    });
+
+    it('returns 400 when body is empty string and does not call host.resume', async () => {
+      const res = await fetch(`${baseUrl}/api/resume`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: '',
+      });
+      expect(res.status).toBe(400);
+      expect(host.resumeCalls).toBe(0);
+    });
+
+    it('returns 400 when body is malformed JSON and does not call host.resume', async () => {
+      const res = await fetch(`${baseUrl}/api/resume`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: '{bad',
+      });
+      expect(res.status).toBe(400);
+      expect(host.resumeCalls).toBe(0);
+    });
+  });
+
   describe('POST /api/stop', () => {
     it('calls host.stop() and returns 200', async () => {
       const res = await fetch(`${baseUrl}/api/stop`, {
@@ -766,6 +818,179 @@ describe('HTTP Server & SSE', () => {
       const data2 = await res2.json();
       expect(data2).toMatchObject({ ok: true });
       expect(host.autoApproveCalls).toEqual([true, false]);
+    });
+  });
+
+  describe('POST /api/energy/refresh', () => {
+    it('rejects without x-btm header (403)', async () => {
+      const res = await fetch(`${baseUrl}/api/energy/refresh`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects with untrusted origin (403)', async () => {
+      const res = await fetch(`${baseUrl}/api/energy/refresh`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: 'https://attacker.example',
+        },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects with non-json content-type (415)', async () => {
+      const res = await fetch(`${baseUrl}/api/energy/refresh`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'text/plain',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: 'hello',
+      });
+      expect(res.status).toBe(415);
+    });
+
+    it('calls monitor.refresh(allAgents, true) and returns 200', async () => {
+      const refreshCalls: Array<{ agents: string[]; force?: boolean }> = [];
+      const monitor = {
+        async refresh(agents: string[], force?: boolean) {
+          refreshCalls.push({ agents, force });
+        },
+        gate: vi.fn(),
+      };
+      (host as any).monitor = monitor;
+
+      const res = await fetch(`${baseUrl}/api/energy/refresh`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(refreshCalls).toEqual([
+        {
+          agents: Object.keys(cfg.agents),
+          force: true,
+        },
+      ]);
+    });
+  });
+
+  describe('POST /api/seat', () => {
+    it('returns 409 when host is busy', async () => {
+      host.busy = vi.fn().mockReturnValue(true);
+      const res = await fetch(`${baseUrl}/api/seat`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ seat: 'dev', agent: 'jenny' }),
+      });
+      expect(res.status).toBe(409);
+      const data = await res.json();
+      expect(data.error).toBeDefined();
+    });
+
+    it('returns 400 when seat is invalid', async () => {
+      const res = await fetch(`${baseUrl}/api/seat`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ seat: 'architect', agent: 'jacky' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 when agent cannot sit in seat', async () => {
+      // In btm.config.yaml: elon has can_sit: ['pm', 'qc'], not 'dev'
+      const res = await fetch(`${baseUrl}/api/seat`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ seat: 'dev', agent: 'elon' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 when agent does not exist', async () => {
+      const res = await fetch(`${baseUrl}/api/seat`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ seat: 'dev', agent: 'unknown_agent' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects prototype properties __proto__, constructor, toString with 400', async () => {
+      for (const dangerous of ['__proto__', 'constructor', 'toString']) {
+        const resSeat = await fetch(`${baseUrl}/api/seat`, {
+          method: 'POST',
+          headers: {
+            'x-btm': '1',
+            'content-type': 'application/json',
+            Origin: `http://127.0.0.1:${port}`,
+          },
+          body: JSON.stringify({ seat: dangerous, agent: 'jenny' }),
+        });
+        expect(resSeat.status).toBe(400);
+
+        const resAgent = await fetch(`${baseUrl}/api/seat`, {
+          method: 'POST',
+          headers: {
+            'x-btm': '1',
+            'content-type': 'application/json',
+            Origin: `http://127.0.0.1:${port}`,
+          },
+          body: JSON.stringify({ seat: 'dev', agent: dangerous }),
+        });
+        expect(resAgent.status).toBe(400);
+      }
+    });
+
+    it('swaps seat successfully, saves setting and logs to console', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const res = await fetch(`${baseUrl}/api/seat`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ seat: 'dev', agent: 'jenny' }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data).toEqual({ ok: true, seat: 'dev', agent: 'jenny' });
+      expect(store.getSetting('seat:dev')).toBe('jenny');
+      expect(logSpy).toHaveBeenCalledWith('Đổi ghế dev: jacky → jenny');
+      logSpy.mockRestore();
     });
   });
 

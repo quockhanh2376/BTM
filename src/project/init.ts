@@ -1,8 +1,43 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { git, commitAll } from '../git.ts';
 
-export function initProject(projectsRoot: string, name: string, templatesFrom: string): string {
+export type RunOpenspecFn = (
+  args: string[],
+  options: { cwd: string; timeout?: number }
+) => void | { ok?: boolean; error?: string };
+
+export interface InitProjectOptions {
+  runOpenspec?: RunOpenspecFn;
+}
+
+function defaultRunOpenspec(
+  args: string[],
+  options: { cwd: string; timeout?: number }
+): void {
+  const result = spawnSync('openspec', args, {
+    cwd: options.cwd,
+    timeout: options.timeout ?? 60_000,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const errorMsg = (result.stderr || result.stdout || '').trim();
+    throw new Error(`openspec exited with code ${result.status}${errorMsg ? `: ${errorMsg}` : ''}`);
+  }
+}
+
+export function initProject(
+  projectsRoot: string,
+  name: string,
+  templatesFrom: string,
+  opts: { runOpenspec?: RunOpenspecFn } = {}
+): string {
+  const runOpenspec = opts.runOpenspec ?? defaultRunOpenspec;
   if (!name || !/^[a-z0-9-]+$/.test(name)) {
     throw new Error(`Invalid project name "${name}". Project name must match /^[a-z0-9-]+$/`);
   }
@@ -65,6 +100,29 @@ export function initProject(projectsRoot: string, name: string, templatesFrom: s
 
     // git init -b main và commit "init"
     git(projectPath, 'init', '-b', 'main');
+
+    // Chạy openspec init (sau git init, trước commit "init")
+    const openspecArgs = [
+      'init',
+      '--tools',
+      'claude,codex,antigravity',
+      '--language',
+      'vi',
+      '--no-animation',
+    ];
+    try {
+      const res = runOpenspec(openspecArgs, { cwd: projectPath, timeout: 60_000 });
+      if (res && typeof res === 'object' && res.ok === false) {
+        const errorMsg = res.error || 'Khởi tạo openspec thất bại';
+        const warningContent = `# Cảnh báo: OpenSpec không thể khởi tạo\n\n${errorMsg}\n`;
+        writeFileSync(join(projectPath, 'docs', 'README-btm.md'), warningContent, 'utf8');
+      }
+    } catch (err: any) {
+      const errorMsg = err?.message || String(err);
+      const warningContent = `# Cảnh báo: OpenSpec không thể khởi tạo\n\n${errorMsg}\n`;
+      writeFileSync(join(projectPath, 'docs', 'README-btm.md'), warningContent, 'utf8');
+    }
+
     commitAll(projectPath, 'init', { name: 'btm', email: 'btm@btm.local' });
 
     return projectPath;

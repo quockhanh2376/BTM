@@ -1,0 +1,5 @@
+- **Bug:** [quota.ts:67](/srv/agent-projects/btm/src/energy/quota.ts:67) nhận `999%` hoặc số cực dài thành `Infinity`; Codex cũng nhận `used_percent: -1/101`. Cần loại dữ liệu ngoài 0–100 và thêm test để tránh trả `fresh` sai.
+- **Bug:** [quota.ts:155](/srv/agent-projects/btm/src/energy/quota.ts:155) làm tròn trái plan `100 - used_percent`: `used_percent: 80.001` thành còn `20%`, khiến gate ngưỡng 20 bỏ lọt ghế thiếu Energy.
+- **Cần sửa:** [tests/quota.test.ts](/srv/agent-projects/btm/tests/quota.test.ts) thiếu test `readEnergy` khi exit 0 nhưng output rỗng/hỏng/đổi định dạng; test mang tên “exit code khác 0 hoặc output hỏng” chỉ kiểm tra exit 1.
+- **Cần xác nhận:** [quota.ts:127](/srv/agent-projects/btm/src/energy/quota.ts:127) tự tìm sang file cũ nếu file mới nhất không có quota, có thể trả hạn mức cũ là `fresh`; Task 1 chỉ định đọc file mới nhất. Cần chốt fallback và thêm test.
+- **Cần xác nhận:** `deps.run` phải được bên gọi bảo đảm timeout ≤60 s; hiện `readEnergy` chỉ kiểm tra `timedOut` sau khi Promise hoàn tất, `--print-timeout 50s` chưa bảo đảm xử lý tiến trình treo.

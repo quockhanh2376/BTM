@@ -733,5 +733,128 @@ describe('Store SQLite', () => {
 
       store.close();
     });
+
+    it('manages energy readings and login health (saveEnergy, latestEnergy, saveLogin, latestLogin)', () => {
+      const store = openStore(':memory:');
+
+      // Ban đầu chưa có bản ghi
+      expect(store.latestEnergy('jacky')).toBeNull();
+      expect(store.latestLogin('jacky')).toBeNull();
+
+      // Lưu energy reading
+      store.saveEnergy({
+        agent: 'jacky',
+        status: 'fresh',
+        windows: [
+          { name: '5h', remainingPercent: 83, resetsAt: '2026-11-08T19:57:00Z' },
+          { name: 'week', remainingPercent: 63, resetsAt: '2026-11-15T00:22:39Z' },
+        ],
+        readAt: '2026-11-08T15:00:00.000Z',
+      });
+
+      const e1 = store.latestEnergy('jacky');
+      expect(e1).toEqual({
+        agent: 'jacky',
+        status: 'fresh',
+        windows: [
+          { name: '5h', remainingPercent: 83, resetsAt: '2026-11-08T19:57:00Z' },
+          { name: 'week', remainingPercent: 63, resetsAt: '2026-11-15T00:22:39Z' },
+        ],
+        readAt: '2026-11-08T15:00:00.000Z',
+      });
+
+      // Lưu reading mới hơn -> latestEnergy trả về reading mới nhất
+      store.saveEnergy({
+        agent: 'jacky',
+        status: 'unknown',
+        windows: [],
+        readAt: '2026-11-08T15:05:00.000Z',
+        note: 'timeout',
+      });
+
+      const e2 = store.latestEnergy('jacky');
+      expect(e2?.status).toBe('unknown');
+      expect(e2?.note).toBe('timeout');
+
+      // Lưu login health
+      store.saveLogin({
+        agent: 'elon',
+        state: 'expiring',
+        detail: 'Hết hạn 11/11',
+        expiresAt: '2026-11-11T12:00:00.000Z',
+      });
+
+      const l1 = store.latestLogin('elon');
+      expect(l1).toEqual({
+        agent: 'elon',
+        state: 'expiring',
+        detail: 'Hết hạn 11/11',
+        expiresAt: '2026-11-11T12:00:00.000Z',
+      });
+
+      // Cập nhật login mới hơn
+      store.saveLogin({
+        agent: 'elon',
+        state: 'ok',
+        detail: 'Ổn',
+      });
+
+      const l2 = store.latestLogin('elon');
+      expect(l2).toEqual({
+        agent: 'elon',
+        state: 'ok',
+        detail: 'Ổn',
+      });
+
+      // Agent khác không bị ảnh hưởng
+      expect(store.latestLogin('jenny')).toBeNull();
+
+      store.close();
+    });
+
+    it('task_states.base_sha: migration thêm cột base_sha và lưu base_sha khi setTaskState', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'btm-store-migrate-base-sha-'));
+      const dbPath = join(tmpDir, 'test.db');
+
+      // Tạo DB SQLite cũ với task_states KHÔNG CÓ cột base_sha
+      const rawDb = new Database(dbPath);
+      rawDb.exec(`
+        CREATE TABLE sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          goals_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          ended_at TEXT
+        );
+        CREATE TABLE task_states (
+          session_id INTEGER NOT NULL,
+          task_id TEXT NOT NULL,
+          state TEXT NOT NULL,
+          fix_rounds INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (session_id, task_id)
+        );
+      `);
+      rawDb.close();
+
+      const store = openStore(dbPath);
+
+      // Lưu task state với base_sha
+      store.setTaskState(1, 'T-001', 'in_dev', 0, 'sha-base-1234');
+      const states = store.listTaskStates(1);
+      expect(states).toHaveLength(1);
+      expect(states[0].task_id).toBe('T-001');
+      expect(states[0].state).toBe('in_dev');
+      expect(states[0].base_sha).toBe('sha-base-1234');
+
+      // Cập nhật trạng thái tiếp theo mà không truyền base_sha thì vẫn giữ base_sha cũ
+      store.setTaskState(1, 'T-001', 'awaiting_qc', 0);
+      const states2 = store.listTaskStates(1);
+      expect(states2[0].state).toBe('awaiting_qc');
+      expect(states2[0].base_sha).toBe('sha-base-1234');
+
+      store.close();
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
   });
 });

@@ -1,0 +1,3 @@
+Bug: [quota.ts:104](/srv/agent-projects/btm/src/energy/quota.ts:104) cắt 3 ký tự tháng nên `Novembergarbage` vẫn được nhận là Nov → `fresh`, có thể chặn phiên thay vì `unknown`.
+Cần sửa: [tests/quota.test.ts:108](/srv/agent-projects/btm/tests/quota.test.ts:108) thiếu ca 12am/12pm, ngày không tồn tại, biên suy năm đúng/quá 24 giờ, % 0/100 và ngoài khoảng.
+Cần sửa: tests timeout chỉ giả `timedOut: true`; cần ca `run` không resolve để kiểm chứng timeout thực sự trả `unknown`, không treo phiên.

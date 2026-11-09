@@ -4,12 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openStore, type Store } from '../src/store/db.ts';
 import { loadConfig, type Config } from '../src/config.ts';
-import { createHost } from '../src/server/host.ts';
+import { createHost as realCreateHost } from '../src/server/host.ts';
 import { tmpRepo } from './helpers.ts';
 import type { Runner, TurnOutput } from '../src/runner/run.ts';
 import { directPrompt } from '../src/core/prompts.ts';
 import { git } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
+
+// Test không gọi CLI thật để đọc Energy/đăng nhập (Plan 3 Global Constraints): mặc định monitor giả luôn OK.
+// Test nào cần monitor riêng vẫn truyền `monitor` để ghi đè.
+const okMonitor = { refresh: async () => {}, gate: () => ({ ok: true as const }) };
+const createHost = (d: Parameters<typeof realCreateHost>[0]) =>
+  realCreateHost({ monitor: okMonitor as any, ...d });
 
 function deferred<T>() {
   let resolve!: (val: T | PromiseLike<T>) => void;
@@ -681,9 +687,11 @@ done_when: done
 
   it('command("qc", text) khi rảnh → chạy lượt trực tiếp, ghi lastMessage vào log_file', async () => {
     let calledPrompt = '';
+    const qcDone = deferred<string>();
     const mockRunner: Runner = vi.fn().mockImplementation(
       async (_seat, _agent, prompt, _cwd, _logFile) => {
         calledPrompt = prompt;
+        qcDone.resolve(prompt);
         return {
           exitCode: 0,
           timedOut: false,
@@ -707,7 +715,8 @@ done_when: done
     expect(res.ok).toBe(true);
     expect(res.id).toBeDefined();
 
-    await new Promise((r) => setTimeout(r, 80));
+    await qcDone.promise;
+    await host.whenIdle();
 
     expect(calledPrompt).toContain('Kiểm tra module auth');
     const queue = store.listQueue(10);
@@ -1357,6 +1366,235 @@ done_when: done
       // Verify DB note record is deleted
       const notes = store.listNotes(repoDir);
       expect(notes.length).toBe(0);
+    });
+
+    it('lệnh trực tiếp Dev/QC gọi refresh([agent]) và gate(agent); khi gate không ok -> không gọi runner, lượt và phiên error với reason', async () => {
+      const mockRunner = vi.fn();
+      const mockRefresh = vi.fn().mockResolvedValue(undefined);
+      const mockGate = vi.fn().mockReturnValue({
+        ok: false,
+        reason: 'energy:5h còn 10%, hồi lúc 19:57',
+      });
+
+      const fakeMonitor = {
+        refresh: mockRefresh,
+        gate: mockGate,
+      };
+
+      const host = createHost({
+        cfg,
+        store,
+        runner: mockRunner,
+        logDir,
+        dataDir,
+        env: {},
+        monitor: fakeMonitor as any,
+      });
+
+      store.setActiveProject(repoDir);
+      const res = await host.command('dev', 'Viết test mới');
+      expect(res.ok).toBe(true);
+
+      await host.whenIdle();
+
+      expect(mockRefresh).toHaveBeenCalledWith(['jacky']);
+      expect(mockGate).toHaveBeenCalledWith('jacky');
+      expect(mockRunner).not.toHaveBeenCalled();
+
+      const session = store.getLatestSession(undefined, repoDir);
+      expect(session).toBeDefined();
+      expect(session!.status).toBe('error');
+
+      const turns = store.listTurns(session!.id);
+      expect(turns.length).toBe(1);
+      expect(turns[0].result).toBe('error');
+      expect(turns[0].error).toBe('energy:5h còn 10%, hồi lúc 19:57');
+    });
+
+    it('Task 5: host.setSeat rejects __proto__, constructor, toString without throwing', () => {
+      const host = createHost({
+        cfg,
+        store,
+        runner: vi.fn(),
+        logDir,
+        dataDir,
+        env: {},
+      });
+
+      for (const dangerous of ['__proto__', 'constructor', 'toString']) {
+        const resSeat = host.setSeat(dangerous as any, 'jenny');
+        expect(resSeat.ok).toBe(false);
+        expect(resSeat.status).toBe(400);
+
+        const resAgent = host.setSeat('dev', dangerous);
+        expect(resAgent.ok).toBe(false);
+        expect(resAgent.status).toBe(400);
+      }
+    });
+
+    it('Task 5: luồng thật qua host - dừng needs_owner giữa thẻ returned, đổi ghế dev, resume có Bàn giao, QC không được là coder cũ', async () => {
+      store.setActiveProject(repoDir);
+
+      const customCfg: Config = {
+        ...cfg,
+        agents: {
+          ...cfg.agents,
+          jacky: {
+            ...cfg.agents.jacky,
+            can_sit: ['dev', 'qc'],
+          },
+        },
+      };
+
+      let devGateOk = true;
+      let dev1Prompt = '';
+      let dev2Prompt = '';
+      let dev2Agent = '';
+      let qcRanWithJacky = false;
+      let qcRanWithElon = false;
+
+      const mockRunner: Runner = vi.fn().mockImplementation(
+        async (seat, agent, prompt, cwd) => {
+          if (seat === 'pm') {
+            mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+            writeFileSync(
+              join(cwd, 'team', 'tasks', 'T-001.md'),
+              `---\nid: T-001\ngoal: "Test handoff and resume"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+            );
+            return { exitCode: 0, output: 'PM done' };
+          }
+          if (seat === 'dev') {
+            if (agent === 'jacky') {
+              dev1Prompt = prompt;
+              mkdirSync(join(cwd, 'src'), { recursive: true });
+              writeFileSync(join(cwd, 'src', 'app.ts'), 'code from jacky');
+              mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+              writeFileSync(
+                join(cwd, 'team', 'reports', 'T-001-dev.md'),
+                `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+              );
+              // Gate check will fail for jacky on the 2nd dev turn
+              devGateOk = false;
+              return { exitCode: 0, output: 'Dev 1 done' };
+            }
+            if (agent === 'jenny') {
+              dev2Agent = agent;
+              dev2Prompt = prompt;
+              mkdirSync(join(cwd, 'src'), { recursive: true });
+              writeFileSync(join(cwd, 'src', 'app.ts'), 'code from jenny');
+              writeFileSync(
+                join(cwd, 'team', 'reports', 'T-001-dev.md'),
+                `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+              );
+              return { exitCode: 0, output: 'Dev 2 done' };
+            }
+          }
+          if (seat === 'qc') {
+            if (agent === 'jacky') {
+              qcRanWithJacky = true;
+            }
+            if (agent === 'elon') {
+              qcRanWithElon = true;
+              return {
+                exitCode: 0,
+                lastMessage: JSON.stringify({
+                  verdict: 'pass',
+                  bugs: [],
+                  fix: [],
+                  confirm: ['ok'],
+                }),
+              };
+            }
+            // First QC run by jenny returns fail to put task in returned state
+            return {
+              exitCode: 0,
+              lastMessage: JSON.stringify({
+                verdict: 'fail',
+                bugs: ['needs bugfix'],
+                fix: ['fix it'],
+                confirm: [],
+              }),
+            };
+          }
+          return { exitCode: 0 };
+        }
+      );
+
+      const fakeMonitor = {
+        refresh: vi.fn().mockResolvedValue(undefined),
+        gate: (agent: string) => {
+          if (agent === 'jacky' && !devGateOk) {
+            return { ok: false, reason: 'jacky_blocked_in_returned' };
+          }
+          return { ok: true };
+        },
+      };
+
+      // Initial seats: PM: elon, Dev: jacky, QC: jenny
+      store.setSetting('seat:pm', 'elon');
+      store.setSetting('seat:dev', 'jacky');
+      store.setSetting('seat:qc', 'jenny');
+
+      const host = createHost({
+        cfg: customCfg,
+        store,
+        runner: mockRunner,
+        logDir,
+        dataDir,
+        env: {},
+        monitor: fakeMonitor as any,
+      });
+
+      host.setAutoApprove(true);
+      const startRes = await host.start(['Handoff test goal']);
+      expect(startRes.ok).toBe(true);
+
+      await host.whenIdle();
+
+      // Session stopped at needs_owner when jacky was blocked during returned card
+      const session1 = store.getLatestSession(undefined, repoDir);
+      expect(session1?.status).toBe('needs_owner');
+
+      // The task state is 'returned'
+      const taskStates = store.listTaskStates(session1!.id);
+      expect(taskStates.find((t) => t.task_id === 'T-001')?.state).toBe('returned');
+
+      // Swap Dev seat to jenny
+      const seatRes1 = host.setSeat('dev', 'jenny');
+      expect(seatRes1.ok).toBe(true);
+
+      // Swap QC seat to jacky (the old coder!) to verify Rule 8
+      const seatRes2 = host.setSeat('qc', 'jacky');
+      expect(seatRes2.ok).toBe(true);
+
+      // Resume host: runner should be called with jenny, prompt has 'Bàn giao'
+      const resumeRes1 = await (host as any).resume();
+      expect(resumeRes1.ok).toBe(true);
+
+      await host.whenIdle();
+
+      expect(dev2Agent).toBe('jenny');
+      expect(dev2Prompt).toContain('Bàn giao');
+
+      // Since QC is jacky (who was coder for T-001), QC cannot be old coder
+      expect(qcRanWithJacky).toBe(false);
+      const session2 = store.getLatestSession(undefined, repoDir);
+      expect(session2?.status).toBe('needs_owner');
+      const failures = store.listHandoffFailures(session2!.id);
+      expect(failures.some((f) => f.reason === 'coder_cannot_qc_same_task')).toBe(true);
+
+      // Swap QC to elon (who never coded T-001) and resume
+      const seatRes3 = host.setSeat('qc', 'elon');
+      expect(seatRes3.ok).toBe(true);
+
+      const resumeRes2 = await (host as any).resume();
+      expect(resumeRes2.ok).toBe(true);
+
+      await host.whenIdle();
+
+      expect(qcRanWithElon).toBe(true);
+      const session3 = store.getLatestSession(undefined, repoDir);
+      expect(session3?.status).toBe('done');
     });
   });
 });

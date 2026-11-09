@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, appendFileSync, mkdirSync, writeFileSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import type { Config, Seat } from '../config.ts';
-import type { Store } from '../store/db.ts';
+import { effectiveSeats, type Store } from '../store/db.ts';
 import type { Runner } from '../runner/run.ts';
 import type { HostApi } from './http.ts';
 import { runSession, resumeSession } from '../core/session.ts';
@@ -10,6 +10,9 @@ import type { TaskCard } from '../task/card.ts';
 import { commitAll } from '../git.ts';
 import { acquireLock } from '../cli.ts';
 import { inboxPath } from './inbox.ts';
+import { createMonitor } from '../energy/monitor.ts';
+import { readEnergy } from '../energy/quota.ts';
+import { checkLogin } from '../energy/login.ts';
 
 export interface HostDeps {
   cfg: Config;
@@ -20,6 +23,7 @@ export interface HostDeps {
   env: NodeJS.ProcessEnv;
   runSession?: typeof runSession;
   resumeSession?: typeof resumeSession;
+  monitor?: ReturnType<typeof createMonitor>;
 }
 
 export function createHost(d: HostDeps): HostApi & {
@@ -27,13 +31,26 @@ export function createHost(d: HostDeps): HostApi & {
   tick(): Promise<void>;
   whenIdle(): Promise<void>;
   setAutoApprove(enabled: boolean): void;
+  setSeat(seat: Seat, agent: string): { ok: boolean; status?: number; error?: string };
+  resume(): Promise<{ ok: boolean; status?: number; error?: string }>;
+  monitor: ReturnType<typeof createMonitor>;
 } {
+  const monitor = d.monitor ?? createMonitor({
+    cfg: d.cfg,
+    store: d.store,
+    readEnergy,
+    checkLogin,
+    now: () => new Date(),
+    env: d.env,
+  });
+
   let isBusy = false;
   let isStopping = false;
   let activeReleaseLock: (() => void) | null = null;
   let currentAbortController: AbortController | null = null;
   let currentTurnId: number | null = null;
   let currentQueueItemId: number | null = null;
+  let currentProcessQueuePromise: Promise<void> | null = null;
   const idleResolvers: Array<() => void> = [];
 
   function notifyIfIdle(): void {
@@ -135,7 +152,8 @@ export function createHost(d: HostDeps): HostApi & {
       createdSessionForTurn = true;
 
       const taskId = `CMD-${item.id}`;
-      const agent = d.cfg.seats[item.to];
+      const seats = effectiveSeats(d.cfg, d.store);
+      const agent = Object.hasOwn(seats, item.to) ? seats[item.to as Seat] : '';
       const turnId = d.store.startTurn(sessionId, item.to, agent, taskId);
       currentTurnId = turnId;
 
@@ -145,7 +163,26 @@ export function createHost(d: HostDeps): HostApi & {
 
       let turnResult: 'done' | 'error' = 'error';
 
-      if (item.to === 'dev') {
+      let gateFailedReason: string | null = null;
+      if (item.to === 'dev' || item.to === 'qc') {
+        if (monitor && agent) {
+          try {
+            await monitor.refresh([agent]);
+          } catch {
+            // refresh reject -> coi như unknown
+          }
+          const gateCheck = monitor.gate(agent);
+          if (!gateCheck.ok) {
+            gateFailedReason = gateCheck.reason;
+          }
+        }
+      }
+
+      if (gateFailedReason) {
+        d.store.endTurn(turnId, 'error', gateFailedReason);
+        d.store.setQueueStatus(item.id, 'done');
+        turnResult = 'error';
+      } else if (item.to === 'dev') {
         const author = { name: agent, email: `${agent}@btm.local` };
         try {
           commitAll(activeProject, `checkpoint before cmd ${item.id}`, author);
@@ -374,6 +411,9 @@ export function createHost(d: HostDeps): HostApi & {
             env: d.env,
             logDir: d.logDir,
             signal: abortController.signal,
+            gate: monitor.gate,
+            refresh: monitor.refresh,
+            monitor,
           },
           goals,
           {
@@ -468,8 +508,100 @@ export function createHost(d: HostDeps): HostApi & {
             env: d.env,
             logDir: d.logDir,
             signal: abortController.signal,
+            gate: monitor.gate,
+            refresh: monitor.refresh,
+            monitor,
           },
           latestAwaiting.id
+        );
+      } catch {
+        // Any error is captured by session outcome
+      } finally {
+        if (activeReleaseLock === release) {
+          release();
+          activeReleaseLock = null;
+        }
+        if (currentAbortController === abortController) {
+          currentAbortController = null;
+        }
+        isBusy = false;
+        isStopping = false;
+        void tick();
+        if (!isBusy) {
+          notifyIfIdle();
+        }
+      }
+    })();
+
+    return { ok: true };
+  }
+
+  async function resume(): Promise<{ ok: boolean; status?: number; error?: string }> {
+    if (isStopping) {
+      return { ok: false, status: 409, error: 'Đang dừng phiên' };
+    }
+    if (busy()) {
+      return { ok: false, status: 409, error: 'Đang có phiên chạy' };
+    }
+
+    const activeProject = d.store.getActiveProject();
+    if (!activeProject) {
+      return { ok: false, status: 400, error: 'Chưa có dự án active' };
+    }
+
+    const latestNeedsOwner = d.store.getLatestSession('needs_owner', activeProject);
+    const latestStopped = d.store.getLatestSession('stopped', activeProject);
+    let target = latestNeedsOwner;
+    if (!target || (latestStopped && latestStopped.id > target.id)) {
+      target = latestStopped;
+    }
+    if (!target) {
+      return { ok: false, status: 400, error: 'Không có phiên cần tiếp tục' };
+    }
+
+    const release = acquireLock(d.dataDir);
+    if (!release) {
+      return { ok: false, status: 409, error: 'Đang có phiên chạy' };
+    }
+
+    isBusy = true;
+    activeReleaseLock = release;
+    const abortController = new AbortController();
+    currentAbortController = abortController;
+
+    const resumeFn = d.resumeSession ?? resumeSession;
+    try {
+      mkdirSync(d.logDir, { recursive: true });
+    } catch (err: any) {
+      if (activeReleaseLock === release) {
+        release();
+        activeReleaseLock = null;
+      }
+      if (currentAbortController === abortController) {
+        currentAbortController = null;
+      }
+      isBusy = false;
+      isStopping = false;
+      notifyIfIdle();
+      return { ok: false, status: 500, error: err?.message || String(err) };
+    }
+
+    (async () => {
+      try {
+        await resumeFn(
+          {
+            cfg: d.cfg,
+            store: d.store,
+            runner: d.runner,
+            repo: activeProject,
+            env: d.env,
+            logDir: d.logDir,
+            signal: abortController.signal,
+            gate: monitor.gate,
+            refresh: monitor.refresh,
+            monitor,
+          },
+          target.id
         );
       } catch {
         // Any error is captured by session outcome
@@ -553,7 +685,7 @@ export function createHost(d: HostDeps): HostApi & {
       return { ok: false, error: 'Đang dừng' };
     }
 
-    const validSeats = [...Object.keys(d.cfg.seats), 'team'];
+    const validSeats = [...Object.keys(effectiveSeats(d.cfg, d.store)), 'team'];
     if (!validSeats.includes(to)) {
       return { ok: false, error: 'Người nhận không hợp lệ' };
     }
@@ -603,20 +735,65 @@ export function createHost(d: HostDeps): HostApi & {
   }
 
   async function tick(): Promise<void> {
+    if (currentProcessQueuePromise) {
+      await currentProcessQueuePromise;
+      return;
+    }
     if (isBusy || isStopping) {
       return;
     }
-    await processQueue();
+    currentProcessQueuePromise = processQueue().finally(() => {
+      currentProcessQueuePromise = null;
+    });
+    await currentProcessQueuePromise;
+  }
+
+  function setSeat(
+    seat: Seat,
+    agent: string
+  ): { ok: boolean; status?: number; error?: string } {
+    if (busy()) {
+      return { ok: false, status: 409, error: 'Đang có phiên/lượt chạy' };
+    }
+    if (!seat || typeof seat !== 'string' || !Object.hasOwn(d.cfg.seats, seat)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `Ghế "${seat}" không hợp lệ`,
+      };
+    }
+    if (!agent || typeof agent !== 'string' || !Object.hasOwn(d.cfg.agents, agent)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `Agent "${agent}" không thể ngồi ghế "${seat}"`,
+      };
+    }
+    const agentCfg = d.cfg.agents[agent];
+    if (!agentCfg || !agentCfg.can_sit.includes(seat)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `Agent "${agent}" không thể ngồi ghế "${seat}"`,
+      };
+    }
+    const current = effectiveSeats(d.cfg, d.store)[seat];
+    d.store.setSetting(`seat:${seat}`, agent);
+    console.log(`Đổi ghế ${seat}: ${current} → ${agent}`);
+    return { ok: true };
   }
 
   return {
     start,
     approve,
+    resume,
     stop,
     command,
     busy,
     tick,
     whenIdle,
     setAutoApprove,
+    setSeat,
+    monitor,
   };
 }

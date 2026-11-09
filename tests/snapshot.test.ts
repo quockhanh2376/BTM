@@ -123,8 +123,9 @@ describe('Snapshot and Log Tail', () => {
         since: null,
         turns: 0,
         lastLine: '',
-        energy: '—',
-        login: '—',
+        energy: { status: 'unknown', windows: [], readAt: '' },
+        login: { state: 'unknown', detail: 'Chưa rõ' },
+        candidates: ['elon'],
       });
       expect(snap.seats[1]).toEqual({
         seat: 'dev',
@@ -135,8 +136,9 @@ describe('Snapshot and Log Tail', () => {
         since: null,
         turns: 0,
         lastLine: '',
-        energy: '—',
-        login: '—',
+        energy: { status: 'unknown', windows: [], readAt: '' },
+        login: { state: 'unknown', detail: 'Chưa rõ' },
+        candidates: ['jacky', 'jenny'],
       });
       expect(snap.seats[2]).toEqual({
         seat: 'qc',
@@ -147,9 +149,24 @@ describe('Snapshot and Log Tail', () => {
         since: null,
         turns: 0,
         lastLine: '',
-        energy: '—',
-        login: '—',
+        energy: { status: 'unknown', windows: [], readAt: '' },
+        login: { state: 'unknown', detail: 'Chưa rõ' },
+        candidates: ['elon', 'jenny'],
       });
+    });
+
+    it('uses effectiveSeats and provides candidates for each seat card', () => {
+      store.setSetting('seat:dev', 'jenny');
+      const snap = buildSnapshot(store, cfg);
+      const devCard = snap.seats.find((s) => s.seat === 'dev');
+      expect(devCard?.agent).toBe('jenny');
+      expect(devCard?.candidates).toEqual(['jacky', 'jenny']);
+
+      const pmCard = snap.seats.find((s) => s.seat === 'pm');
+      expect(pmCard?.candidates).toEqual(['elon']);
+
+      const qcCard = snap.seats.find((s) => s.seat === 'qc');
+      expect(qcCard?.candidates).toEqual(['elon', 'jenny']);
     });
 
     it('returns project set and 3 cards idle when active project exists but no session', () => {
@@ -461,6 +478,65 @@ note: N-1
         at: expect.any(String),
         report: '## Bug\n- Bug 1\n## Cần sửa\n- Fix 1\nOK',
       });
+    });
+
+    it('P3-T4: snapshot contains real energy/login from store, accounts list, and sshHint', () => {
+      store.saveEnergy({
+        agent: 'jacky',
+        status: 'fresh',
+        windows: [
+          { name: '5h', remainingPercent: 80, resetsAt: '2026-11-08T18:00:00Z' },
+          { name: 'week', remainingPercent: 60, resetsAt: '2026-11-15T00:00:00Z' },
+        ],
+        readAt: '2026-11-08T15:30:00Z',
+        note: 'agy ok',
+      });
+
+      store.saveLogin({
+        agent: 'jacky',
+        state: 'ok',
+        detail: 'Đã đăng nhập',
+      });
+
+      store.saveLogin({
+        agent: 'elon',
+        state: 'expiring',
+        detail: 'Hết hạn 12/11',
+      });
+
+      const snap = buildSnapshot(store, cfg);
+
+      const devSeat = snap.seats.find((s) => s.seat === 'dev');
+      expect(devSeat?.energy).toEqual({
+        status: 'fresh',
+        windows: [
+          { name: '5h', remainingPercent: 80, resetsAt: '2026-11-08T18:00:00Z' },
+          { name: 'week', remainingPercent: 60, resetsAt: '2026-11-15T00:00:00Z' },
+        ],
+        readAt: '2026-11-08T15:30:00Z',
+        note: 'agy ok',
+      });
+      expect(devSeat?.login).toEqual({
+        state: 'ok',
+        detail: 'Đã đăng nhập',
+      });
+
+      const pmSeat = snap.seats.find((s) => s.seat === 'pm');
+      expect(pmSeat?.login).toEqual({
+        state: 'expiring',
+        detail: 'Hết hạn 12/11',
+      });
+
+      expect(snap.accounts).toBeDefined();
+      expect(snap.accounts.length).toBe(Object.keys(cfg.agents).length);
+      const jackyAcc = snap.accounts.find((a) => a.agent === 'jacky');
+      expect(jackyAcc).toEqual({
+        agent: 'jacky',
+        tool: 'antigravity-cli',
+        login: { state: 'ok', detail: 'Đã đăng nhập' },
+      });
+
+      expect(snap.sshHint).toBe('admzon@100.96.250.103');
     });
   });
 });
