@@ -9,3 +9,6 @@
 4. Giữ luật cứng: coder ≠ QC ticket đó, coder ≠ Audit goal đó; không API key; không tự đổi tài khoản.
 
 Chi tiết: `docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md`. Làm sau khi Plan 4 merge.
+
+## Ghi chú tương lai
+Anh Zon có thể cho phép API key (vd Gemini) sau này. Plan 5 vẫn cấm, nhưng `account_env` phải cho phép thêm dạng giá trị `{ secret: <tên> }` mà không đổi cấu trúc. Bảo vệ dự kiến: giới hạn tại provider (API + IP VM + ngân sách), secret ngoài git (systemd `LoadCredential`), cấp key đúng agent đúng lượt, quét rò rỉ ở gate + che trong log/dashboard, nút tắt key. Sẽ có decision 0003 khi bật.
