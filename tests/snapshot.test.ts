@@ -382,14 +382,33 @@ from_audit: false
       expect(snapNoAudit.goals.find((g) => g.n === 5)?.stage).toBe('release');
     });
 
-    it('P4-T9: returns goals: [] gracefully when team/project.yaml is missing', () => {
+    it('P4-T10 fix 1: store có goal + working tree không có project.yaml → goals vẫn hiện từ store', () => {
       const projDir = join(tmpDir, 'no-project-yaml');
       mkdirSync(projDir, { recursive: true });
       store.setActiveProject(projDir);
       store.createGoal(projDir, 'Some Goal');
+      store.upsertTicket(projDir, {
+        id: 'GTM-0001',
+        goal: 'G1',
+        number: 1,
+        of: 1,
+        title: 'Ticket from DB',
+        type: 'feat',
+        size: 'S',
+        scope: ['src/'],
+        acceptance: ['ok'],
+        done_when: 'done',
+        depends_on: [],
+        from_audit: false,
+      });
 
       const snap = buildSnapshot(store, cfg);
-      expect(snap.goals).toEqual([]);
+      expect(snap.goals).toHaveLength(1);
+      expect(snap.goals[0].n).toBe(1);
+      expect(snap.goals[0].title).toBe('Some Goal');
+      expect(snap.goals[0].tickets).toHaveLength(1);
+      expect(snap.goals[0].tickets[0].id).toBe('GTM-0001');
+      expect(snap.goals[0].tickets[0].title).toBe('Ticket from DB');
     });
 
     it('P4-T9: includes Kai-Audit seat when seats.audit is configured', () => {

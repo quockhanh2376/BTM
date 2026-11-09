@@ -223,17 +223,24 @@ function buildGoals(
   holder: Seat | null
 ): GoalSnapshot[] {
   if (!project) return [];
+
+  let diskTickets: Ticket[] = [];
   try {
     const key = readProjectKey(project);
-    let diskTickets: Ticket[] = [];
     try {
       diskTickets = loadTickets(project, key);
     } catch {}
-    const diskTicketMap = new Map<string, Ticket>();
-    for (const dt of diskTickets) {
-      diskTicketMap.set(dt.id, dt);
-    }
+  } catch {
+    // If readProjectKey throws (e.g. team/project.yaml missing in working tree),
+    // proceed without disk tickets and build goals from the SQLite store
+  }
 
+  const diskTicketMap = new Map<string, Ticket>();
+  for (const dt of diskTickets) {
+    diskTicketMap.set(dt.id, dt);
+  }
+
+  try {
     const auditAgent = (effectiveSeats(cfg, store).audit || cfg.seats?.audit || '').trim();
     const hasAudit = auditAgent.length > 0;
 

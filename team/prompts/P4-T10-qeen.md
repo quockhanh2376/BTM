@@ -11,3 +11,5 @@
 6. `npx tsc --noEmit` sạch; `npx vitest run` không tăng fail (18 Windows).
 
 **Báo cáo:** team/reports/P4-T10-qeen.md
+7. (fix1) Thành công → ở lại protectedBranch; snapshot vẫn dựng goal từ store khi thiếu project.yaml.
+Ghi chú Cheki: Ubuntu 637/637 ×3; chạy thử trên BẢN SAO go-to-the-moon: migrate ok, session/12 nguyên, team/tasks nguyên, lần 2 already, KEY khác bị từ chối.
