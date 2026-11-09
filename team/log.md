@@ -63,3 +63,4 @@
 - 2026-11-09 20:00 · V · P4-T10 fix2 xong: Windows đúng 15 fail. Cheki: VM 637/637 ×3; chạy thử migrate trên bản sao go-to-the-moon (/tmp/btm-mig): ok, ở lại main, session/12 + team/tasks nguyên, lần 2 already, KEY khác exit 1, project gốc không đổi. Ghi nhận nhỏ: thông báo lần 2 'nhánh cũ main', goal list rỗng không in gì. Giao Q review
 - 2026-11-09 20:08 · Q · P4-T10 review OK. Cheki: accepted, commit. Plan 4 đủ 10/10 task → review độc lập cả nhánh
 - 2026-11-09 20:08 · Cheki · Giao review độc lập toàn nhánh plan4-tickets (agent mới, không có ngữ cảnh hội thoại; trọng tâm: mất dữ liệu git, bảo mật, agent lách luật, state machine, chạy thật trên VM)
+- 2026-11-09 20:16 · Reviewer độc lập: needs fixes, 10 lỗi (team/reviews/P4-review-1.md). Cheki xác minh #1 (reset --hard trên nhánh đang checkout → có thể ghi đè main) và #2/#8. Chia 2 đợt: FIX-A an toàn git (#1 #2 #3 #4 #8) → FIX-B luật ticket (#5 #6 #7 #9 #10). Giao FIX-A cho V
