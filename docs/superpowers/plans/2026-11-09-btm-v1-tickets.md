@@ -124,12 +124,13 @@
 
 **Files:** Modify `src/core/prompts.ts`, `src/qc/result.ts`; tests `tests/prompts.test.ts` (mới nếu chưa có), `tests/qc.test.ts`.
 
-**Interfaces – Produces:**
-- `pmPrompt(g: { n: number; title: string }, key: string, nextId: string /* "GTM-0013" */, opts?: { notes?; hasOpenspec?; auditFindings?: AuditFinding[] })`
-- `devPrompt(t: Ticket, agentName, fixNotes?, allow?, handoff?)`, `qcPrompt(t: Ticket, base, agentName)`
-- `parseQcResult(text, expect: { ticket: string; goal: string; number: number }): QcResult` – JSON phải có `ticket/goal/number` khớp, sai → `fail` + `qc_output_invalid`.
+**Interfaces – Produces** (hàm MỚI, tên mới; hàm cũ `pmPrompt/devPrompt/qcPrompt/parseQcResult` giữ nguyên tới Task 6 để `tsc` không gãy – Task 6 chuyển session sang hàm mới rồi xoá hàm cũ):
+- `interface AuditFinding { ticket: string; severity: 'high'|'medium'|'low'; text: string }` – đặt ở `src/ticket/ticket.ts` (Task 7 dùng lại).
+- `pmTicketPrompt(g: { n: number; title: string }, key: string, nextId: string /* "GTM-0013" */, opts?: { notes?: Array<string | PromptNote>; hasOpenspec?: boolean; auditFindings?: AuditFinding[] })`
+- `devTicketPrompt(t: Ticket, agentName: string, fixNotes?: string[], allow?: string[], handoff?: boolean)`, `qcTicketPrompt(t: Ticket, base: string, agentName: string)`
+- `parseTicketQcResult(text, expect: { ticket: string; goal: string; number: number }): QcResult` – JSON phải có `ticket/goal/number` khớp, sai → `fail` + `qc_output_invalid`.
 
-- [ ] **Step 1: Test:** pmPrompt chứa `team/tickets/`, `G1`, `GTM-0013`, các trường bắt buộc + `type`/`size`, "size L phải tách"; có `auditFindings` → dòng yêu cầu ticket sửa `from_audit: true`. devPrompt/qcPrompt chứa `team/tickets/GTM-0012.md` và đúng chuỗi `reportHeader`. QC JSON thiếu `ticket` hoặc `number` lệch → `verdict: 'fail'`, `fix` có `qc_output_invalid`.
+- [ ] **Step 1: Test:** pmTicketPrompt chứa `team/tickets/`, `G1`, `GTM-0013`, các trường bắt buộc + `type`/`size`, "size L phải tách"; có `auditFindings` → dòng yêu cầu ticket sửa `from_audit: true`. devTicketPrompt/qcTicketPrompt chứa `team/tickets/GTM-0012.md` và đúng chuỗi `reportHeader`. QC JSON thiếu `ticket` hoặc `number` lệch → `verdict: 'fail'`, `fix` có `qc_output_invalid`.
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5:** Commit `feat: ticket-aware prompts and qc result (P4 Task 5)`.
 
@@ -141,7 +142,7 @@
 
 Luồng mỗi goal (tuần tự, chung giới hạn lượt của phiên):
 1. Goal mới → `createGoal`; checkout `goal/G<n>-<slug>` (tạo từ `main` nếu chưa có). Goal → `in_progress`.
-2. Chưa có ticket nào cho goal → lượt PM (`pmPrompt`); PM chỉ được ghi `team/tickets/`; `loadTickets(goal)` lỗi hoặc ID < `nextTicketSeq`/sai KEY → `needs_owner` (lý do rõ), không giao Dev. Ok → `upsertTicket` từng cái (state `pending`, by `pm`), `bumpTicketSeq`, commit `<ID đầu>..<ID cuối>: PM tickets for G<n>`.
+2. Chưa có ticket nào cho goal → lượt PM (`pmTicketPrompt`; session dùng `devTicketPrompt`/`qcTicketPrompt`/`parseTicketQcResult`, xoá 4 hàm cũ); PM chỉ được ghi `team/tickets/`; `loadTickets(goal)` lỗi hoặc ID < `nextTicketSeq`/sai KEY → `needs_owner` (lý do rõ), không giao Dev. Ok → `upsertTicket` từng cái (state `pending`, by `pm`), `bumpTicketSeq`, commit `<ID đầu>..<ID cuối>: PM tickets for G<n>`.
 3. Duyệt thẻ (`require_task_approval`) như cũ nhưng theo goal.
 4. Ticket theo `number`, bỏ `passed`/`cancelled`; `checkReady` lỗi → `blocked`. `runGate(repo, ticket: Ticket, …)` thay `TaskCard`, thêm lý do `commit_missing_ticket_id` + `report_header_invalid` (hàm Task 4). Dev → gate → QC như Kế hoạch 1–3, mọi commit Core đổi thành `<ID>: …` (vd `GTM-0012: WIP timeout`), mọi đổi trạng thái qua `setTicketState(by = agent id, reason)`.
 5. Mọi ticket goal `passed` → goal `qc_done`; Core ghi `team/goals/G<n>.md` (bảng: number, ID, tiêu đề, trạng thái, vòng sửa) và commit `G<n>: summary`.
@@ -156,7 +157,7 @@ Luồng mỗi goal (tuần tự, chung giới hạn lượt của phiên):
 
 **Interfaces – Produces:**
 - `Seat` thêm `'audit'`; `seats.audit` và `max_turns_per_seat.audit`, `timeout_minutes.audit` **tuỳ chọn** (thiếu = không audit).
-- `interface AuditFinding { ticket: string; severity: 'high'|'medium'|'low'; text: string }`; `parseAuditResult(text): { verdict: 'pass'|'fail'; findings: AuditFinding[] }` – JSON lỗi → `fail` + finding `audit_output_invalid`; có `high`/`medium` mà verdict `pass` → ép `fail`.
+- `AuditFinding` (Task 5, src/ticket/ticket.ts); `parseAuditResult(text): { verdict: 'pass'|'fail'; findings: AuditFinding[] }` – JSON lỗi → `fail` + finding `audit_output_invalid`; có `high`/`medium` mà verdict `pass` → ép `fail`.
 - `auditPrompt(goal: {n,title}, base: string /* merge-base main */, ticketIds: string[], agentName)` – read-only, checklist `docs/tickets.md` §5, ghi `team/reports/G<n>-audit.md`.
 
 Luồng: goal `qc_done` + có ghế audit → agent audit ≠ mọi coder của goal (vi phạm → `needs_owner`) → `pass` → `audit_passed`; `fail` → lượt PM với `auditFindings` → ticket mới `from_audit: true`, `of` tăng cho ticket mới → chạy tiếp bước 4 Task 6.

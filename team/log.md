@@ -25,3 +25,4 @@
 - 2026-11-09 14:30 · Cheki · P3-race: nguyên nhân thật (log DIAG trên VM) = test host gọi checkLogin THẬT (createHost không truyền monitor) → qc bị gate login:relogin khi máy tải nặng; KHÔNG phải race hàng đợi. Sửa: wrapper createHost trong tests/host.test.ts mặc định monitor giả OK. VM 10/10 lần full suite 541/541 xanh. Commit 3845e57 lên plan3-energy (PR #4)
 - 2026-11-09 14:30 · V · P4-T4 xong (OK). Cheki: tsc sạch, vitest 553/574 (21 Windows). Giao Q review
 - 2026-11-09 14:34 · Q · P4-T4 review OK. Cheki: accepted, commit; merge plan3-energy (fix test 3845e57) vào plan4-tickets
+- 2026-11-09 14:35 · Cheki · Sửa plan Task 5/6/7: Task 5 thêm hàm mới (pmTicketPrompt, devTicketPrompt, qcTicketPrompt, parseTicketQcResult) + AuditFinding ở ticket.ts; Task 6 chuyển session sang và xoá hàm cũ (tránh tsc gãy). Giao P4-T5 cho V
