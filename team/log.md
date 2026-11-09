@@ -74,3 +74,4 @@
 - 2026-11-09 22:18 · Cheki · Bài học: KHÔNG sửa team/bin/agy-run.sh khi đang có lượt chạy (bash đọc script từng phần → lượt FIX-B lỗi bước ghi log cuối, exit 2; kết quả của V vẫn đủ)
 - 2026-11-09 22:20 · V · FIX-B xong (session 90→96, gate 34→35). Cheki: tsc sạch; VM 653/653 ×3; đọc code dọn tree sau gate an toàn; ghi nhận: khôi phục ticket bị catch{} nuốt lỗi. Giao Q review (lượt đầu dùng stream-json – xem tab Terminal)
 - 2026-11-09 22:29 · Q · FIX-B review OK. Cheki: accepted, commit
+- 2026-11-09 22:30 · Cheki · Giao FIX-C: lệnh trực tiếp dashboard (host.ts processQueue) qua guard, chỉ chạy trên nhánh goal, tách guard ra src/core/guard.ts
