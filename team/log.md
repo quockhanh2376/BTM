@@ -33,3 +33,5 @@
 - 2026-11-09 14:52 · Cheki · Zon đồng ý: restart service btm trên VM (sudo admzon) lúc 07:52 UTC → active, dashboard 127.0.0.1:8080 trả 200, chạy main 8fc36a2
 - 2026-11-09 14:58 · V · P4-T5 fix1 xong (lọc xuống dòng auditFindings + test). Cheki kiểm: tsc sạch, vitest 564/582 (18 Windows) → accepted, commit
 - 2026-11-09 14:59 · Cheki · Sửa plan: xoá card.ts dời sang Task 9 (snapshot còn dùng). Chốt quyết định cho Task 6 (goals_json lưu số goal, resume theo goal, bỏ nhánh session/<id>). Giao P4-T6 cho V (timeout 50 phút)
+- 2026-11-09 15:18 · Cheki · Demo dashboard qua SSH tunnel cho Zon. Ghi nhận: (1) ảnh note N-1/N-2 (đã huỷ) 404 vì ảnh chỉ nằm trên nhánh session cũ – lỗi có sẵn; (2) Energy Elon-PM 'không đọc được'
+- 2026-11-09 15:19 · Cheki · Bấm 'Làm mới Energy': Elon-PM đọc được qua /usage (5h 95%, tuần 96%) – lỗi 'không đọc được' chỉ là cache từ code cũ trước restart. Jacky tuần còn 45%
