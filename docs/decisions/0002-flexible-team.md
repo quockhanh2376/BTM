@@ -12,3 +12,11 @@ Chi tiết: `docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md`. Làm
 
 ## Ghi chú tương lai
 Anh Zon có thể cho phép API key (vd Gemini) sau này. Plan 5 vẫn cấm, nhưng `account_env` phải cho phép thêm dạng giá trị `{ secret: <tên> }` mà không đổi cấu trúc. Bảo vệ dự kiến: giới hạn tại provider (API + IP VM + ngân sách), secret ngoài git (systemd `LoadCredential`), cấp key đúng agent đúng lượt, quét rò rỉ ở gate + che trong log/dashboard, nút tắt key. Sẽ có decision 0003 khi bật.
+
+### Mô hình tài khoản anh Zon chốt (2026-11-09)
+Ví dụ đội: 1 tài khoản Claude (đăng nhập), 1 tài khoản Codex (đăng nhập), 1 API key Gemini, 1 API key Z.ai (GLM).
+Luật: **1 API key ↔ đúng 1 agent, 1 agent ↔ tối đa 1 key**, không bao giờ 2 agent dùng chung key hay 1 agent cầm 2 key.
+- Kiểm khi load config (tham chiếu secret là duy nhất) + lúc chạy (key chỉ vào env của agent đó trong lượt đó; v2 song song thêm khoá theo secret).
+- `forbidden_env` đổi nghĩa: cấm trong env chung của service; chỉ Core được tiêm key cho đúng agent.
+- Energy của agent dùng key = chi tiêu / ngân sách anh đặt.
+- Cần xác minh khi làm: Z.ai chạy qua Claude Code (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` của Z.ai)?; Gemini API key chạy bằng CLI nào (agy có nhận key không).
