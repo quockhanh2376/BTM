@@ -12,3 +12,8 @@
 7. Test cũ không bị xoá vô cớ. `npx tsc --noEmit` sạch; `npx vitest run` không tăng fail (18 Windows).
 
 **Báo cáo:** team/reports/P4-T6-qeen.md
+
+**Thêm sau fix1 (khôi phục test):**
+8. So từng test với bản cũ (`git show HEAD:tests/session.test.ts`, `git show HEAD:tests/qc.test.ts`): test mới phải kiểm đúng ý cũ (cùng điều kiện, cùng kỳ vọng). Báo test "rỗng" (không assert, assert luôn đúng, expect bị bỏ) – mỗi cái 1 dòng.
+9. 5 test bị bỏ (liệt kê trong team/reports/P4-T6-dev.md): lý do có đúng là tính năng đã bị thay hẳn không.
+Ghi chú Cheki: trên Ubuntu full suite 585/585 ×3 lần.

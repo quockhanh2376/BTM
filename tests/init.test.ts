@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { initProject } from '../src/project/init.ts';
-import { pmPrompt } from '../src/core/prompts.ts';
+import { pmTicketPrompt } from '../src/core/prompts.ts';
 import { main, serve, acquireLock } from '../src/cli.ts';
 import { git, headSha, commitAll } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
@@ -184,15 +184,15 @@ describe('Project Init (initProject)', () => {
   });
 });
 
-describe('pmPrompt OpenSpec', () => {
-  it('pmPrompt có/không có dòng OpenSpec theo hasOpenspec', () => {
-    const withoutOpenspec = pmPrompt(['Mục tiêu 1']);
+describe('pmTicketPrompt OpenSpec', () => {
+  it('pmTicketPrompt có/không có dòng OpenSpec theo hasOpenspec', () => {
+    const withoutOpenspec = pmTicketPrompt({ n: 1, title: 'Mục tiêu 1' }, 'GTM', 'GTM-0001');
     expect(withoutOpenspec).not.toContain('openspec');
 
-    const withFalse = pmPrompt(['Mục tiêu 1'], undefined, false);
+    const withFalse = pmTicketPrompt({ n: 1, title: 'Mục tiêu 1' }, 'GTM', 'GTM-0001', { hasOpenspec: false });
     expect(withFalse).not.toContain('openspec');
 
-    const withTrue = pmPrompt(['Mục tiêu 1'], undefined, true);
+    const withTrue = pmTicketPrompt({ n: 1, title: 'Mục tiêu 1' }, 'GTM', 'GTM-0001', { hasOpenspec: true });
     expect(withTrue).toContain('openspec/changes/<tên>');
     expect(withTrue).toContain('openspec_change: <tên>');
     expect(withTrue).toMatch(/đề xuất thay đổi bằng openspec/i);

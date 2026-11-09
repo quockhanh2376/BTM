@@ -38,6 +38,7 @@ describe('SessionHost', () => {
     dataDir = mkdtempSync(join(tmpdir(), 'btm-data-'));
     logDir = mkdtempSync(join(tmpdir(), 'btm-logs-'));
     repoDir = tmpRepo({
+      'team/project.yaml': 'key: GTM\n',
       'team/tasks/T-001.md': `---
 id: T-001
 goal: Sample task
@@ -682,7 +683,8 @@ done_when: done
     const latest = store.getLatestSession(undefined, repoDir);
     expect(latest).toBeDefined();
     const session = store.getSession(latest!.id);
-    expect(session?.goals).toEqual(['Lệnh PM mở phiên']);
+    expect(session?.goals).toEqual(['1']);
+    expect(store.getGoal(repoDir, 1)?.title).toBe('Lệnh PM mở phiên');
   });
 
   it('command("qc", text) khi rảnh → chạy lượt trực tiếp, ghi lastMessage vào log_file', async () => {
@@ -1456,10 +1458,24 @@ done_when: done
       const mockRunner: Runner = vi.fn().mockImplementation(
         async (seat, agent, prompt, cwd) => {
           if (seat === 'pm') {
-            mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+            mkdirSync(join(cwd, 'team', 'tickets'), { recursive: true });
             writeFileSync(
-              join(cwd, 'team', 'tasks', 'T-001.md'),
-              `---\nid: T-001\ngoal: "Test handoff and resume"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+              join(cwd, 'team', 'tickets', 'GTM-0001.md'),
+              `---
+id: GTM-0001
+goal: G1
+number: 1
+of: 1
+title: Test handoff and resume
+type: feat
+size: S
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: ok
+---
+`
             );
             return { exitCode: 0, output: 'PM done' };
           }
@@ -1470,8 +1486,8 @@ done_when: done
               writeFileSync(join(cwd, 'src', 'app.ts'), 'code from jacky');
               mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
               writeFileSync(
-                join(cwd, 'team', 'reports', 'T-001-dev.md'),
-                `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+                join(cwd, 'team', 'reports', 'GTM-0001-dev.md'),
+                `GTM-0001 · G1#1/1 · jacky-Dev\n# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
               );
               // Gate check will fail for jacky on the 2nd dev turn
               devGateOk = false;
@@ -1483,8 +1499,8 @@ done_when: done
               mkdirSync(join(cwd, 'src'), { recursive: true });
               writeFileSync(join(cwd, 'src', 'app.ts'), 'code from jenny');
               writeFileSync(
-                join(cwd, 'team', 'reports', 'T-001-dev.md'),
-                `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+                join(cwd, 'team', 'reports', 'GTM-0001-dev.md'),
+                `GTM-0001 · G1#1/1 · jenny-Dev\n# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
               );
               return { exitCode: 0, output: 'Dev 2 done' };
             }
@@ -1498,6 +1514,9 @@ done_when: done
               return {
                 exitCode: 0,
                 lastMessage: JSON.stringify({
+                  ticket: 'GTM-0001',
+                  goal: 'G1',
+                  number: 1,
                   verdict: 'pass',
                   bugs: [],
                   fix: [],
@@ -1509,6 +1528,9 @@ done_when: done
             return {
               exitCode: 0,
               lastMessage: JSON.stringify({
+                ticket: 'GTM-0001',
+                goal: 'G1',
+                number: 1,
                 verdict: 'fail',
                 bugs: ['needs bugfix'],
                 fix: ['fix it'],
@@ -1555,9 +1577,8 @@ done_when: done
       const session1 = store.getLatestSession(undefined, repoDir);
       expect(session1?.status).toBe('needs_owner');
 
-      // The task state is 'returned'
-      const taskStates = store.listTaskStates(session1!.id);
-      expect(taskStates.find((t) => t.task_id === 'T-001')?.state).toBe('returned');
+      // The ticket state is 'returned'
+      expect(store.getTicketState(repoDir, 'GTM-0001')?.state).toBe('returned');
 
       // Swap Dev seat to jenny
       const seatRes1 = host.setSeat('dev', 'jenny');

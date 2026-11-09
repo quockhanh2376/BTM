@@ -317,6 +317,10 @@ export async function main(
           type: 'string',
           multiple: true,
         },
+        'goal-id': {
+          type: 'string',
+          multiple: true,
+        },
         approved: {
           type: 'boolean',
           default: false,
@@ -426,12 +430,37 @@ Options:
         return 1;
       }
       try {
-
-        const goals = (values.goal as string[] | undefined) ?? [];
+        const goals: Array<string | { n: number }> = [];
+        for (let i = 0; i < rawArgs.length; i++) {
+          const arg = rawArgs[i];
+          if (arg === '--goal' && i + 1 < rawArgs.length) {
+            goals.push(rawArgs[++i]);
+          } else if (arg.startsWith('--goal=')) {
+            goals.push(arg.slice('--goal='.length));
+          } else if (arg === '--goal-id' && i + 1 < rawArgs.length) {
+            const rawId = rawArgs[++i];
+            const match = rawId.match(/^G(\d+)$/);
+            if (!match) {
+              console.error(`Error: Invalid goal ID "${rawId}". Expected format G<n> (e.g. G1).`);
+              process.exitCode = 1;
+              return 1;
+            }
+            goals.push({ n: parseInt(match[1], 10) });
+          } else if (arg.startsWith('--goal-id=')) {
+            const rawId = arg.slice('--goal-id='.length);
+            const match = rawId.match(/^G(\d+)$/);
+            if (!match) {
+              console.error(`Error: Invalid goal ID "${rawId}". Expected format G<n> (e.g. G1).`);
+              process.exitCode = 1;
+              return 1;
+            }
+            goals.push({ n: parseInt(match[1], 10) });
+          }
+        }
         const approved = Boolean(values.approved);
 
         if (goals.length === 0 && !approved) {
-          console.error('Error: At least one --goal is required. Usage: btm run --goal "<g>" [--goal …]');
+          console.error('Error: At least one --goal or --goal-id is required. Usage: btm run --goal "<g>" [--goal-id G<n>]');
           process.exitCode = 1;
           return 1;
         }

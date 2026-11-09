@@ -147,9 +147,9 @@ Luồng mỗi goal (tuần tự, chung giới hạn lượt của phiên):
 4. Ticket theo `number`, bỏ `passed`/`cancelled`; `checkReady` lỗi → `blocked`. `runGate(repo, ticket: Ticket, …)` thay `TaskCard`, thêm lý do `commit_missing_ticket_id` + `report_header_invalid` (hàm Task 4). Dev → gate → QC như Kế hoạch 1–3, mọi commit Core đổi thành `<ID>: …` (vd `GTM-0012: WIP timeout`), mọi đổi trạng thái qua `setTicketState(by = agent id, reason)`.
 5. Mọi ticket goal `passed` → goal `qc_done`; Core ghi `team/goals/G<n>.md` (bảng: number, ID, tiêu đề, trạng thái, vòng sửa) và commit `G<n>: summary`.
 
-- [ ] **Step 1: Test** (runner giả): goal mới tạo đúng nhánh, PM ghi 2 ticket → Dev/QC chạy theo number, goal `qc_done`, có `team/goals/G1.md`, mọi commit trong nhánh bắt đầu bằng `GTM-` hoặc `G1:`. PM ghi ID trùng → `needs_owner`, không lượt Dev. Phiên 2 `--goal-id G1` sau khi phiên 1 dừng sau ticket 1 → chỉ chạy ticket 2, counter không reset. Ticket depends_on ticket `failed` → `blocked` với `not_ready`. Hết lượt giữa goal → `out_of_turns` như cũ.
-- [ ] **Step 2–4:** FAIL → implement → PASS (session/gate/host/cli không còn import `card.ts`; `tsc` sạch).
-- [ ] **Step 5:** Commit `feat: sessions run goals and tickets (P4 Task 6)`.
+- [x] **Step 1: Test** (runner giả): goal mới tạo đúng nhánh, PM ghi 2 ticket → Dev/QC chạy theo number, goal `qc_done`, có `team/goals/G1.md`, mọi commit trong nhánh bắt đầu bằng `GTM-` hoặc `G1:`. PM ghi ID trùng → `needs_owner`, không lượt Dev. Phiên 2 `--goal-id G1` sau khi phiên 1 dừng sau ticket 1 → chỉ chạy ticket 2, counter không reset. Ticket depends_on ticket `failed` → `blocked` với `not_ready`. Hết lượt giữa goal → `out_of_turns` như cũ.
+- [x] **Step 2–4:** FAIL → implement → PASS (session/gate/host/cli không còn import `card.ts`; `tsc` sạch).
+- [x] **Step 5:** Commit `feat: sessions run goals and tickets (P4 Task 6)`.
 
 ### Task 7: Ghế audit (Kai) – tuỳ chọn
 

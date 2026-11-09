@@ -1,16 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { parseQcResult, parseTicketQcResult, type QcResult } from '../src/qc/result.ts';
+import { parseTicketQcResult, type QcResult } from '../src/qc/result.ts';
 
 describe('QC Result parser', () => {
+  const expectSpec = {
+    ticket: 'GTM-0012',
+    goal: 'G1',
+    number: 3,
+  };
+
   describe('Clean JSON', () => {
     it('parses valid pass result', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'pass',
         bugs: [],
         fix: [],
         confirm: [],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'pass',
         bugs: [],
@@ -21,12 +30,15 @@ describe('QC Result parser', () => {
 
     it('parses valid fail result with bugs, fix, and confirm', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'fail',
         bugs: ['Logic error in auth check', 'Missing test case'],
         fix: ['Add null check before accessing token'],
         confirm: ['Should we support legacy tokens?'],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: ['Logic error in auth check', 'Missing test case'],
@@ -43,6 +55,9 @@ Tôi đã kiểm tra mã nguồn và chạy các bài kiểm tra tự động.
 Kết quả như sau:
 \`\`\`json
 {
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
   "verdict": "pass",
   "bugs": [],
   "fix": [],
@@ -51,7 +66,7 @@ Kết quả như sau:
 \`\`\`
 Mọi thứ đều đạt yêu cầu, sẵn sàng nghiệm thu.
 `;
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'pass',
         bugs: [],
@@ -64,6 +79,9 @@ Mọi thứ đều đạt yêu cầu, sẵn sàng nghiệm thu.
       const input = `
 \`\`\`
 {
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
   "verdict": "fail",
   "bugs": ["Component does not render"],
   "fix": ["Export component properly"],
@@ -71,7 +89,7 @@ Mọi thứ đều đạt yêu cầu, sẵn sàng nghiệm thu.
 }
 \`\`\`
 `;
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -84,6 +102,9 @@ Mọi thứ đều đạt yêu cầu, sẵn sàng nghiệm thu.
       const input = `
 Kết quả kiểm tra:
 {
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
   "verdict": "pass",
   "bugs": [],
   "fix": [],
@@ -91,7 +112,7 @@ Kết quả kiểm tra:
 }
 Cảm ơn bạn.
 `;
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -104,7 +125,7 @@ Cảm ơn bạn.
   describe('Invalid output fallback to qc_output_invalid', () => {
     it('returns qc_output_invalid for pure prose without JSON', () => {
       const input = 'Tôi thấy code ổn rồi, duyệt nhé!';
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -114,13 +135,13 @@ Cảm ơn bạn.
     });
 
     it('returns qc_output_invalid for empty string or whitespace', () => {
-      expect(parseQcResult('')).toEqual<QcResult>({
+      expect(parseTicketQcResult('', expectSpec)).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
         fix: ['qc_output_invalid'],
         confirm: [],
       });
-      expect(parseQcResult('   \n\t  ')).toEqual<QcResult>({
+      expect(parseTicketQcResult('   \n\t  ', expectSpec)).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
         fix: ['qc_output_invalid'],
@@ -130,7 +151,7 @@ Cảm ơn bạn.
 
     it('returns qc_output_invalid for malformed JSON syntax', () => {
       const input = '{ verdict: "pass", bugs: [ }';
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -141,7 +162,7 @@ Cảm ơn bạn.
 
     it('returns qc_output_invalid for unclosed braces', () => {
       const input = 'Here is the result: { "verdict": "pass"';
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -154,7 +175,7 @@ Cảm ơn bạn.
       const input = JSON.stringify({
         somethingElse: 'not a qc result',
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -165,12 +186,15 @@ Cảm ơn bạn.
 
     it('returns qc_output_invalid for invalid verdict value', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'in_progress',
         bugs: [],
         fix: [],
         confirm: [],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -181,12 +205,15 @@ Cảm ơn bạn.
 
     it('returns qc_output_invalid if bugs or fix is not a string array', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'fail',
         bugs: 'not an array',
         fix: [],
         confirm: [],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -196,13 +223,13 @@ Cảm ơn bạn.
     });
 
     it('never throws for null or undefined input', () => {
-      expect(parseQcResult(null as unknown as string)).toEqual<QcResult>({
+      expect(parseTicketQcResult(null as unknown as string, expectSpec)).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
         fix: ['qc_output_invalid'],
         confirm: [],
       });
-      expect(parseQcResult(undefined as unknown as string)).toEqual<QcResult>({
+      expect(parseTicketQcResult(undefined as unknown as string, expectSpec)).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
         fix: ['qc_output_invalid'],
@@ -214,12 +241,15 @@ Cảm ơn bạn.
   describe('Verdict pass coercion', () => {
     it('coerces pass to fail when bugs is not empty', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'pass',
         bugs: ['Found a minor bug'],
         fix: [],
         confirm: [],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result.verdict).toBe('fail');
       expect(result.bugs).toEqual(['Found a minor bug']);
       expect(result.fix).toEqual([]);
@@ -228,12 +258,15 @@ Cảm ơn bạn.
 
     it('coerces pass to fail when fix is not empty', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'pass',
         bugs: [],
         fix: ['Need to refactor variable name'],
         confirm: [],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result.verdict).toBe('fail');
       expect(result.bugs).toEqual([]);
       expect(result.fix).toEqual(['Need to refactor variable name']);
@@ -242,12 +275,15 @@ Cảm ơn bạn.
 
     it('coerces pass to fail when both bugs and fix are not empty', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'pass',
         bugs: ['Bug 1'],
         fix: ['Fix 1'],
         confirm: [],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result.verdict).toBe('fail');
       expect(result.bugs).toEqual(['Bug 1']);
       expect(result.fix).toEqual(['Fix 1']);
@@ -255,12 +291,15 @@ Cảm ơn bạn.
 
     it('does not coerce pass to fail when only confirm is not empty', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'pass',
         bugs: [],
         fix: [],
         confirm: ['Please double check staging environment'],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result.verdict).toBe('pass');
       expect(result.bugs).toEqual([]);
       expect(result.fix).toEqual([]);
@@ -271,11 +310,14 @@ Cảm ơn bạn.
   describe('Defaulting missing fields', () => {
     it('defaults missing confirm to empty array', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'pass',
         bugs: [],
         fix: [],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'pass',
         bugs: [],
@@ -286,9 +328,12 @@ Cảm ơn bạn.
 
     it('defaults missing bugs and fix to empty arrays', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'pass',
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'pass',
         bugs: [],
@@ -299,12 +344,15 @@ Cảm ơn bạn.
 
     it('transforms null values to empty arrays', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'pass',
         bugs: null,
         fix: null,
         confirm: null,
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'pass',
         bugs: [],
@@ -320,6 +368,9 @@ Cảm ơn bạn.
 Previous evaluation:
 \`\`\`json
 {
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
   "verdict": "fail",
   "bugs": ["Old bug"],
   "fix": ["Old fix"],
@@ -330,6 +381,9 @@ Previous evaluation:
 Updated final evaluation:
 \`\`\`json
 {
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
   "verdict": "pass",
   "bugs": [],
   "fix": [],
@@ -337,7 +391,7 @@ Updated final evaluation:
 }
 \`\`\`
 `;
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'pass',
         bugs: [],
@@ -348,12 +402,15 @@ Updated final evaluation:
 
     it('handles curly braces inside strings without getting confused', () => {
       const input = JSON.stringify({
+        ticket: 'GTM-0012',
+        goal: 'G1',
+        number: 3,
         verdict: 'fail',
         bugs: ['Template string `${name}` causes error', 'Object { foo: 1 } unexpected'],
         fix: ['Escape { and } correctly'],
         confirm: ['Confirm { scope } is ok'],
       });
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: ['Template string `${name}` causes error', 'Object { foo: 1 } unexpected'],
@@ -367,6 +424,9 @@ Updated final evaluation:
 I reviewed {src/a.ts, src/b.ts} and found everything good.
 \`\`\`json
 {
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
   "verdict": "pass",
   "bugs": [],
   "fix": [],
@@ -374,7 +434,7 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
 }
 \`\`\`
 `;
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'pass',
         bugs: [],
@@ -387,6 +447,9 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
       const input = `
 \`\`\`json
 {
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
   "verdict": "pass",
   "bugs": [],
   "fix": [],
@@ -394,21 +457,24 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
 }
 \`\`\`
 {
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
   "verdict": "fail",
   "bugs": ["Raw fail bug"],
   "fix": ["Raw fail fix"],
   "confirm": []
 }
 `;
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result.verdict).toBe('pass');
       expect(result.bugs).toEqual([]);
       expect(result.fix).toEqual([]);
     });
 
     it('returns qc_output_invalid without backtracking when last JSON block fails schema validation', () => {
-      const input = '{"verdict":"pass"} {"verdict":"invalid"}';
-      const result = parseQcResult(input);
+      const input = '{"ticket":"GTM-0012","goal":"G1","number":3,"verdict":"pass"} {"verdict":"invalid"}';
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -419,7 +485,7 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
 
     it('returns qc_output_invalid for cut-off JSON with nested valid JSON', () => {
       const input = '{"verdict":"fail","nested":{"verdict":"pass"}';
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -429,8 +495,8 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
     });
 
     it('returns qc_output_invalid when trailing JSON block is incomplete / cut off', () => {
-      const input = '{"verdict":"pass","bugs":[],"fix":[],"confirm":[]} {"verdict":"fail"';
-      const result = parseQcResult(input);
+      const input = '{"ticket":"GTM-0012","goal":"G1","number":3,"verdict":"pass","bugs":[],"fix":[],"confirm":[]} {"verdict":"fail"';
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result.verdict).toBe('fail');
       expect(result.fix).toContain('qc_output_invalid');
       expect(result).toEqual<QcResult>({
@@ -444,13 +510,16 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
     it('returns qc_output_invalid when prose has raw JSON without code fence', () => {
       const input = `Unclosed " quote in prose before JSON
 {
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
   "verdict": "pass",
   "bugs": [],
   "fix": [],
   "confirm": []
 }
 `;
-      const result = parseQcResult(input);
+      const result = parseTicketQcResult(input, expectSpec);
       expect(result).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -460,7 +529,7 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
     });
 
     it('does not affect subsequent invalid results when mutating returned invalid arrays', () => {
-      const first = parseQcResult('invalid output 1');
+      const first = parseTicketQcResult('invalid output 1', expectSpec);
       expect(first).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -472,7 +541,7 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
       first.fix.push('mutated_fix');
       first.confirm.push('mutated_confirm');
 
-      const second = parseQcResult('invalid output 2');
+      const second = parseTicketQcResult('invalid output 2', expectSpec);
       expect(second).toEqual<QcResult>({
         verdict: 'fail',
         bugs: [],
@@ -483,12 +552,6 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
   });
 
   describe('parseTicketQcResult (Ticket-aware QC Result parser)', () => {
-    const expectSpec = {
-      ticket: 'GTM-0012',
-      goal: 'G1',
-      number: 3,
-    };
-
     it('parses valid ticket qc result with matching ticket, goal, number', () => {
       const text = `
 Here is my review:

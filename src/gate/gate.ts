@@ -1,7 +1,6 @@
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import type { TaskCard } from '../task/card.ts';
 import type { Ticket } from '../ticket/ticket.ts';
 import { changedFiles, git } from '../git.ts';
 
@@ -76,7 +75,7 @@ export function reportHeaderOk(repo: string, t: Ticket): boolean {
 
 export function runGate(
   repo: string,
-  card: TaskCard,
+  ticket: Ticket,
   base: string,
   cmds: { build: string; lint: string; test: string },
   optsOrTimeout?: number | GateOptions,
@@ -109,14 +108,14 @@ export function runGate(
   }
 
   // 2. file ngoài scope (luôn cho phép team/reports/) → out_of_scope:<file>
-  const allowedScope = [...card.scope, 'team/reports/'];
+  const allowedScope = [...ticket.scope, 'team/reports/'];
   const outFiles = outsideScope(changed, allowedScope);
   for (const file of outFiles) {
     reasons.push(`out_of_scope:${file}`);
   }
 
   // 3. thiếu team/reports/<id>-dev.md → missing_report
-  const reportPath = join(repo, 'team', 'reports', `${card.id}-dev.md`);
+  const reportPath = join(repo, 'team', 'reports', `${ticket.id}-dev.md`);
   let hasReport = false;
   try {
     hasReport = existsSync(reportPath) && statSync(reportPath).isFile();
@@ -129,12 +128,17 @@ export function runGate(
     try {
       const content = readFileSync(reportPath, 'utf8');
       const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
-      if (lines.length > 5) {
+      const headerOk = reportHeaderOk(repo, ticket);
+      const bodyLines = headerOk ? lines.slice(1) : lines;
+      if (bodyLines.length > 5) {
         reasons.push('report_too_long');
       }
       if (requireReportSchema) {
+        if (!headerOk) {
+          reasons.push('report_header_invalid');
+        }
         const trimmed = content.trim();
-        const isOk = trimmed === 'OK';
+        const isOk = trimmed === 'OK' || /(?:^|\n)\s*OK\s*$/.test(trimmed);
         const hasValidHeading = /(?:^|\n)(?:##\s+(?:Bug|Cần sửa|Cần xác nhận)|#\s+Báo cáo Dev|-\s+(?:Bug|Cần sửa|Cần xác nhận):)/m.test(content);
         if (!isOk && !hasValidHeading) {
           reasons.push('bad_report');
@@ -142,6 +146,13 @@ export function runGate(
       }
     } catch {
       reasons.push('bad_report');
+    }
+  }
+
+  if (requireReportSchema) {
+    const missingCommits = commitsMissingTicketId(repo, base, ticket.id);
+    if (missingCommits.length > 0) {
+      reasons.push('commit_missing_ticket_id');
     }
   }
 

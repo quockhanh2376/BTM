@@ -5,18 +5,24 @@ import { join } from 'node:path';
 import { tmpRepo } from './helpers.ts';
 import { git, headSha, commitAll, changedFiles } from '../src/git.ts';
 import { runGate, outsideScope, commitsMissingTicketId, reportHeaderOk } from '../src/gate/gate.ts';
-import type { TaskCard } from '../src/task/card.ts';
 import type { Ticket } from '../src/ticket/ticket.ts';
 
 const TEST_AUTHOR = ['-c', 'user.name=test', '-c', 'user.email=test@btm.local'];
 
-function makeCard(overrides: Partial<TaskCard> = {}): TaskCard {
+function makeCard(overrides: Partial<Ticket> = {}): Ticket {
   return {
-    id: 'T-001',
-    goal: 'Test goal',
+    id: 'GTM-0001',
+    goal: 'G1',
+    number: 1,
+    of: 1,
+    title: 'Test ticket',
+    type: 'feat',
+    size: 'S',
     scope: ['src/'],
     acceptance: ['Pass test'],
     done_when: 'All green',
+    depends_on: [],
+    from_audit: false,
     ...overrides,
   };
 }
@@ -190,11 +196,12 @@ describe('outsideScope', () => {
 
 describe('runGate', () => {
   const emptyCmds = { build: '', lint: '', test: '' };
+  const validReportHeader = 'GTM-0001 · G1#1/1 · Jacky-Dev\n';
 
   it('empty diff fails with empty_diff', () => {
     const repo = tmpRepo({
       'src/a.ts': 'export const a = 1;',
-      'team/reports/T-001-dev.md': 'OK',
+      'team/reports/GTM-0001-dev.md': validReportHeader + 'OK\n',
     });
     const base = headSha(repo);
     const card = makeCard();
@@ -213,9 +220,9 @@ describe('runGate', () => {
 
     // Dev only adds report file, no changes to product files
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + 'OK\n');
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'only add report'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: only add report'], { cwd: repo });
 
     const result = runGate(repo, card, base, emptyCmds);
     expect(result.ok).toBe(false);
@@ -231,10 +238,10 @@ describe('runGate', () => {
 
     unlinkSync(join(repo, 'README.md'));
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + 'OK\n');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'delete readme'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: delete readme'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, emptyCmds);
@@ -252,10 +259,10 @@ describe('runGate', () => {
     mkdirSync(join(repo, 'src'), { recursive: true });
     execFileSync('git', ['mv', 'other.ts', 'src/a.ts'], { cwd: repo });
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + 'OK\n');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'move other into src'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: move other into src'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, emptyCmds);
@@ -272,10 +279,10 @@ describe('runGate', () => {
 
     writeFileSync(join(repo, 'tests/auth/x.test.ts'), 'test 2');
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + 'OK\n');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update test'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: update test'], { cwd: repo });
 
     const card = makeCard({ scope: ['tests/auth/'] });
     const result = runGate(repo, card, base, emptyCmds);
@@ -292,7 +299,7 @@ describe('runGate', () => {
 
     writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a without report'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: update a without report'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, emptyCmds);
@@ -309,10 +316,10 @@ describe('runGate', () => {
 
     writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), '   \n\n  ');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), '   \n\n  ');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'empty report'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: empty report'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, emptyCmds);
@@ -329,10 +336,10 @@ describe('runGate', () => {
 
     writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), '# Summary\nEverything done.');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + '# Summary\nEverything done.');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'bad report schema'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: bad report schema'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, emptyCmds);
@@ -350,12 +357,12 @@ describe('runGate', () => {
     writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
     writeFileSync(
-      join(repo, 'team/reports/T-001-dev.md'),
-      '## Bug\n- Phát hiện bug nhỏ ở controller\n## Cần sửa\n- Cần refactor helper'
+      join(repo, 'team/reports/GTM-0001-dev.md'),
+      validReportHeader + '## Bug\n- Phát hiện bug nhỏ ở controller\n## Cần sửa\n- Cần refactor helper'
     );
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'report with issues'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: report with issues'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, emptyCmds);
@@ -372,7 +379,7 @@ describe('runGate', () => {
 
     writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'arbitrary non-conforming content');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), 'arbitrary non-conforming content');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
     execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'skip schema report'], { cwd: repo });
@@ -392,16 +399,16 @@ describe('runGate', () => {
 
     writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + 'OK\n');
     writeFileSync(join(repo, 'team/reports/extra.txt'), 'extra notes');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a and reports'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: update a and reports'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/a.ts'] });
     const result = runGate(repo, card, base, emptyCmds);
 
-    expect(result.reasons).not.toContain('out_of_scope:team/reports/T-001-dev.md');
+    expect(result.reasons).not.toContain('out_of_scope:team/reports/GTM-0001-dev.md');
     expect(result.reasons).not.toContain('out_of_scope:team/reports/extra.txt');
     expect(result.ok).toBe(true);
   });
@@ -414,10 +421,10 @@ describe('runGate', () => {
 
     writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + 'OK\n');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: update a'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, {
@@ -440,10 +447,10 @@ describe('runGate', () => {
 
     writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + 'OK\n');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: update a'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(
@@ -471,10 +478,10 @@ describe('runGate', () => {
 
     writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
-    writeFileSync(join(repo, 'team/reports/T-001-dev.md'), 'OK');
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + 'OK\n');
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a and report'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: update a and report'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, {
@@ -499,12 +506,12 @@ describe('runGate', () => {
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
     // 6 non-empty lines
     writeFileSync(
-      join(repo, 'team/reports/T-001-dev.md'),
-      ['## Bug', 'Line 1', 'Line 2', 'Line 3', 'Line 4', 'Line 5'].join('\n')
+      join(repo, 'team/reports/GTM-0001-dev.md'),
+      validReportHeader + ['## Bug', 'Line 1', 'Line 2', 'Line 3', 'Line 4', 'Line 5'].join('\n')
     );
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a and report'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: update a and report'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, emptyCmds);
@@ -523,18 +530,58 @@ describe('runGate', () => {
     mkdirSync(join(repo, 'team/reports'), { recursive: true });
     // Exactly 5 non-empty lines with empty lines interspersed
     writeFileSync(
-      join(repo, 'team/reports/T-001-dev.md'),
-      ['## Bug', '', 'Line 1', '', 'Line 2', 'Line 3', 'Line 4'].join('\n')
+      join(repo, 'team/reports/GTM-0001-dev.md'),
+      validReportHeader + ['## Bug', '', 'Line 1', '', 'Line 2', 'Line 3', 'Line 4'].join('\n')
     );
 
     execFileSync('git', ['add', '-A'], { cwd: repo });
-    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'update a and report'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: update a and report'], { cwd: repo });
 
     const card = makeCard({ scope: ['src/'] });
     const result = runGate(repo, card, base, emptyCmds);
 
     expect(result.reasons).not.toContain('report_too_long');
     expect(result.ok).toBe(true);
+  });
+
+  it('fails with commit_missing_ticket_id when commit subject misses ticket id', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+
+    writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + 'OK\n');
+
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'WIP: no ticket id'], { cwd: repo });
+
+    const card = makeCard({ scope: ['src/'] });
+    const result = runGate(repo, card, base, emptyCmds);
+
+    expect(result.ok).toBe(false);
+    expect(result.reasons).toContain('commit_missing_ticket_id');
+  });
+
+  it('fails with report_header_invalid when dev report does not start with ticket header', () => {
+    const repo = tmpRepo({
+      'src/a.ts': 'export const a = 1;',
+    });
+    const base = headSha(repo);
+
+    writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+    mkdirSync(join(repo, 'team/reports'), { recursive: true });
+    writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), 'OK\n');
+
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: update a and report'], { cwd: repo });
+
+    const card = makeCard({ scope: ['src/'] });
+    const result = runGate(repo, card, base, emptyCmds);
+
+    expect(result.ok).toBe(false);
+    expect(result.reasons).toContain('report_header_invalid');
   });
 
   describe('Plan 4 Task 4: commitsMissingTicketId & reportHeaderOk', () => {

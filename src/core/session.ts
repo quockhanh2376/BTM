@@ -1,22 +1,23 @@
 import { realpathSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatSync, rmSync } from 'node:fs';
-import { relative, isAbsolute, join, resolve } from 'node:path';
+import { relative, isAbsolute, join } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { checkForbiddenEnv } from '../config.ts';
-import { effectiveSeats, type Store, type TurnResult, type BoardState } from '../store/db.ts';
+import { effectiveSeats, type Store, type TurnResult } from '../store/db.ts';
 import type { Runner } from '../runner/run.ts';
-import { parseTaskCard, CardError, type TaskCard } from '../task/card.ts';
+import { loadTickets, checkReady, type Ticket, type TicketState, TicketError } from '../ticket/ticket.ts';
+import { readProjectKey } from '../ticket/goal.ts';
 import { runGate } from '../gate/gate.ts';
 import { git, commitAll, headSha } from '../git.ts';
-import { parseQcResult } from '../qc/result.ts';
-import { pmPrompt, devPrompt, qcPrompt } from './prompts.ts';
+import { parseTicketQcResult } from '../qc/result.ts';
+import { pmTicketPrompt, devTicketPrompt, qcTicketPrompt } from './prompts.ts';
 import { inboxPath } from '../server/inbox.ts';
 
-export type TaskState = 'pending' | 'passed' | 'failed' | 'blocked';
+export type TaskState = TicketState;
 
 export interface SessionOutcome {
   status: 'done' | 'awaiting_approval' | 'needs_owner' | 'out_of_turns' | 'refused' | 'stopped';
   sessionId: number | null;
-  tasks: Record<string, TaskState>;
+  tasks: Record<string, TicketState>;
   notes: string[];
 }
 
@@ -33,6 +34,18 @@ export interface SessionDeps {
   monitor?: {
     refresh(agents: string[], force?: boolean): Promise<void>;
     gate(agent: string): { ok: true } | { ok: false; reason: string };
+  };
+}
+
+export interface RunSessionOpts {
+  approved?: boolean;
+  noteId?: number;
+  text?: string;
+  image?: { ext: string; bytes: Buffer };
+  note?: {
+    noteId: number;
+    text: string;
+    image?: { ext: string; bytes: Buffer };
   };
 }
 
@@ -95,429 +108,39 @@ function authorForAgent(agentId: string): { name: string; email: string } {
   };
 }
 
-function loadCardFromPath(repo: string, relPath: string): TaskCard {
-  const filePath = join(repo, relPath);
-  let content: string;
-  try {
-    content = readFileSync(filePath, 'utf8');
-  } catch (err) {
-    throw new CardError(`Cannot read task card file "${filePath}": ${(err as Error).message}`);
+function writeGoalSummaryAndCommit(
+  repo: string,
+  goal: { n: number; title: string },
+  tickets: Ticket[],
+  store: Store
+): void {
+  const goalsDir = join(repo, 'team', 'goals');
+  mkdirSync(goalsDir, { recursive: true });
+  const summaryLines = [
+    `# G${goal.n} · ${goal.title}`,
+    '',
+    '| # | Ticket | Tiêu đề | Trạng thái | Vòng sửa |',
+    '|---|---|---|---|---|',
+  ];
+  for (const t of tickets) {
+    const s = store.getTicketState(repo, t.id);
+    const state = s?.state ?? 'passed';
+    const rounds = s?.fix_rounds ?? 0;
+    summaryLines.push(`| ${t.number} | ${t.id} | ${t.title} | ${state} | ${rounds} |`);
   }
-  try {
-    const card = parseTaskCard(content);
-    const fileName = relPath.split('/').pop() ?? relPath;
-    const expectedId = fileName.replace(/\.md$/, '');
-    if (card.id !== expectedId) {
-      throw new CardError(`Task card id "${card.id}" does not match filename "${fileName}"`);
-    }
-    return card;
-  } catch (err) {
-    if (err instanceof CardError) {
-      throw new CardError(`Error loading "${filePath}": ${err.message}`);
-    }
-    throw err;
-  }
-}
+  summaryLines.push('');
+  const summaryPath = join(goalsDir, `G${goal.n}.md`);
+  writeFileSync(summaryPath, summaryLines.join('\n'), 'utf8');
 
-async function workOnCards(
-  d: SessionDeps,
-  sessionId: number,
-  cards: TaskCard[],
-  tasks: Record<string, TaskState>
-): Promise<SessionOutcome> {
-  const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
-  const gateFn = d.gate ?? (d.monitor ? d.monitor.gate.bind(d.monitor) : undefined);
-
-  for (const card of cards) {
-    const taskStates = d.store.listTaskStates(sessionId).filter((s) => s.task_id === card.id);
-    const existingState = taskStates.length > 0 ? taskStates[taskStates.length - 1] : undefined;
-    const initialTaskState = existingState ? existingState.state : (tasks[card.id] ?? 'pending');
-
-    if (initialTaskState === 'passed' || initialTaskState === 'failed' || initialTaskState === 'blocked') {
-      tasks[card.id] = initialTaskState;
-      continue;
-    }
-
-    let base = existingState?.base_sha || null;
-    let fixNotes: string[] = [];
-    let fixRounds = existingState ? existingState.fix_rounds : 0;
-    if (initialTaskState === 'returned') {
-      const reportsDir = join(d.repo, 'team', 'reports');
-      const qcReportPath = join(reportsDir, `${card.id}-qc.json`);
-      if (existsSync(qcReportPath)) {
-        try {
-          const qcData = JSON.parse(readFileSync(qcReportPath, 'utf8'));
-          if (Array.isArray(qcData.bugs) || Array.isArray(qcData.fix)) {
-            fixNotes = [...(qcData.bugs || []), ...(qcData.fix || [])];
-          }
-        } catch {}
-      }
-      if (fixNotes.length === 0) {
-        const failures = d.store.listHandoffFailures(sessionId).filter((f) => f.task_id === card.id);
-        if (failures.length > 0) {
-          fixNotes = failures.map((f) => f.reason);
-        }
-      }
-    }
-
-    let skipDevThisRound = (initialTaskState === 'awaiting_qc');
-    const coders = new Set<string>();
-    for (const t of d.store.listTurns(sessionId)) {
-      if (t.seat === 'dev' && t.task_id === card.id && t.agent) {
-        coders.add(t.agent);
-      }
-    }
-
-    let cardImages: string[] | undefined;
-    if (card.note) {
-      const rawId = card.note.replace(/^N-/, '');
-      const noteId = Number(rawId);
-      if (!isNaN(noteId)) {
-        const note = d.store.getNote(noteId);
-        if (note?.image) {
-          try {
-            const imgPath = inboxPath(d.repo, note.image);
-            if (existsSync(imgPath)) {
-              cardImages = [imgPath];
-            }
-          } catch {}
-        }
-      }
-    }
-
-    while (true) {
-      const seats = effectiveSeats(d.cfg, d.store);
-      const devAgent = Object.hasOwn(seats, 'dev') ? seats.dev : d.cfg.seats.dev;
-      const devAuthor = authorForAgent(devAgent);
-
-      const pastDevTurns = d.store
-        .listTurns(sessionId)
-        .filter((t) => t.seat === 'dev' && t.task_id === card.id);
-      const prevCoder = pastDevTurns.length > 0 ? pastDevTurns[pastDevTurns.length - 1].agent : null;
-
-      const currentStates = d.store.listTaskStates(sessionId).filter((s) => s.task_id === card.id);
-      const currentState = currentStates.length > 0 ? currentStates[currentStates.length - 1].state : tasks[card.id];
-      const isHandoff =
-        (currentState === 'returned' || currentState === 'in_dev') &&
-        prevCoder !== null &&
-        prevCoder !== devAgent;
-
-      if (!skipDevThisRound) {
-        if (!base) {
-          base = headSha(d.repo);
-        }
-        coders.add(devAgent);
-
-        if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
-          try {
-            await refreshFn([devAgent]);
-          } catch {}
-        }
-        if (gateFn) {
-          const gateCheck = gateFn(devAgent);
-          if (!gateCheck.ok) {
-            d.store.recordHandoffFailure(sessionId, card.id, gateCheck.reason);
-            return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
-          }
-        }
-
-        if (isOutOfTurns(d.store, sessionId, d.cfg, 'dev')) {
-          return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
-        }
-
-        d.store.setTaskState(sessionId, card.id, 'in_dev', fixRounds, base);
-        const devTurnId = d.store.startTurn(sessionId, 'dev', devAgent, card.id);
-        const devLogFile = join(d.logDir, `turn-${devTurnId}.log`);
-        d.store.setTurnLog(devTurnId, devLogFile);
-        const devPromptText = devPrompt(card, fixNotes, d.cfg.runner.agy_allow_commands, isHandoff);
-        let devOutput;
-        try {
-          devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
-            signal: d.signal,
-            images: cardImages,
-          });
-        } catch (err) {
-          const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
-          const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
-          d.store.endTurn(devTurnId, 'error', reason);
-          if (isAbort) {
-            return { status: 'stopped', sessionId, tasks, notes: [reason] };
-          }
-          try {
-            commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
-          } catch {
-            // commitAll error: keep needs_owner, do not throw
-          }
-          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-        }
-
-        if (devOutput.timedOut) {
-          const result: TurnResult = 'timeout';
-          const reason = 'timeout';
-          d.store.endTurn(devTurnId, result, reason);
-          try {
-            commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
-          } catch {
-            // commitAll error: keep needs_owner, do not throw
-          }
-          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-        }
-
-        const devText = (devOutput.lastMessage || '') + ' ' + (devOutput.output || '');
-        const hasAutoDenied =
-          (devOutput.output || '').includes('auto-denied') ||
-          (devOutput.lastMessage || '').includes('auto-denied');
-
-        if (!hasAutoDenied && devOutput.exitCode !== 0) {
-          const result: TurnResult = 'error';
-          const reason = `exit_${devOutput.exitCode}`;
-          d.store.endTurn(devTurnId, result, reason);
-          try {
-            commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
-          } catch {
-            // commitAll error: keep needs_owner, do not throw
-          }
-          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-        }
-
-        if (devText.includes('BLOCKED')) {
-          d.store.endTurn(devTurnId, 'ok');
-          try {
-            commitAll(d.repo, `${card.id}: blocked`, devAuthor);
-          } catch {
-            // commitAll error: keep needs_owner, do not throw
-          }
-          tasks[card.id] = 'blocked';
-          d.store.setTaskState(sessionId, card.id, 'blocked', fixRounds, base);
-          return { status: 'needs_owner', sessionId, tasks, notes: ['Dev reported BLOCKED'] };
-        }
-
-        d.store.endTurn(devTurnId, 'ok');
-        try {
-          commitAll(d.repo, `${card.id}: dev implementation`, devAuthor);
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
-        }
-
-        const timeoutMs = (d.cfg.turn.timeout_minutes.dev ?? 0) * 60 * 1000;
-        const gateResult = runGate(d.repo, card, base, d.cfg.gate.commands, {
-          timeoutMs,
-          require_report_schema: d.cfg.gate.require_report_schema,
-        });
-        if (!gateResult.ok || hasAutoDenied) {
-          const failureReasons: string[] = [];
-          if (hasAutoDenied) {
-            failureReasons.push('command_denied');
-          }
-          if (!gateResult.ok) {
-            failureReasons.push(...gateResult.reasons);
-          }
-
-          d.store.endTurn(devTurnId, 'rejected', failureReasons.join('; '));
-          for (const reason of failureReasons) {
-            d.store.recordHandoffFailure(sessionId, card.id, reason);
-          }
-
-          const deniedNote = 'command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ';
-          fixNotes = [
-            ...(hasAutoDenied ? [deniedNote] : []),
-            ...(!gateResult.ok ? gateResult.reasons : []),
-          ];
-          fixRounds++;
-          if (fixRounds > d.cfg.turn.max_fix_rounds) {
-            tasks[card.id] = 'failed';
-            d.store.setTaskState(sessionId, card.id, 'failed', fixRounds, base);
-            return {
-              status: 'needs_owner',
-              sessionId,
-              tasks,
-              notes: [
-                `Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${failureReasons.join(', ')}`,
-              ],
-            };
-          }
-          d.store.setTaskState(sessionId, card.id, 'returned', fixRounds, base);
-          continue;
-        }
-      } else {
-        skipDevThisRound = false;
-        if (!base) {
-          base = existingState?.base_sha || headSha(d.repo);
-        }
-      }
-
-      d.store.setTaskState(sessionId, card.id, 'awaiting_qc', fixRounds, base);
-
-      // Rule 8: coder_cannot_qc_same_task
-      const qcAgent = Object.hasOwn(seats, 'qc') ? seats.qc : d.cfg.seats.qc;
-      if (d.cfg.rules.coder_cannot_qc_same_task && coders.has(qcAgent)) {
-        d.store.recordHandoffFailure(sessionId, card.id, 'coder_cannot_qc_same_task');
-        return {
-          status: 'needs_owner',
-          sessionId,
-          tasks,
-          notes: [
-            `Seat 'qc' is occupied by '${qcAgent}', who also coded task '${card.id}'`,
-            'coder_cannot_qc_same_task',
-          ],
-        };
-      }
-
-      if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
-        try {
-          await refreshFn([qcAgent]);
-        } catch {}
-      }
-      if (gateFn) {
-        const gateCheck = gateFn(qcAgent);
-        if (!gateCheck.ok) {
-          d.store.recordHandoffFailure(sessionId, card.id, gateCheck.reason);
-          return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
-        }
-      }
-
-      if (isOutOfTurns(d.store, sessionId, d.cfg, 'qc')) {
-        return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
-      }
-
-      const qcAuthor = authorForAgent(qcAgent);
-      const qcTurnId = d.store.startTurn(sessionId, 'qc', qcAgent, card.id);
-      const qcLogFile = join(d.logDir, `turn-${qcTurnId}.log`);
-      d.store.setTurnLog(qcTurnId, qcLogFile);
-      const qcPromptText = qcPrompt(card, base);
-      const preQcHead = headSha(d.repo);
-      let qcOutput;
-      try {
-        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo, qcLogFile, {
-          signal: d.signal,
-          images: cardImages,
-        });
-      } catch (err) {
-        const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
-        const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
-        d.store.endTurn(qcTurnId, 'error', reason);
-        if (isAbort) {
-          return { status: 'stopped', sessionId, tasks, notes: [reason] };
-        }
-        try {
-          commitAll(d.repo, `WIP ${card.id}: ${reason}`, qcAuthor);
-        } catch {
-          // commitAll error: keep needs_owner, do not throw
-        }
-        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-      }
-
-      if (qcOutput.timedOut || qcOutput.exitCode !== 0) {
-        const result: TurnResult = qcOutput.timedOut ? 'timeout' : 'error';
-        const reason = qcOutput.timedOut ? 'timeout' : `exit_${qcOutput.exitCode}`;
-        d.store.endTurn(qcTurnId, result, reason);
-        try {
-          commitAll(d.repo, `WIP ${card.id}: ${reason}`, qcAuthor);
-        } catch {
-          // commitAll error: keep needs_owner, do not throw
-        }
-        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-      }
-
-      d.store.endTurn(qcTurnId, 'ok');
-
-      let qcResult = parseQcResult(qcOutput.lastMessage);
-
-      // Check if QC modified repository (HEAD changed or working tree dirty)
-      const postQcHead = headSha(d.repo);
-      const headChanged = postQcHead !== preQcHead;
-      const workingTreeDirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
-
-      if (headChanged || workingTreeDirty) {
-        qcResult = {
-          verdict: 'fail',
-          bugs: ['qc_modified_repo'],
-          fix: ['qc_modified_repo'],
-          confirm: [],
-        };
-        if (headChanged) {
-          git(d.repo, 'reset', '--hard', preQcHead);
-        }
-        if (workingTreeDirty) {
-          git(d.repo, 'reset', 'HEAD', '--', '.');
-          git(d.repo, 'checkout', '--', '.');
-          git(d.repo, 'clean', '-fd');
-        }
-      }
-
-      // Save QC result to team/reports/<id>-qc.json and commit (author ghế qc)
-      const reportsDir = join(d.repo, 'team', 'reports');
-      mkdirSync(reportsDir, { recursive: true });
-      const qcReportPath = join(reportsDir, `${card.id}-qc.json`);
-      writeFileSync(qcReportPath, JSON.stringify(qcResult, null, 2) + '\n', 'utf8');
-      try {
-        commitAll(d.repo, `${card.id}: qc ${qcResult.verdict}`, qcAuthor);
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
-      }
-
-      if (qcResult.verdict === 'pass') {
-        tasks[card.id] = 'passed';
-        d.store.setTaskState(sessionId, card.id, 'passed', fixRounds, base);
-        break;
-      }
-
-      fixRounds++;
-      fixNotes = [...qcResult.bugs, ...qcResult.fix];
-      if (fixRounds > d.cfg.turn.max_fix_rounds) {
-        tasks[card.id] = 'failed';
-        d.store.setTaskState(sessionId, card.id, 'failed', fixRounds, base);
-        return {
-          status: 'needs_owner',
-          sessionId,
-          tasks,
-          notes: [`Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${fixNotes.join(', ')}`],
-        };
-      }
-      d.store.setTaskState(sessionId, card.id, 'returned', fixRounds, base);
-    }
-  }
-
-  const failedOrBlocked = new Set<string>();
-  for (const [id, state] of Object.entries(tasks)) {
-    if (state === 'failed' || state === 'blocked') {
-      failedOrBlocked.add(id);
-    }
-  }
-  for (const s of d.store.listTaskStates(sessionId)) {
-    if (s.state === 'failed' || s.state === 'blocked') {
-      failedOrBlocked.add(s.task_id);
-      if (!tasks[s.task_id]) {
-        tasks[s.task_id] = s.state;
-      }
-    }
-  }
-
-  if (failedOrBlocked.size > 0) {
-    const list = Array.from(failedOrBlocked).sort();
-    return {
-      status: 'needs_owner',
-      sessionId,
-      tasks,
-      notes: [`Các thẻ chưa hoàn thành (failed/blocked): ${list.join(', ')}`],
-    };
-  }
-
-  return {
-    status: 'done',
-    sessionId,
-    tasks,
-    notes: [],
-  };
+  const coreAuthor = { name: 'core', email: 'core@btm.local' };
+  commitAll(repo, `G${goal.n}: summary`, coreAuthor);
 }
 
 function closeNoteIfEligible(
   d: SessionDeps,
   sessionId: number,
-  cards: TaskCard[],
-  tasks: Record<string, TaskState>,
+  tickets: Ticket[],
+  tasks: Record<string, TicketState>,
   outcome: SessionOutcome
 ): void {
   const sessionNotes = d.store.getNotesBySession(sessionId);
@@ -525,12 +148,12 @@ function closeNoteIfEligible(
 
   for (const note of sessionNotes) {
     if (note.status === 'done') continue;
-    const cardsForNote = cards.filter(
-      (c) => c.note === `N-${note.id}` || c.note === String(note.id)
+    const ticketsForNote = tickets.filter(
+      (t) => t.note === `N-${note.id}` || t.note === String(note.id)
     );
     const allPassed =
-      cardsForNote.length > 0 &&
-      cardsForNote.every((c) => tasks[c.id] === 'passed');
+      ticketsForNote.length > 0 &&
+      ticketsForNote.every((t) => tasks[t.id] === 'passed');
 
     if (outcome.status === 'done' && allPassed) {
       let notePath: string;
@@ -572,23 +195,720 @@ function closeNoteIfEligible(
   }
 }
 
-export interface RunSessionOpts {
-  approved: boolean;
-  noteId?: number;
-  text?: string;
-  image?: { ext: string; bytes: Buffer };
-  note?: {
-    noteId: number;
-    text: string;
-    image?: { ext: string; bytes: Buffer };
+async function processGoal(
+  d: SessionDeps,
+  sessionId: number,
+  goal: { n: number; title: string; branch: string },
+  key: string,
+  tasks: Record<string, TicketState>,
+  o: RunSessionOpts,
+  attachedNote: ReturnType<typeof d.store.getNote>
+): Promise<SessionOutcome> {
+  const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
+  const gateFn = d.gate ?? (d.monitor ? d.monitor.gate.bind(d.monitor) : undefined);
+
+  const pmAgent = effectiveSeats(d.cfg, d.store).pm;
+  const pmAuthor = authorForAgent(pmAgent);
+
+  const baseBranch = d.cfg.git.protected_branch || 'main';
+
+  // 1. Checkout goal/G<n>-<slug>
+  const dirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
+  if (dirty) {
+    commitAll(d.repo, `G${goal.n}: checkpoint`, pmAuthor);
+  }
+
+  let branchExists = false;
+  try {
+    git(d.repo, 'rev-parse', '--verify', goal.branch);
+    branchExists = true;
+  } catch {
+    branchExists = false;
+  }
+
+  if (branchExists) {
+    git(d.repo, 'checkout', goal.branch);
+  } else {
+    git(d.repo, 'checkout', '-b', goal.branch, baseBranch);
+  }
+
+  d.store.setGoalState(d.repo, goal.n, 'in_progress', 'core', 'session started');
+
+  // Write attached note if present
+  const noteId = o.note?.noteId ?? o.noteId;
+  const noteText = o.note?.text ?? o.text;
+  const noteImage = o.note?.image ?? o.image;
+
+  if (noteId && (noteText !== undefined || noteImage !== undefined)) {
+    let createdMdPath: string | null = null;
+    let createdImgPath: string | null = null;
+    try {
+      const ownerAuthor = { name: 'owner', email: 'owner@btm.local' };
+      let imageName: string | null = null;
+      if (noteImage?.ext && noteImage?.bytes) {
+        imageName = `N-${noteId}.${noteImage.ext}`;
+        if (!attachedNote?.image) {
+          d.store.setNoteImage(noteId, imageName);
+        }
+        const imgPath = inboxPath(d.repo, imageName);
+        try {
+          lstatSync(imgPath);
+          throw new Error(`Target image file already exists: ${imageName}`);
+        } catch (err: any) {
+          if (err?.code !== 'ENOENT') throw err;
+        }
+        writeFileSync(imgPath, noteImage.bytes, { flag: 'wx' });
+        createdImgPath = imgPath;
+      } else if (attachedNote?.image) {
+        imageName = attachedNote.image;
+      }
+
+      const rawText = noteText ?? attachedNote?.text ?? '';
+      const now = new Date().toISOString();
+      const noteMdLines = [
+        '---',
+        `id: N-${noteId}`,
+        'from: owner',
+        'status: open',
+        `at: ${now}`,
+      ];
+      if (imageName) {
+        noteMdLines.push(`image: ${imageName}`);
+      }
+      noteMdLines.push('---', rawText, '');
+
+      const mdPath = inboxPath(d.repo, `N-${noteId}.md`);
+      try {
+        lstatSync(mdPath);
+        throw new Error(`Target note file already exists: N-${noteId}.md`);
+      } catch (err: any) {
+        if (err?.code !== 'ENOENT') throw err;
+      }
+      writeFileSync(mdPath, noteMdLines.join('\n'), { flag: 'wx', encoding: 'utf8' });
+      createdMdPath = mdPath;
+
+      commitAll(d.repo, `inbox N-${noteId}`, ownerAuthor);
+    } catch (err: any) {
+      if (createdMdPath) {
+        try { rmSync(createdMdPath, { force: true }); } catch {}
+      }
+      if (createdImgPath) {
+        try { rmSync(createdImgPath, { force: true }); } catch {}
+      }
+      try {
+        d.store.deleteNote(noteId);
+      } catch {}
+      return {
+        status: 'needs_owner',
+        sessionId,
+        tasks,
+        notes: [err?.message || String(err)],
+      };
+    }
+  }
+
+  // 2. Check if tickets exist for this goal
+  let existingGoalTickets = loadTickets(d.repo, key, `G${goal.n}`);
+
+  if (existingGoalTickets.length === 0) {
+    // PM Turn
+    if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+      try {
+        await refreshFn([pmAgent]);
+      } catch {}
+    }
+    if (gateFn) {
+      const gateCheck = gateFn(pmAgent);
+      if (!gateCheck.ok) {
+        d.store.recordHandoffFailure(sessionId, 'pm', gateCheck.reason);
+        return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+      }
+    }
+
+    if (isOutOfTurns(d.store, sessionId, d.cfg, 'pm')) {
+      return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns for PM'] };
+    }
+
+    const pmTurnId = d.store.startTurn(sessionId, 'pm', pmAgent, null);
+    const pmLogFile = join(d.logDir, `turn-${pmTurnId}.log`);
+    d.store.setTurnLog(pmTurnId, pmLogFile);
+
+    let promptNotes: Array<{ notePath: string; imagePath?: string; id?: string }> | undefined;
+    if (attachedNote) {
+      promptNotes = [
+        {
+          notePath: `team/inbox/N-${attachedNote.id}.md`,
+          imagePath: attachedNote.image ? `team/inbox/${attachedNote.image}` : undefined,
+          id: `N-${attachedNote.id}`,
+        },
+      ];
+    }
+    const seq = d.store.nextTicketSeq(d.repo);
+    const nextId = `${key}-${String(seq).padStart(4, '0')}`;
+    const hasOpenspec = existsSync(join(d.repo, 'openspec'));
+    const pmPromptText = pmTicketPrompt({ n: goal.n, title: goal.title }, key, nextId, {
+      notes: promptNotes,
+      hasOpenspec,
+    });
+    const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
+
+    let pmOutput;
+    try {
+      pmOutput = await d.runner('pm', pmAgent, pmPromptText, d.repo, pmLogFile, { signal: d.signal });
+    } catch (err) {
+      const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+      const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+      d.store.endTurn(pmTurnId, 'error', reason);
+      try {
+        commitAll(d.repo, `G${goal.n}: WIP ${reason}`, pmAuthor);
+      } catch {}
+      if (isAbort) {
+        return { status: 'stopped', sessionId, tasks, notes: [reason] };
+      }
+      return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+    }
+
+    if (pmOutput.timedOut || pmOutput.exitCode !== 0) {
+      const reason = pmOutput.timedOut ? 'timeout' : `exit_${pmOutput.exitCode}`;
+      d.store.endTurn(pmTurnId, pmOutput.timedOut ? 'timeout' : 'error', reason);
+      try {
+        commitAll(d.repo, `G${goal.n}: WIP ${reason}`, pmAuthor);
+      } catch {}
+      return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+    }
+    d.store.endTurn(pmTurnId, 'ok');
+
+    const postPmStatus = getWorkingTreeChanges(d.repo);
+    const pmChanged = postPmStatus.filter((p) => !prePmStatus.has(p));
+    const pmOutOfScope = pmChanged.filter((p) => !p.startsWith('team/tickets/'));
+    if (pmOutOfScope.length > 0) {
+      for (const f of pmOutOfScope) {
+        try {
+          git(d.repo, 'checkout', 'HEAD', '--', f);
+        } catch {}
+        try {
+          git(d.repo, 'clean', '-f', '--', f);
+        } catch {}
+      }
+      try {
+        commitAll(d.repo, `G${goal.n}: PM tickets`, pmAuthor);
+      } catch {}
+      return { status: 'needs_owner', sessionId, tasks, notes: ['pm_out_of_scope'] };
+    }
+
+    let tickets: Ticket[] = [];
+    try {
+      tickets = loadTickets(d.repo, key, `G${goal.n}`);
+      if (tickets.length === 0) {
+        throw new TicketError(`No tickets created by PM for goal G${goal.n}`);
+      }
+      for (const t of tickets) {
+        const numPart = parseInt(t.id.split('-')[1], 10);
+        if (isNaN(numPart) || numPart < seq) {
+          throw new TicketError(`Ticket ID "${t.id}" is smaller than expected nextTicketSeq (${seq})`);
+        }
+      }
+    } catch (err: any) {
+      return {
+        status: 'needs_owner',
+        sessionId,
+        tasks,
+        notes: [`PM ticket error: ${err?.message || String(err)}`],
+      };
+    }
+
+    let maxUsed = seq;
+    for (const t of tickets) {
+      d.store.upsertTicket(d.repo, t);
+      d.store.setTicketState(d.repo, t.id, 'pending', pmAgent, 'PM created ticket', 0);
+      tasks[t.id] = 'pending';
+      const num = parseInt(t.id.split('-')[1], 10);
+      if (num > maxUsed) maxUsed = num;
+    }
+    d.store.bumpTicketSeq(d.repo, maxUsed);
+
+    const firstId = tickets[0].id;
+    const lastId = tickets[tickets.length - 1].id;
+    commitAll(d.repo, `${firstId}..${lastId}: PM tickets for G${goal.n}`, pmAuthor);
+
+    existingGoalTickets = tickets;
+  }
+
+  // 3. Approval check
+  const approved = Boolean(o.approved);
+  if (!approved && d.cfg.session.require_task_approval) {
+    return {
+      status: 'awaiting_approval',
+      sessionId,
+      tasks,
+      notes: ['Awaiting task approval'],
+    };
+  }
+
+  // 4. Work on tickets
+  const goalTickets = loadTickets(d.repo, key, `G${goal.n}`);
+
+  for (const ticket of goalTickets) {
+    if (d.signal?.aborted) {
+      return {
+        status: 'stopped',
+        sessionId,
+        tasks,
+        notes: ['Session aborted'],
+      };
+    }
+    const stored = d.store.getTicketState(d.repo, ticket.id);
+    const initialTaskState = stored?.state ?? tasks[ticket.id] ?? 'pending';
+
+    if (initialTaskState === 'passed' || initialTaskState === 'cancelled') {
+      tasks[ticket.id] = initialTaskState;
+      continue;
+    }
+
+    // Check Definition of Ready
+    const readyErrors = checkReady(ticket, (id) => d.store.getTicketState(d.repo, id)?.state ?? null);
+    if (readyErrors.length > 0) {
+      const reason = `not_ready: ${readyErrors.join(', ')}`;
+      d.store.setTicketState(d.repo, ticket.id, 'blocked', 'core', reason);
+      tasks[ticket.id] = 'blocked';
+      return {
+        status: 'needs_owner',
+        sessionId,
+        tasks,
+        notes: [`Ticket ${ticket.id} is blocked: ${reason}`],
+      };
+    }
+
+    let base = stored?.base_sha || null;
+    let fixNotes: string[] = [];
+    let fixRounds = stored?.fix_rounds ?? 0;
+
+    if (initialTaskState === 'returned') {
+      const reportsDir = join(d.repo, 'team', 'reports');
+      const qcReportPath = join(reportsDir, `${ticket.id}-qc.json`);
+      if (existsSync(qcReportPath)) {
+        try {
+          const qcData = JSON.parse(readFileSync(qcReportPath, 'utf8'));
+          if (Array.isArray(qcData.bugs) || Array.isArray(qcData.fix)) {
+            fixNotes = [...(qcData.bugs || []), ...(qcData.fix || [])];
+          }
+        } catch {}
+      }
+      if (fixNotes.length === 0) {
+        const failures = d.store.listHandoffFailures(sessionId).filter((f) => f.task_id === ticket.id);
+        if (failures.length > 0) {
+          fixNotes = failures.map((f) => f.reason);
+        }
+      }
+    }
+
+    let skipDevThisRound = (initialTaskState === 'awaiting_qc');
+    const coders = new Set<string>();
+    for (const t of d.store.listTurns(sessionId)) {
+      if (t.seat === 'dev' && t.task_id === ticket.id && t.agent) {
+        coders.add(t.agent);
+      }
+    }
+
+    let ticketImages: string[] | undefined;
+    if (ticket.note) {
+      const rawId = ticket.note.replace(/^N-/, '');
+      const noteIdNum = Number(rawId);
+      if (!isNaN(noteIdNum)) {
+        const note = d.store.getNote(noteIdNum);
+        if (note?.image) {
+          try {
+            const imgPath = inboxPath(d.repo, note.image);
+            if (existsSync(imgPath)) {
+              ticketImages = [imgPath];
+            }
+          } catch {}
+        }
+      }
+    }
+
+    while (true) {
+      if (d.signal?.aborted) {
+        return {
+          status: 'stopped',
+          sessionId,
+          tasks,
+          notes: ['Session aborted'],
+        };
+      }
+      const seats = effectiveSeats(d.cfg, d.store);
+      const devAgent = Object.hasOwn(seats, 'dev') ? seats.dev : d.cfg.seats.dev;
+      const devAuthor = authorForAgent(devAgent);
+
+      const pastDevTurns = d.store
+        .listTurns(sessionId)
+        .filter((t) => t.seat === 'dev' && t.task_id === ticket.id);
+      const prevCoder = pastDevTurns.length > 0 ? pastDevTurns[pastDevTurns.length - 1].agent : null;
+
+      const currentTicketState = d.store.getTicketState(d.repo, ticket.id)?.state ?? tasks[ticket.id];
+      const isHandoff =
+        (currentTicketState === 'returned' || currentTicketState === 'in_dev') &&
+        prevCoder !== null &&
+        prevCoder !== devAgent;
+
+      if (!skipDevThisRound) {
+        if (!base) {
+          base = headSha(d.repo);
+        }
+        coders.add(devAgent);
+
+        if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+          try {
+            await refreshFn([devAgent]);
+          } catch {}
+        }
+        if (gateFn) {
+          const gateCheck = gateFn(devAgent);
+          if (!gateCheck.ok) {
+            d.store.recordHandoffFailure(sessionId, ticket.id, gateCheck.reason);
+            return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+          }
+        }
+
+        if (isOutOfTurns(d.store, sessionId, d.cfg, 'dev')) {
+          return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
+        }
+
+        d.store.setTicketState(d.repo, ticket.id, 'in_dev', devAgent, 'dev started', fixRounds, base);
+        tasks[ticket.id] = 'in_dev';
+
+        const devTurnId = d.store.startTurn(sessionId, 'dev', devAgent, ticket.id);
+        const devLogFile = join(d.logDir, `turn-${devTurnId}.log`);
+        d.store.setTurnLog(devTurnId, devLogFile);
+
+        const devPromptText = devTicketPrompt(
+          ticket,
+          devAgent,
+          fixNotes,
+          d.cfg.runner.agy_allow_commands,
+          isHandoff
+        );
+
+        let devOutput;
+        try {
+          devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
+            signal: d.signal,
+            images: ticketImages,
+          });
+        } catch (err) {
+          const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+          const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+          d.store.endTurn(devTurnId, 'error', reason);
+          if (isAbort) {
+            return { status: 'stopped', sessionId, tasks, notes: [reason] };
+          }
+          try {
+            commitAll(d.repo, `${ticket.id}: WIP ${reason}`, devAuthor);
+          } catch {}
+          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+        }
+
+        if (devOutput.timedOut) {
+          const reason = 'timeout';
+          d.store.endTurn(devTurnId, 'timeout', reason);
+          try {
+            commitAll(d.repo, `${ticket.id}: WIP timeout`, devAuthor);
+          } catch {}
+          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+        }
+
+        const devText = (devOutput.lastMessage || '') + ' ' + (devOutput.output || '');
+        const hasAutoDenied =
+          (devOutput.output || '').includes('auto-denied') ||
+          (devOutput.lastMessage || '').includes('auto-denied');
+
+        if (!hasAutoDenied && devOutput.exitCode !== 0) {
+          const reason = `exit_${devOutput.exitCode}`;
+          d.store.endTurn(devTurnId, 'error', reason);
+          try {
+            commitAll(d.repo, `${ticket.id}: WIP ${reason}`, devAuthor);
+          } catch {}
+          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+        }
+
+        if (devText.includes('BLOCKED')) {
+          d.store.endTurn(devTurnId, 'ok');
+          try {
+            commitAll(d.repo, `${ticket.id}: blocked`, devAuthor);
+          } catch {}
+          tasks[ticket.id] = 'blocked';
+          d.store.setTicketState(d.repo, ticket.id, 'blocked', devAgent, 'Dev reported BLOCKED', fixRounds, base);
+          return { status: 'needs_owner', sessionId, tasks, notes: ['Dev reported BLOCKED'] };
+        }
+
+        d.store.endTurn(devTurnId, 'ok');
+        try {
+          commitAll(d.repo, `${ticket.id}: dev implementation`, devAuthor);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
+        }
+
+        const timeoutMs = (d.cfg.turn.timeout_minutes.dev ?? 0) * 60 * 1000;
+        const gateResult = runGate(d.repo, ticket, base, d.cfg.gate.commands, {
+          timeoutMs,
+          require_report_schema: d.cfg.gate.require_report_schema,
+        });
+
+        if (!gateResult.ok || hasAutoDenied) {
+          const failureReasons: string[] = [];
+          if (hasAutoDenied) failureReasons.push('command_denied');
+          if (!gateResult.ok) failureReasons.push(...gateResult.reasons);
+
+          d.store.endTurn(devTurnId, 'rejected', failureReasons.join('; '));
+          for (const reason of failureReasons) {
+            d.store.recordHandoffFailure(sessionId, ticket.id, reason);
+          }
+
+          const deniedNote = 'command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ';
+          fixNotes = [
+            ...(hasAutoDenied ? [deniedNote] : []),
+            ...(!gateResult.ok ? gateResult.reasons : []),
+          ];
+          fixRounds++;
+          if (fixRounds > d.cfg.turn.max_fix_rounds) {
+            tasks[ticket.id] = 'failed';
+            d.store.setTicketState(d.repo, ticket.id, 'failed', devAgent, 'max fix rounds exceeded', fixRounds, base);
+            for (const rem of goalTickets) {
+              if (!tasks[rem.id] || tasks[rem.id] === 'pending') {
+                const remReady = checkReady(rem, (id) => d.store.getTicketState(d.repo, id)?.state ?? null);
+                if (remReady.length > 0) {
+                  const reason = `not_ready: ${remReady.join(', ')}`;
+                  d.store.setTicketState(d.repo, rem.id, 'blocked', 'core', reason);
+                  tasks[rem.id] = 'blocked';
+                }
+              }
+            }
+            return {
+              status: 'needs_owner',
+              sessionId,
+              tasks,
+              notes: [
+                `Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${failureReasons.join(', ')}`,
+              ],
+            };
+          }
+          d.store.setTicketState(d.repo, ticket.id, 'returned', devAgent, failureReasons.join('; '), fixRounds, base);
+          tasks[ticket.id] = 'returned';
+          continue;
+        }
+      } else {
+        skipDevThisRound = false;
+        if (!base) {
+          base = stored?.base_sha || headSha(d.repo);
+        }
+      }
+
+      d.store.setTicketState(d.repo, ticket.id, 'awaiting_qc', devAgent, 'ready for qc', fixRounds, base);
+      tasks[ticket.id] = 'awaiting_qc';
+
+      // Rule 8: coder_cannot_qc_same_task
+      const qcAgent = Object.hasOwn(seats, 'qc') ? seats.qc : d.cfg.seats.qc;
+      if (d.cfg.rules.coder_cannot_qc_same_task && coders.has(qcAgent)) {
+        d.store.recordHandoffFailure(sessionId, ticket.id, 'coder_cannot_qc_same_task');
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: [
+            `Seat 'qc' is occupied by '${qcAgent}', who also coded task '${ticket.id}'`,
+            'coder_cannot_qc_same_task',
+          ],
+        };
+      }
+
+      if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+        try {
+          await refreshFn([qcAgent]);
+        } catch {}
+      }
+      if (gateFn) {
+        const gateCheck = gateFn(qcAgent);
+        if (!gateCheck.ok) {
+          d.store.recordHandoffFailure(sessionId, ticket.id, gateCheck.reason);
+          return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+        }
+      }
+
+      if (isOutOfTurns(d.store, sessionId, d.cfg, 'qc')) {
+        return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
+      }
+
+      const qcAuthor = authorForAgent(qcAgent);
+      const qcTurnId = d.store.startTurn(sessionId, 'qc', qcAgent, ticket.id);
+      const qcLogFile = join(d.logDir, `turn-${qcTurnId}.log`);
+      d.store.setTurnLog(qcTurnId, qcLogFile);
+      const qcPromptText = qcTicketPrompt(ticket, base, qcAgent);
+      const preQcHead = headSha(d.repo);
+
+      let qcOutput;
+      try {
+        qcOutput = await d.runner('qc', qcAgent, qcPromptText, d.repo, qcLogFile, {
+          signal: d.signal,
+          images: ticketImages,
+        });
+      } catch (err) {
+        const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+        const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+        d.store.endTurn(qcTurnId, 'error', reason);
+        if (isAbort) {
+          return { status: 'stopped', sessionId, tasks, notes: [reason] };
+        }
+        try {
+          commitAll(d.repo, `${ticket.id}: WIP ${reason}`, qcAuthor);
+        } catch {}
+        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+      }
+
+      if (qcOutput.timedOut || qcOutput.exitCode !== 0) {
+        const reason = qcOutput.timedOut ? 'timeout' : `exit_${qcOutput.exitCode}`;
+        d.store.endTurn(qcTurnId, qcOutput.timedOut ? 'timeout' : 'error', reason);
+        try {
+          commitAll(d.repo, `${ticket.id}: WIP ${reason}`, qcAuthor);
+        } catch {}
+        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+      }
+
+      d.store.endTurn(qcTurnId, 'ok');
+
+      let qcResult = parseTicketQcResult(qcOutput.lastMessage, {
+        ticket: ticket.id,
+        goal: ticket.goal,
+        number: ticket.number,
+      });
+
+      const postQcHead = headSha(d.repo);
+      const headChanged = postQcHead !== preQcHead;
+      const workingTreeDirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
+
+      if (headChanged || workingTreeDirty) {
+        qcResult = {
+          verdict: 'fail',
+          bugs: ['qc_modified_repo'],
+          fix: ['qc_modified_repo'],
+          confirm: [],
+        };
+        if (headChanged) {
+          git(d.repo, 'reset', '--hard', preQcHead);
+        }
+        if (workingTreeDirty) {
+          git(d.repo, 'reset', 'HEAD', '--', '.');
+          git(d.repo, 'checkout', '--', '.');
+          git(d.repo, 'clean', '-fd');
+        }
+      }
+
+      const reportsDir = join(d.repo, 'team', 'reports');
+      mkdirSync(reportsDir, { recursive: true });
+      const qcReportPath = join(reportsDir, `${ticket.id}-qc.json`);
+      const qcDataToSave = {
+        ticket: ticket.id,
+        goal: ticket.goal,
+        number: ticket.number,
+        ...qcResult,
+      };
+      writeFileSync(qcReportPath, JSON.stringify(qcDataToSave, null, 2) + '\n', 'utf8');
+      try {
+        commitAll(d.repo, `${ticket.id}: qc ${qcResult.verdict}`, qcAuthor);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
+      }
+
+      if (qcResult.verdict === 'pass') {
+        tasks[ticket.id] = 'passed';
+        d.store.setTicketState(d.repo, ticket.id, 'passed', qcAgent, 'qc passed', fixRounds, base);
+        break;
+      }
+
+      fixRounds++;
+      fixNotes = [...qcResult.bugs, ...qcResult.fix];
+      if (fixRounds > d.cfg.turn.max_fix_rounds) {
+        tasks[ticket.id] = 'failed';
+        d.store.setTicketState(d.repo, ticket.id, 'failed', qcAgent, 'max fix rounds exceeded', fixRounds, base);
+        for (const rem of goalTickets) {
+          if (!tasks[rem.id] || tasks[rem.id] === 'pending') {
+            const remReady = checkReady(rem, (id) => d.store.getTicketState(d.repo, id)?.state ?? null);
+            if (remReady.length > 0) {
+              const reason = `not_ready: ${remReady.join(', ')}`;
+              d.store.setTicketState(d.repo, rem.id, 'blocked', 'core', reason);
+              tasks[rem.id] = 'blocked';
+            }
+          }
+        }
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: [`Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${fixNotes.join(', ')}`],
+        };
+      }
+      d.store.setTicketState(d.repo, ticket.id, 'returned', qcAgent, fixNotes.join('; '), fixRounds, base);
+      tasks[ticket.id] = 'returned';
+    }
+  }
+
+  // 5. Goal completion
+  const goalTicketsAfter = loadTickets(d.repo, key, `G${goal.n}`);
+  const allPassed =
+    goalTicketsAfter.length > 0 &&
+    goalTicketsAfter.every((t) => {
+      const s = d.store.getTicketState(d.repo, t.id);
+      return s?.state === 'passed';
+    });
+
+  if (allPassed) {
+    d.store.setGoalState(d.repo, goal.n, 'qc_done', 'core', 'all tickets passed');
+    writeGoalSummaryAndCommit(d.repo, goal, goalTicketsAfter, d.store);
+  }
+
+  const failedOrBlocked = new Set<string>();
+  for (const [id, state] of Object.entries(tasks)) {
+    if (state === 'failed' || state === 'blocked') {
+      failedOrBlocked.add(id);
+    }
+  }
+  for (const t of goalTicketsAfter) {
+    const s = d.store.getTicketState(d.repo, t.id);
+    if (s?.state === 'failed' || s?.state === 'blocked') {
+      failedOrBlocked.add(t.id);
+      tasks[t.id] = s.state;
+    }
+  }
+
+  if (failedOrBlocked.size > 0) {
+    const list = Array.from(failedOrBlocked).sort();
+    return {
+      status: 'needs_owner',
+      sessionId,
+      tasks,
+      notes: [`Các thẻ chưa hoàn thành (failed/blocked): ${list.join(', ')}`],
+    };
+  }
+
+  return {
+    status: 'done',
+    sessionId,
+    tasks,
+    notes: [],
   };
 }
 
 export async function runSession(
   d: SessionDeps,
-  goals: string[],
-  o: RunSessionOpts
+  goals: Array<string | { n: number }>,
+  optsOrApproved?: boolean | RunSessionOpts
 ): Promise<SessionOutcome> {
+  const o: RunSessionOpts =
+    typeof optsOrApproved === 'boolean'
+      ? { approved: optsOrApproved }
+      : (optsOrApproved ?? { approved: false });
+
   // 1. Validate environment, repo path, goals
   const forbidden = checkForbiddenEnv(d.env, d.cfg.login.forbidden_env);
   if (forbidden.length > 0) {
@@ -618,15 +938,46 @@ export async function runSession(
     };
   }
 
-  // 2. Create session and checkout session/<id> branch
-  const sessionId = d.store.createSession(goals, d.repo);
+  let key: string;
+  try {
+    key = readProjectKey(d.repo);
+  } catch (err: any) {
+    return {
+      status: 'refused',
+      sessionId: null,
+      tasks: {},
+      notes: [`Cannot read project key: ${err?.message || String(err)}`],
+    };
+  }
+
+  // 2. Resolve goals and create session
+  const resolvedGoals: Array<{ n: number; title: string; branch: string }> = [];
+  for (const item of goals) {
+    if (typeof item === 'string') {
+      const created = d.store.createGoal(d.repo, item);
+      resolvedGoals.push({ n: created.n, title: item, branch: created.branch });
+    } else {
+      const existing = d.store.getGoal(d.repo, item.n);
+      if (!existing) {
+        return {
+          status: 'needs_owner',
+          sessionId: null,
+          tasks: {},
+          notes: [`Goal G${item.n} not found in project`],
+        };
+      }
+      resolvedGoals.push({ n: existing.n, title: existing.title, branch: existing.branch });
+    }
+  }
+
+  const goalNumbers = resolvedGoals.map((g) => g.n);
+  const sessionId = d.store.createSession(goalNumbers as unknown as string[], d.repo);
   let sessionStatus: SessionOutcome['status'] = 'needs_owner';
-  const tasks: Record<string, TaskState> = {};
+  const allTasks: Record<string, TicketState> = {};
+  const allNotes: string[] = [];
+  const processedTickets: Ticket[] = [];
 
   const noteId = o.note?.noteId ?? o.noteId;
-  const noteText = o.note?.text ?? o.text;
-  const noteImage = o.note?.image ?? o.image;
-
   let attachedNote: ReturnType<typeof d.store.getNote> = null;
   if (noteId) {
     const note = d.store.getNote(noteId);
@@ -637,99 +988,7 @@ export async function runSession(
   }
 
   try {
-    const pmAgent = effectiveSeats(d.cfg, d.store).pm;
-    const pmAuthor = authorForAgent(pmAgent);
-
-    const dirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
-    if (dirty) {
-      commitAll(d.repo, `checkpoint before session ${sessionId}`, pmAuthor);
-    }
-
-    const baseBranch = d.cfg.git.protected_branch || 'main';
-    git(d.repo, 'checkout', '-b', `session/${sessionId}`, baseBranch);
-    let sessionBaseSha = headSha(d.repo);
-
-    // Write note and image to branch if provided, before PM turn
-    if (noteId && (noteText !== undefined || noteImage !== undefined)) {
-      let createdMdPath: string | null = null;
-      let createdImgPath: string | null = null;
-      try {
-        const ownerAuthor = { name: 'owner', email: 'owner@btm.local' };
-        let imageName: string | null = null;
-        if (noteImage?.ext && noteImage?.bytes) {
-          imageName = `N-${noteId}.${noteImage.ext}`;
-          if (!attachedNote?.image) {
-            d.store.setNoteImage(noteId, imageName);
-          }
-          const imgPath = inboxPath(d.repo, imageName);
-          try {
-            lstatSync(imgPath);
-            throw new Error(`Target image file already exists: ${imageName}`);
-          } catch (err: any) {
-            if (err?.code !== 'ENOENT') throw err;
-          }
-          writeFileSync(imgPath, noteImage.bytes, { flag: 'wx' });
-          createdImgPath = imgPath;
-        } else if (attachedNote?.image) {
-          imageName = attachedNote.image;
-        }
-
-        const rawText = noteText ?? attachedNote?.text ?? '';
-        const now = new Date().toISOString();
-        const noteMdLines = [
-          '---',
-          `id: N-${noteId}`,
-          'from: owner',
-          'status: open',
-          `at: ${now}`,
-        ];
-        if (imageName) {
-          noteMdLines.push(`image: ${imageName}`);
-        }
-        noteMdLines.push('---', rawText, '');
-
-        const mdPath = inboxPath(d.repo, `N-${noteId}.md`);
-        try {
-          lstatSync(mdPath);
-          throw new Error(`Target note file already exists: N-${noteId}.md`);
-        } catch (err: any) {
-          if (err?.code !== 'ENOENT') throw err;
-        }
-        writeFileSync(mdPath, noteMdLines.join('\n'), { flag: 'wx', encoding: 'utf8' });
-        createdMdPath = mdPath;
-
-        try {
-          commitAll(d.repo, `inbox N-${noteId}`, ownerAuthor);
-        } catch (err: any) {
-          throw new Error(`Commit note failed: ${err?.message || String(err)}`);
-        }
-
-        sessionBaseSha = headSha(d.repo);
-        attachedNote = d.store.getNote(noteId);
-      } catch (err: any) {
-        if (createdMdPath) {
-          try { rmSync(createdMdPath, { force: true }); } catch {}
-        }
-        if (createdImgPath) {
-          try { rmSync(createdImgPath, { force: true }); } catch {}
-        }
-        try {
-          d.store.deleteNote(noteId);
-        } catch {}
-        sessionStatus = 'needs_owner';
-        return {
-          status: 'needs_owner',
-          sessionId,
-          tasks,
-          notes: [err?.message || String(err)],
-        };
-      }
-    }
-
-    // 3. PM Turn
     const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
-    const gateFn = d.gate ?? (d.monitor ? d.monitor.gate.bind(d.monitor) : undefined);
-
     if (refreshFn && d.cfg.energy.read_on.includes('session_open')) {
       const sittingAgents = Array.from(new Set(Object.values(effectiveSeats(d.cfg, d.store))));
       try {
@@ -737,168 +996,38 @@ export async function runSession(
       } catch {}
     }
 
-    if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+    for (const goal of resolvedGoals) {
+      const outcome = await processGoal(d, sessionId, goal, key, allTasks, o, attachedNote);
+      if (outcome.notes.length > 0) {
+        allNotes.push(...outcome.notes);
+      }
       try {
-        await refreshFn([pmAgent]);
+        const gTickets = loadTickets(d.repo, key, `G${goal.n}`);
+        processedTickets.push(...gTickets);
       } catch {}
-    }
-    if (gateFn) {
-      const gateCheck = gateFn(pmAgent);
-      if (!gateCheck.ok) {
-        d.store.recordHandoffFailure(sessionId, 'pm', gateCheck.reason);
-        sessionStatus = 'needs_owner';
-        return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
-      }
-    }
 
-    if (isOutOfTurns(d.store, sessionId, d.cfg, 'pm')) {
-      sessionStatus = 'out_of_turns';
-      return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns for PM'] };
-    }
-
-    const pmTurnId = d.store.startTurn(sessionId, 'pm', pmAgent, null);
-    const pmLogFile = join(d.logDir, `turn-${pmTurnId}.log`);
-    d.store.setTurnLog(pmTurnId, pmLogFile);
-
-    let promptNotes: Array<{ notePath: string; imagePath?: string; id?: string }> | undefined;
-    if (attachedNote) {
-      promptNotes = [
-        {
-          notePath: `team/inbox/N-${attachedNote.id}.md`,
-          imagePath: attachedNote.image ? `team/inbox/${attachedNote.image}` : undefined,
-          id: `N-${attachedNote.id}`,
-        },
-      ];
-    }
-    const hasOpenspec = existsSync(join(d.repo, 'openspec'));
-    const pmPromptText = pmPrompt(goals, promptNotes, hasOpenspec);
-    const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
-    let pmOutput;
-    try {
-      pmOutput = await d.runner('pm', pmAgent, pmPromptText, d.repo, pmLogFile, { signal: d.signal });
-    } catch (err) {
-      const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
-      const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
-      d.store.endTurn(pmTurnId, 'error', reason);
-      try {
-        commitAll(d.repo, `WIP pm: ${reason}`, pmAuthor);
-      } catch {
-        // commitAll error: keep needs_owner, do not throw
-      }
-      if (isAbort) {
-        sessionStatus = 'stopped';
-        return { status: 'stopped', sessionId, tasks, notes: [reason] };
-      }
-      sessionStatus = 'needs_owner';
-      return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-    }
-
-    if (pmOutput.timedOut || pmOutput.exitCode !== 0) {
-      const result: TurnResult = pmOutput.timedOut ? 'timeout' : 'error';
-      const reason = pmOutput.timedOut ? 'timeout' : `exit_${pmOutput.exitCode}`;
-      d.store.endTurn(pmTurnId, result, reason);
-      try {
-        commitAll(d.repo, `WIP pm: ${reason}`, pmAuthor);
-      } catch {
-        // commitAll error: keep needs_owner, do not throw
-      }
-      sessionStatus = 'needs_owner';
-      return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-    }
-    d.store.endTurn(pmTurnId, 'ok');
-
-    const postPmStatus = getWorkingTreeChanges(d.repo);
-    const pmChanged = postPmStatus.filter((p) => !prePmStatus.has(p));
-    const pmOutOfScope = pmChanged.filter((p) => !p.startsWith('team/tasks/'));
-    if (pmOutOfScope.length > 0) {
-      git(d.repo, 'reset', 'HEAD', '--', '.');
-      try {
-        git(d.repo, 'add', 'team/tasks');
-      } catch {}
-      if (git(d.repo, 'diff', '--cached', '--name-only').trim()) {
-        const authorString = `${pmAuthor.name} <${pmAuthor.email}>`;
-        git(
-          d.repo,
-          '-c',
-          `user.name=${pmAuthor.name}`,
-          '-c',
-          `user.email=${pmAuthor.email}`,
-          'commit',
-          `--author=${authorString}`,
-          '-m',
-          'PM: define task cards'
-        );
-      }
-      sessionStatus = 'needs_owner';
-      return { status: 'needs_owner', sessionId, tasks, notes: ['pm_out_of_scope'] };
-    }
-
-    try {
-      commitAll(d.repo, 'PM: define task cards', pmAuthor);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      sessionStatus = 'needs_owner';
-      return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
-    }
-
-    let cards: TaskCard[] = [];
-    try {
-      const diffOut = git(d.repo, 'diff', '--name-only', '--diff-filter=AMCR', `${sessionBaseSha}..HEAD`, '--', 'team/tasks');
-      const changedFiles = diffOut
-        .split(/\r?\n/)
-        .map((s) => s.trim().replace(/\\/g, '/'))
-        .filter((s) => s.length > 0 && /^team\/tasks\/T-[^/]+\.md$/.test(s));
-
-      if (changedFiles.length === 0) {
-        throw new CardError('No task cards created by PM');
-      }
-
-      const seenIds = new Set<string>();
-      for (const relPath of changedFiles) {
-        const card = loadCardFromPath(d.repo, relPath);
-        if (seenIds.has(card.id)) {
-          throw new CardError(`Duplicate task card id "${card.id}"`);
-        }
-        seenIds.add(card.id);
-        cards.push(card);
-      }
-      cards.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-    } catch (err) {
-      if (err instanceof CardError) {
-        sessionStatus = 'needs_owner';
+      if (outcome.status !== 'done') {
+        sessionStatus = outcome.status;
+        closeNoteIfEligible(d, sessionId, processedTickets, allTasks, outcome);
         return {
-          status: 'needs_owner',
+          status: outcome.status,
           sessionId,
-          tasks,
-          notes: [`CardError: ${err.message}`],
+          tasks: allTasks,
+          notes: allNotes,
         };
       }
-      throw err;
     }
 
-    d.store.setSessionTasks(sessionId, cards.map((c) => c.id));
-
-    for (const card of cards) {
-      tasks[card.id] = 'pending';
-      d.store.setTaskState(sessionId, card.id, 'pending', 0);
-    }
-
-    // 4. Require approval check
-    if (!o.approved) {
-      sessionStatus = 'awaiting_approval';
-      return {
-        status: 'awaiting_approval',
-        sessionId,
-        tasks,
-        notes: ['Awaiting task approval'],
-      };
-    }
-
-    // 5. Work on cards
-    const outcome = await workOnCards(d, sessionId, cards, tasks);
-    closeNoteIfEligible(d, sessionId, cards, tasks, outcome);
-    sessionStatus = outcome.status;
-    return outcome;
+    sessionStatus = 'done';
+    const finalOutcome: SessionOutcome = {
+      status: 'done',
+      sessionId,
+      tasks: allTasks,
+      notes: allNotes,
+    };
+    closeNoteIfEligible(d, sessionId, processedTickets, allTasks, finalOutcome);
+    sessionStatus = finalOutcome.status;
+    return finalOutcome;
   } finally {
     if (d.signal?.aborted) {
       sessionStatus = 'stopped';
@@ -911,7 +1040,6 @@ export async function resumeSession(
   d: SessionDeps,
   sessionId: number
 ): Promise<SessionOutcome> {
-  // 1. Validate environment and repo path
   const forbidden = checkForbiddenEnv(d.env, d.cfg.login.forbidden_env);
   if (forbidden.length > 0) {
     return {
@@ -949,7 +1077,9 @@ export async function resumeSession(
 
   d.store.setSessionStatus(sessionId, 'running');
   let sessionStatus: SessionOutcome['status'] = 'needs_owner';
-  const tasks: Record<string, TaskState> = {};
+  const allTasks: Record<string, TicketState> = {};
+  const allNotes: string[] = [];
+  const processedTickets: Ticket[] = [];
 
   try {
     const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
@@ -960,75 +1090,65 @@ export async function resumeSession(
       } catch {}
     }
 
-    const sessionTasks = d.store.getSessionTasks(sessionId);
-    if (sessionTasks.length === 0) {
+    const key = readProjectKey(d.repo);
+    const goalNums = session.goals.map((g) => parseInt(g, 10)).filter((n) => !isNaN(n));
+    if (goalNums.length === 0) {
       sessionStatus = 'needs_owner';
       return {
         status: 'needs_owner',
         sessionId,
         tasks: {},
-        notes: ['no_session_tasks'],
+        notes: ['no_session_goals'],
       };
     }
 
-    git(d.repo, 'checkout', `session/${sessionId}`);
-
-    let cards: TaskCard[] = [];
-    try {
-      const seenIds = new Set<string>();
-      for (const taskId of sessionTasks) {
-        const relPath = `team/tasks/${taskId}.md`;
-        const card = loadCardFromPath(d.repo, relPath);
-        if (seenIds.has(card.id)) {
-          throw new CardError(`Duplicate task card id "${card.id}"`);
-        }
-        seenIds.add(card.id);
-        cards.push(card);
-      }
-      if (cards.length === 0) {
-        throw new CardError('No task cards created by PM');
-      }
-    } catch (err) {
-      if (err instanceof CardError) {
+    const resolvedGoals: Array<{ n: number; title: string; branch: string }> = [];
+    for (const n of goalNums) {
+      const g = d.store.getGoal(d.repo, n);
+      if (!g) {
         sessionStatus = 'needs_owner';
         return {
           status: 'needs_owner',
           sessionId,
-          tasks,
-          notes: [`CardError: ${err.message}`],
+          tasks: {},
+          notes: [`Goal G${n} not found in project`],
         };
       }
-      throw err;
+      resolvedGoals.push(g);
     }
 
-    const existingStates = d.store.listTaskStates(sessionId);
-    const existingStateMap = new Map<string, { state: BoardState; fix_rounds: number }>();
-    for (const s of existingStates) {
-      existingStateMap.set(s.task_id, s);
-    }
+    for (const goal of resolvedGoals) {
+      const outcome = await processGoal(d, sessionId, goal, key, allTasks, { approved: true }, null);
+      if (outcome.notes.length > 0) {
+        allNotes.push(...outcome.notes);
+      }
+      try {
+        const gTickets = loadTickets(d.repo, key, `G${goal.n}`);
+        processedTickets.push(...gTickets);
+      } catch {}
 
-    for (const card of cards) {
-      const existing = existingStateMap.get(card.id);
-      if (existing) {
-        if (
-          existing.state === 'passed' ||
-          existing.state === 'failed' ||
-          existing.state === 'blocked'
-        ) {
-          tasks[card.id] = existing.state;
-        } else {
-          tasks[card.id] = 'pending';
-        }
-      } else {
-        tasks[card.id] = 'pending';
-        d.store.setTaskState(sessionId, card.id, 'pending', 0);
+      if (outcome.status !== 'done') {
+        sessionStatus = outcome.status;
+        closeNoteIfEligible(d, sessionId, processedTickets, allTasks, outcome);
+        return {
+          status: outcome.status,
+          sessionId,
+          tasks: allTasks,
+          notes: allNotes,
+        };
       }
     }
 
-    const outcome = await workOnCards(d, sessionId, cards, tasks);
-    closeNoteIfEligible(d, sessionId, cards, tasks, outcome);
-    sessionStatus = outcome.status;
-    return outcome;
+    sessionStatus = 'done';
+    const finalOutcome: SessionOutcome = {
+      status: 'done',
+      sessionId,
+      tasks: allTasks,
+      notes: allNotes,
+    };
+    closeNoteIfEligible(d, sessionId, processedTickets, allTasks, finalOutcome);
+    sessionStatus = finalOutcome.status;
+    return finalOutcome;
   } finally {
     if (d.signal?.aborted) {
       sessionStatus = 'stopped';
