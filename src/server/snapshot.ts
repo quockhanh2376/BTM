@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import type { Config, Seat, Tool } from '../config.ts';
 import type { Store, BoardState, QueueItem } from '../store/db.ts';
 import { loadTaskCards } from '../task/card.ts';
+import type { EnergyWindow } from '../energy/quota.ts';
+import type { LoginState } from '../energy/login.ts';
 
 export interface SeatCard {
   seat: Seat;
@@ -13,8 +15,25 @@ export interface SeatCard {
   since: string | null;
   turns: number;
   lastLine: string;
-  energy: '—';
-  login: '—';
+  energy: {
+    status: 'fresh' | 'unknown';
+    windows: EnergyWindow[];
+    readAt: string;
+    note?: string;
+  };
+  login: {
+    state: LoginState;
+    detail: string;
+  };
+}
+
+export interface AccountCard {
+  agent: string;
+  tool: Tool;
+  login: {
+    state: LoginState;
+    detail: string;
+  };
 }
 
 export interface SnapshotNote {
@@ -54,6 +73,8 @@ export interface Snapshot {
   };
   members: string[];
   notes: SnapshotNote[];
+  accounts: AccountCard[];
+  sshHint?: string;
 }
 
 const ANSI_REGEX = /(?:\x1B\]|\u009D)[\s\S]*?(?:\x07|\x1B\\|\u009C)|(?:\x1B\[|\u009B)[0-?]*[ -/]*[@-~]|[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]|\x1B[@-Z\\-_]/g;
@@ -105,7 +126,46 @@ export function lastLogLine(file: string | null): string {
   }
 }
 
-function createDefaultSeats(cfg: Config): SeatCard[] {
+function getSeatEnergy(store: Store, agent: string): SeatCard['energy'] {
+  const r = store.latestEnergy(agent);
+  if (!r) {
+    return { status: 'unknown', windows: [], readAt: '' };
+  }
+  const res: SeatCard['energy'] = {
+    status: r.status,
+    windows: r.windows,
+    readAt: r.readAt,
+  };
+  if (r.note !== undefined && r.note !== null) {
+    res.note = r.note;
+  }
+  return res;
+}
+
+function getSeatLogin(store: Store, agent: string): SeatCard['login'] {
+  const h = store.latestLogin(agent);
+  if (!h) {
+    return { state: 'unknown', detail: 'Chưa rõ' };
+  }
+  return {
+    state: h.state,
+    detail: h.detail,
+  };
+}
+
+function getAccounts(store: Store, cfg: Config): AccountCard[] {
+  return Object.keys(cfg.agents).map((agent) => {
+    const tool = cfg.agents[agent].tool;
+    const login = getSeatLogin(store, agent);
+    return {
+      agent,
+      tool,
+      login,
+    };
+  });
+}
+
+function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
   const seats = Object.keys(cfg.seats) as Seat[];
   return seats.map((seat) => {
     const agent = cfg.seats[seat];
@@ -119,8 +179,8 @@ function createDefaultSeats(cfg: Config): SeatCard[] {
       since: null,
       turns: 0,
       lastLine: '',
-      energy: '—',
-      login: '—',
+      energy: getSeatEnergy(store, agent),
+      login: getSeatLogin(store, agent),
     };
   });
 }
@@ -169,18 +229,23 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     };
   });
 
+  const accounts = getAccounts(store, cfg);
+  const sshHint = cfg.host.ssh_hint;
+
   if (!project) {
     return {
       project: null,
       session: null,
       holder: null,
-      seats: createDefaultSeats(cfg),
+      seats: createDefaultSeats(cfg, store),
       tasks: [],
       log: [],
       queue,
       settings,
       members,
       notes,
+      accounts,
+      sshHint,
     };
   }
 
@@ -197,13 +262,15 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       project,
       session: null,
       holder: null,
-      seats: createDefaultSeats(cfg),
+      seats: createDefaultSeats(cfg, store),
       tasks: [],
       log: [],
       queue,
       settings,
       members,
       notes,
+      accounts,
+      sshHint,
     };
   }
 
@@ -213,13 +280,15 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       project,
       session: null,
       holder: null,
-      seats: createDefaultSeats(cfg),
+      seats: createDefaultSeats(cfg, store),
       tasks: [],
       log: [],
       queue,
       settings,
       members,
       notes,
+      accounts,
+      sshHint,
     };
   }
 
@@ -258,8 +327,8 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       since,
       turns: turnsCount,
       lastLine,
-      energy: '—',
-      login: '—',
+      energy: getSeatEnergy(store, agent),
+      login: getSeatLogin(store, agent),
     };
   });
 
@@ -343,5 +412,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     settings,
     members,
     notes,
+    accounts,
+    sshHint,
   };
 }

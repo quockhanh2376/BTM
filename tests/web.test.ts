@@ -1002,4 +1002,192 @@ describe('Web Dashboard (web/index.html)', () => {
     });
   });
 
+  describe('P3-T4: Energy, đèn đăng nhập và trang Tài khoản', () => {
+    it('thanh trên có nút "Làm mới Energy"', () => {
+      expect(html).toContain('id="refresh-energy-btn"');
+      expect(html).toMatch(/Làm mới Energy/);
+    });
+
+    it('thẻ ghế hỗ trợ thanh energy với role="meter" và aria-valuenow', () => {
+      expect(html).toContain('role="meter"');
+      expect(html).toContain('aria-valuenow');
+    });
+
+    it('có khu Tài khoản ở cuối trang với danh sách agent và nút Sao chép có aria-label', () => {
+      expect(html).toContain('id="accounts-container"');
+      expect(html).toMatch(/aria-label=["']Sao chép/);
+    });
+
+    it('tuyệt đối không dùng innerHTML trong web/index.html', () => {
+      expect(html).not.toContain('innerHTML');
+    });
+
+    it('tách hàm thuần energyColor(pct) và kiểm tra đúng ngưỡng (19.9→đỏ, 49.9→vàng, 50→xanh)', () => {
+      const match = html.match(/function\s+energyColor\s*\([^)]*\)\s*\{[\s\S]*?(?=\n\s*(function|\/\/))/);
+      expect(match).not.toBeNull();
+      const energyColor = new Function(`return (${match![0]});`)();
+
+      // Ngưỡng đỏ (<20)
+      expect(energyColor(19.9)).toBe('red');
+      expect(energyColor(0)).toBe('red');
+      expect(energyColor(-5)).toBe('red');
+
+      // Ngưỡng vàng (20 - <50)
+      expect(energyColor(20)).toBe('yellow');
+      expect(energyColor(49.9)).toBe('yellow');
+      expect(energyColor(35)).toBe('yellow');
+
+      // Ngưỡng xanh (>=50)
+      expect(energyColor(50)).toBe('green');
+      expect(energyColor(80)).toBe('green');
+      expect(energyColor(100)).toBe('green');
+
+      // Màu thanh energy chọn theo giá trị gốc chưa làm tròn w.remainingPercent
+      expect(html).toMatch(/energyColor\s*\(\s*w\.remainingPercent\s*\)/);
+    });
+
+    it('tách hàm thuần sshHostFor(hostname, hint) và coi loopback là hint ([::1]→hint)', () => {
+      const match = html.match(/function\s+sshHostFor\s*\([^)]*\)\s*\{[\s\S]*?(?=\n\s*(function|\/\/))/);
+      expect(match).not.toBeNull();
+      const sshHostFor = new Function(`return (${match![0]});`)();
+
+      const customHint = 'admzon@100.96.250.103';
+
+      // Các trường hợp loopback phải trả về hint
+      expect(sshHostFor('[::1]', customHint)).toBe(customHint);
+      expect(sshHostFor('::1', customHint)).toBe(customHint);
+      expect(sshHostFor('localhost', customHint)).toBe(customHint);
+      expect(sshHostFor('127.0.0.1', customHint)).toBe(customHint);
+      expect(sshHostFor('', customHint)).toBe(customHint);
+
+      // Khi hostname bên ngoài -> trả về host hoặc admzon@host
+      expect(sshHostFor('192.168.1.50', customHint)).toBe('admzon@192.168.1.50');
+      expect(sshHostFor('admzon@server1.lan', customHint)).toBe('admzon@server1.lan');
+
+      // Fallback khi không truyền hint
+      expect(sshHostFor('[::1]', '')).toBe('admzon@100.96.250.103');
+    });
+
+    it('tách hàm thuần formatEnergy(window) và làm tròn hiển thị chữ', () => {
+      const hhmmMatch = html.match(/function\s+formatHHmm\s*\([^)]*\)\s*\{[\s\S]*?\n\s{6}\}/);
+      expect(hhmmMatch).not.toBeNull();
+      const formatHHmm = new Function(`return (${hhmmMatch![0]});`)();
+
+      const match = html.match(/function\s+formatEnergy\s*\([^)]*\)\s*\{[\s\S]*?\n\s{6}\}/);
+      expect(match).not.toBeNull();
+      const formatEnergy = new Function('formatHHmm', `return (${match![0]});`)(formatHHmm);
+
+      // Chỉ làm tròn khi hiển thị chữ
+      expect(formatEnergy({ remainingPercent: 19.9 })).toBe('còn 20%');
+      expect(formatEnergy({ remainingPercent: 49.9 })).toBe('còn 50%');
+      expect(formatEnergy({ remainingPercent: 50 })).toBe('còn 50%');
+      expect(formatEnergy({ remainingPercent: 49.9, resetsAt: '2026-11-09T13:45:00Z' })).toBe('còn 50% · hồi 13:45');
+      expect(formatEnergy(null)).toBe('');
+    });
+
+    it('nút Sao chép có nhánh navigator.clipboard và fallback bôi đen + execCommand kèm phản hồi', async () => {
+      const match = html.match(/async\s+function\s+copyLoginCommand\s*\([^)]*\)\s*\{[\s\S]*?\n\s{6}\}/);
+      expect(match).not.toBeNull();
+
+      // Kiểm tra trong HTML có dùng input/textarea readonly cho ô mã và gọi select() + execCommand
+      expect(html).toMatch(/<input[^>]*readonly[^>]*account-cmd-code|document\.createElement\(['"]input['"]\)[\s\S]*?readOnly\s*=\s*true/);
+      expect(html).toMatch(/\.select\s*\(\s*\)/);
+      expect(html).toMatch(/execCommand\s*\(\s*['"]copy['"]\s*\)/);
+      expect(html).toContain('Đã sao chép');
+      expect(html).toContain('Hãy bôi đen và Ctrl+C');
+
+      // Test hành vi hàm copyLoginCommand
+      const copyFnCode = match![0];
+
+      // Nhánh 1: SecureContext + navigator.clipboard thành công -> 'Đã sao chép'
+      {
+        let feedback = '';
+        let writeCalledWith = '';
+        const mockWindow = { isSecureContext: true };
+        const mockNavigator = {
+          clipboard: {
+            writeText: async (t: string) => {
+              writeCalledWith = t;
+            },
+          },
+        };
+        const runCopy = new Function(
+          'window',
+          'navigator',
+          'document',
+          `return (${copyFnCode});`
+        )(mockWindow, mockNavigator, {});
+
+        const res = await runCopy('ssh command 1', null, (msg: string) => { feedback = msg; });
+        expect(res).toBe(true);
+        expect(writeCalledWith).toBe('ssh command 1');
+        expect(feedback).toBe('Đã sao chép');
+      }
+
+      // Nhánh 2: Không phải isSecureContext -> fallback select() + execCommand('copy') thành công
+      {
+        let feedback = '';
+        let selected = false;
+        let execCommandCalled = '';
+        const mockInput = {
+          select: () => { selected = true; },
+          setSelectionRange: () => {},
+          focus: () => {},
+          value: 'ssh fallback command',
+        };
+        const mockDoc = {
+          execCommand: (cmd: string) => {
+            execCommandCalled = cmd;
+            return true;
+          },
+        };
+        const mockWindow = { isSecureContext: false };
+        const runCopy = new Function(
+          'window',
+          'navigator',
+          'document',
+          `return (${copyFnCode});`
+        )(mockWindow, {}, mockDoc);
+
+        const res = await runCopy('ssh fallback command', mockInput, (msg: string) => { feedback = msg; });
+        expect(res).toBe(true);
+        expect(selected).toBe(true);
+        expect(execCommandCalled).toBe('copy');
+        expect(feedback).toBe('Đã sao chép');
+      }
+
+      // Nhánh 3: Clipboard lỗi -> fallback execCommand thất bại -> 'Hãy bôi đen và Ctrl+C'
+      {
+        let feedback = '';
+        let selected = false;
+        const mockInput = {
+          select: () => { selected = true; },
+          setSelectionRange: () => {},
+          focus: () => {},
+          value: 'ssh failed command',
+        };
+        const mockDoc = {
+          execCommand: () => false,
+        };
+        const mockWindow = { isSecureContext: true };
+        const mockNavigator = {
+          clipboard: {
+            writeText: async () => { throw new Error('NotAllowedError'); },
+          },
+        };
+        const runCopy = new Function(
+          'window',
+          'navigator',
+          'document',
+          `return (${copyFnCode});`
+        )(mockWindow, mockNavigator, mockDoc);
+
+        const res = await runCopy('ssh failed command', mockInput, (msg: string) => { feedback = msg; });
+        expect(res).toBe(false);
+        expect(selected).toBe(true);
+        expect(feedback).toBe('Hãy bôi đen và Ctrl+C');
+      }
+    });
+  });
+
 });

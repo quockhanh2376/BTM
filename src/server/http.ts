@@ -8,6 +8,7 @@ import type { Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
 import { commitAll } from '../git.ts';
 import { inboxPath, detectImage } from './inbox.ts';
+import type { createMonitor } from '../energy/monitor.ts';
 
 export interface HostApi {
   start(
@@ -102,6 +103,7 @@ export function createServer(o: {
   webFile: string;
   pollMs?: number;
   pingMs?: number;
+  monitor?: ReturnType<typeof createMonitor>;
 }): http.Server {
   interface SseClient {
     res: ServerResponse;
@@ -484,6 +486,21 @@ export function createServer(o: {
             await o.host.setAutoApprove(parsed.data.autoApprove);
           }
           sendJson(res, 200, { ok: true, autoApprove: parsed.data.autoApprove });
+          return;
+        }
+
+        if (pathname === '/api/energy/refresh') {
+          const RefreshSchema = z.object({}).passthrough();
+          const parsed = RefreshSchema.safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: 'Invalid body' });
+            return;
+          }
+          const monitor = o.monitor ?? (o.host as any)?.monitor;
+          if (monitor) {
+            await monitor.refresh(Object.keys(o.cfg.agents), true);
+          }
+          sendJson(res, 200, { ok: true });
           return;
         }
 

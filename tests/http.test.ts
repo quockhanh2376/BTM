@@ -769,6 +769,76 @@ describe('HTTP Server & SSE', () => {
     });
   });
 
+  describe('POST /api/energy/refresh', () => {
+    it('rejects without x-btm header (403)', async () => {
+      const res = await fetch(`${baseUrl}/api/energy/refresh`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects with untrusted origin (403)', async () => {
+      const res = await fetch(`${baseUrl}/api/energy/refresh`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: 'https://attacker.example',
+        },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects with non-json content-type (415)', async () => {
+      const res = await fetch(`${baseUrl}/api/energy/refresh`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'text/plain',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: 'hello',
+      });
+      expect(res.status).toBe(415);
+    });
+
+    it('calls monitor.refresh(allAgents, true) and returns 200', async () => {
+      const refreshCalls: Array<{ agents: string[]; force?: boolean }> = [];
+      const monitor = {
+        async refresh(agents: string[], force?: boolean) {
+          refreshCalls.push({ agents, force });
+        },
+        gate: vi.fn(),
+      };
+      (host as any).monitor = monitor;
+
+      const res = await fetch(`${baseUrl}/api/energy/refresh`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(refreshCalls).toEqual([
+        {
+          agents: Object.keys(cfg.agents),
+          force: true,
+        },
+      ]);
+    });
+  });
+
   describe('Task 10a & 10b: Team Note & Note Image', () => {
     let testRepo: string;
 

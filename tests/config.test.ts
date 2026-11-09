@@ -122,6 +122,17 @@ describe('Config', () => {
     });
     expect(() => loadConfig(configFile)).toThrow(ConfigError);
   });
+
+  it('defaults host.ssh_hint to admzon@100.96.250.103 and accepts custom ssh_hint', () => {
+    const config = loadConfig('btm.config.yaml');
+    expect(config.host.ssh_hint).toBe('admzon@100.96.250.103');
+
+    const customFile = writeTestConfig((raw) => {
+      raw.host.ssh_hint = 'custom-user@custom-host';
+    });
+    const customConfig = loadConfig(customFile);
+    expect(customConfig.host.ssh_hint).toBe('custom-user@custom-host');
+  });
 });
 
 describe('checkForbiddenEnv', () => {

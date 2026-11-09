@@ -27,6 +27,9 @@
       --tab-inactive-bg: #E5E5DF;
       --tab-inactive-text: #55554F;
       --tab-inactive-hover-bg: #ECECE7;
+      --meter-green: #12B76A;
+      --meter-yellow: #F79009;
+      --meter-red: #D92D20;
       /* Tab state colors (Light theme) */
       --tab-pending: #475569;
       --tab-in-dev: #1D4ED8;
@@ -74,6 +77,9 @@
       --tab-inactive-bg: #2B2B28;
       --tab-inactive-text: #B5B5AE;
       --tab-inactive-hover-bg: #333330;
+      --meter-green: #32D583;
+      --meter-yellow: #FDB022;
+      --meter-red: #F97066;
       /* Tab state colors (Dark theme) */
       --tab-pending: #94A3B8;
       --tab-in-dev: #8AAEFF;
@@ -457,13 +463,203 @@
       color: var(--text);
     }
 
+    .btn-secondary {
+      background-color: var(--badge-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--border-subtle);
+    }
+
     .seat-footer {
       display: flex;
-      justify-content: space-between;
+      flex-direction: column;
+      gap: 8px;
       padding-top: 8px;
       border-top: 1px solid var(--border-subtle);
       font-size: 12px;
       color: var(--text-muted);
+    }
+
+    .seat-login-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .login-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: inline-block;
+    }
+
+    .dot-ok {
+      background-color: var(--meter-green);
+    }
+
+    .dot-expiring {
+      background-color: var(--meter-yellow);
+    }
+
+    .dot-relogin, .dot-api_key, .dot-api-key {
+      background-color: var(--danger);
+    }
+
+    .dot-unknown {
+      background-color: var(--text-muted);
+    }
+
+    .seat-energy-box {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      width: 100%;
+    }
+
+    .energy-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+    }
+
+    .energy-bar-label {
+      width: 32px;
+      flex-shrink: 0;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .energy-meter-track {
+      flex: 1;
+      height: 8px;
+      background-color: var(--badge-bg);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .energy-meter-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.25s ease;
+    }
+
+    .meter-green {
+      background-color: var(--meter-green);
+    }
+
+    .meter-yellow {
+      background-color: var(--meter-yellow);
+    }
+
+    .meter-red {
+      background-color: var(--meter-red);
+    }
+
+    .energy-bar-text {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .energy-unknown {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Accounts Section */
+    .accounts-section {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .accounts-section h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .accounts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .account-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      background-color: var(--badge-bg);
+      border: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .account-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 220px;
+    }
+
+    .account-name {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .account-tool {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .account-login {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    .account-detail {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .account-cmd-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      justify-content: flex-end;
+      min-width: 320px;
+    }
+
+    .account-cmd-code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 6px;
+      color: var(--text);
+      word-break: break-all;
+      user-select: all;
+      outline: none;
+      box-sizing: border-box;
+      max-width: 440px;
+      width: 100%;
     }
 
     /* Board and Log split layout */
@@ -1174,6 +1370,7 @@
         <label class="auto-approve-label" id="auto-approve-label">
           <input type="checkbox" id="auto-approve-toggle"> Auto duyệt thẻ
         </label>
+        <button id="refresh-energy-btn" class="btn btn-secondary" type="button">Làm mới Energy</button>
         <button id="approve-btn" class="btn btn-primary" type="button" disabled title="Không có thẻ chờ duyệt">Duyệt thẻ</button>
         <button id="stop-btn" class="btn btn-danger" type="button">Dừng khẩn cấp</button>
         <button id="theme-toggle" class="btn btn-icon" type="button" aria-label="Chuyển sáng/tối">
@@ -1227,9 +1424,28 @@
           <span class="last-line-label">Dòng log cuối:</span>
           <pre class="last-line-text" id="pm-last-line">—</pre>
         </div>
-        <div class="seat-footer">
-          <span>Energy: —</span>
-          <span>Đăng nhập: —</span>
+        <div class="seat-footer" id="pm-footer">
+          <div id="pm-login-indicator" class="seat-login-indicator">
+            <span class="login-dot dot-unknown"></span>
+            <span class="login-text">Đăng nhập: —</span>
+          </div>
+          <div id="pm-energy-box" class="seat-energy-box">
+            <span class="energy-unknown">Energy: —</span>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">5 giờ</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5 giờ: còn 100%">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">còn 100%</span>
+            </div>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">Tuần</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Tuần: còn 100%">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">còn 100%</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1257,9 +1473,28 @@
           <span class="last-line-label">Dòng log cuối:</span>
           <pre class="last-line-text" id="dev-last-line">—</pre>
         </div>
-        <div class="seat-footer">
-          <span>Energy: —</span>
-          <span>Đăng nhập: —</span>
+        <div class="seat-footer" id="dev-footer">
+          <div id="dev-login-indicator" class="seat-login-indicator">
+            <span class="login-dot dot-unknown"></span>
+            <span class="login-text">Đăng nhập: —</span>
+          </div>
+          <div id="dev-energy-box" class="seat-energy-box">
+            <span class="energy-unknown">Energy: —</span>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">5 giờ</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5 giờ: còn 100%">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">còn 100%</span>
+            </div>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">Tuần</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Tuần: còn 100%">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">còn 100%</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1287,9 +1522,28 @@
           <span class="last-line-label">Dòng log cuối:</span>
           <pre class="last-line-text" id="qc-last-line">—</pre>
         </div>
-        <div class="seat-footer">
-          <span>Energy: —</span>
-          <span>Đăng nhập: —</span>
+        <div class="seat-footer" id="qc-footer">
+          <div id="qc-login-indicator" class="seat-login-indicator">
+            <span class="login-dot dot-unknown"></span>
+            <span class="login-text">Đăng nhập: —</span>
+          </div>
+          <div id="qc-energy-box" class="seat-energy-box">
+            <span class="energy-unknown">Energy: —</span>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">5 giờ</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5 giờ: còn 100%">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">còn 100%</span>
+            </div>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">Tuần</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Tuần: còn 100%">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">còn 100%</span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -1409,6 +1663,27 @@
         <ul id="queue-list" class="queue-list">
           <li class="empty-placeholder">Hàng đợi trống</li>
         </ul>
+      </div>
+    </section>
+
+    <!-- Khu Tài khoản -->
+    <section class="card accounts-section" id="accounts-container">
+      <h2>Tài khoản</h2>
+      <div id="accounts-list" class="accounts-list">
+        <div class="account-row">
+          <div class="account-info">
+            <span class="account-name">Agent</span>
+            <span class="account-tool">Tool</span>
+            <div class="account-login">
+              <span class="login-dot dot-unknown"></span>
+              <span>Chưa rõ</span>
+            </div>
+          </div>
+          <div class="account-cmd-wrap">
+            <input type="text" readonly class="account-cmd-code" value="ssh -t admzon@100.96.250.103 &quot;sudo -iu agent agy&quot;" aria-label="Lệnh đăng nhập">
+            <button class="btn btn-secondary btn-sm copy-btn" type="button" aria-label="Sao chép lệnh đăng nhập">Sao chép</button>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -1559,6 +1834,143 @@
         el.textContent = msg || '';
         el.style.color = isError ? 'var(--error-text, var(--danger))' : 'var(--accent)';
         setDisplay(el, !!msg, 'block');
+      }
+
+      function formatHHmm(iso) {
+        if (!iso) return '';
+        var m = iso.match(/T(\d{2}:\d{2})/);
+        if (m) return m[1];
+        var d = new Date(iso);
+        if (!isNaN(d.getTime())) {
+          var hh = String(d.getUTCHours()).padStart(2, '0');
+          var mm = String(d.getUTCMinutes()).padStart(2, '0');
+          return hh + ':' + mm;
+        }
+        return '';
+      }
+
+      function getLoginDisplay(login) {
+        if (!login) {
+          return { text: 'Chưa rõ', dotClass: 'dot-unknown' };
+        }
+        var state = login.state || 'unknown';
+        if (state === 'ok') {
+          return { text: 'Ổn', dotClass: 'dot-ok' };
+        }
+        if (state === 'expiring') {
+          var label = login.detail ? login.detail.replace(/^Hết hạn\s*/i, 'Sắp hết hạn ') : 'Sắp hết hạn';
+          return { text: label, dotClass: 'dot-expiring' };
+        }
+        if (state === 'relogin') {
+          return { text: 'Cần đăng nhập lại', dotClass: 'dot-relogin' };
+        }
+        if (state === 'api_key') {
+          return { text: 'API key đè', dotClass: 'dot-api-key' };
+        }
+        return { text: 'Chưa rõ', dotClass: 'dot-unknown' };
+      }
+
+      function energyColor(pct) {
+        var val = Number(pct);
+        if (isNaN(val)) return 'red';
+        if (val >= 50) return 'green';
+        if (val >= 20) return 'yellow';
+        return 'red';
+      }
+
+      function sshHostFor(hostname, hint) {
+        var host = (hostname || '').trim();
+        if (!host || host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1') {
+          return hint || 'admzon@100.96.250.103';
+        }
+        return host.indexOf('@') !== -1 ? host : ('admzon@' + host);
+      }
+
+      function formatEnergy(w) {
+        if (!w) return '';
+        var rawPct = typeof w === 'number' ? w : (w.remainingPercent != null ? w.remainingPercent : (w.pct != null ? w.pct : 0));
+        var pct = Math.max(0, Math.min(100, Math.round(Number(rawPct) || 0)));
+        var hhmm = (typeof w === 'object' && w.resetsAt) ? formatHHmm(w.resetsAt) : '';
+        return 'còn ' + pct + '%' + (hhmm ? (' · hồi ' + hhmm) : '');
+      }
+
+      async function copyLoginCommand(text, inputEl, feedbackTarget) {
+        function setFeedback(msg) {
+          if (typeof feedbackTarget === 'function') {
+            feedbackTarget(msg);
+          } else if (feedbackTarget && 'textContent' in feedbackTarget) {
+            feedbackTarget.textContent = msg;
+            setTimeout(function () {
+              feedbackTarget.textContent = 'Sao chép';
+            }, 2000);
+          }
+        }
+
+        function fallbackCopy() {
+          if (inputEl && typeof inputEl.select === 'function') {
+            try {
+              inputEl.focus();
+              inputEl.select();
+              if (typeof inputEl.setSelectionRange === 'function') {
+                inputEl.setSelectionRange(0, inputEl.value.length);
+              }
+            } catch (e) {}
+          }
+          var ok = false;
+          try {
+            if (typeof document !== 'undefined' && typeof document.execCommand === 'function') {
+              ok = document.execCommand('copy');
+            }
+          } catch (e) {
+            ok = false;
+          }
+          if (ok) {
+            setFeedback('Đã sao chép');
+            return true;
+          } else {
+            setFeedback('Hãy bôi đen và Ctrl+C');
+            return false;
+          }
+        }
+
+        var hasClipboard = typeof window !== 'undefined' &&
+          window.isSecureContext &&
+          typeof navigator !== 'undefined' &&
+          navigator.clipboard &&
+          typeof navigator.clipboard.writeText === 'function';
+
+        if (hasClipboard) {
+          try {
+            await navigator.clipboard.writeText(text);
+            setFeedback('Đã sao chép');
+            return true;
+          } catch (err) {
+            return fallbackCopy();
+          }
+        } else {
+          return fallbackCopy();
+        }
+      }
+
+      function getSshTarget(hint) {
+        var host = '';
+        try {
+          if (window.location && window.location.hostname) {
+            host = window.location.hostname;
+          }
+        } catch (e) {}
+        return sshHostFor(host, hint);
+      }
+
+      function getLoginCommand(tool, sshTarget) {
+        var t = (tool || '').toLowerCase();
+        if (t === 'claude-code' || t === 'claude') {
+          return 'ssh -t ' + sshTarget + ' "sudo -iu agent claude auth login"';
+        }
+        if (t === 'codex-cli' || t === 'codex') {
+          return 'ssh -t ' + sshTarget + ' "sudo -iu agent codex login --device-auth"';
+        }
+        return 'ssh -t ' + sshTarget + ' "sudo -iu agent agy"';
       }
 
       // 4. API Communication
@@ -2074,6 +2486,68 @@
           if (sinceEl) sinceEl.textContent = formatTime(cardData.since);
           if (turnsEl) turnsEl.textContent = String(cardData.turns || 0);
           if (lastLineEl) lastLineEl.textContent = cardData.lastLine || '—';
+
+          // Login indicator
+          var loginIndicator = document.getElementById(seatKey + '-login-indicator');
+          if (loginIndicator && cardData.login) {
+            clearChildren(loginIndicator);
+            var lDisp = getLoginDisplay(cardData.login);
+            var lDot = document.createElement('span');
+            lDot.className = 'login-dot ' + lDisp.dotClass;
+            loginIndicator.appendChild(lDot);
+            var lTxt = document.createElement('span');
+            lTxt.className = 'login-text';
+            lTxt.textContent = lDisp.text;
+            loginIndicator.appendChild(lTxt);
+          }
+
+          // Energy box
+          var energyBox = document.getElementById(seatKey + '-energy-box');
+          if (energyBox) {
+            clearChildren(energyBox);
+            var eng = cardData.energy;
+            if (eng && eng.status === 'fresh' && Array.isArray(eng.windows) && eng.windows.length > 0) {
+              eng.windows.forEach(function (w) {
+                var row = document.createElement('div');
+                row.className = 'energy-bar-row';
+
+                var wLabel = w.name === '5h' ? '5 giờ' : (w.name === 'week' ? 'Tuần' : w.name);
+                var lbl = document.createElement('span');
+                lbl.className = 'energy-bar-label';
+                lbl.textContent = wLabel;
+                row.appendChild(lbl);
+
+                var track = document.createElement('div');
+                track.className = 'energy-meter-track';
+                track.setAttribute('role', 'meter');
+                var rawPct = typeof w.remainingPercent === 'number' ? w.remainingPercent : parseFloat(w.remainingPercent);
+                var pct = Math.max(0, Math.min(100, Math.round(Number(rawPct) || 0)));
+                track.setAttribute('aria-valuenow', String(pct));
+                track.setAttribute('aria-valuemin', '0');
+                track.setAttribute('aria-valuemax', '100');
+                track.setAttribute('aria-label', wLabel + ': ' + formatEnergy(w));
+
+                var fill = document.createElement('div');
+                fill.className = 'energy-meter-fill meter-' + energyColor(w.remainingPercent);
+                fill.style.width = Math.max(0, Math.min(100, Number(rawPct) || 0)) + '%';
+                track.appendChild(fill);
+                row.appendChild(track);
+
+                var txt = document.createElement('span');
+                txt.className = 'energy-bar-text';
+                txt.textContent = formatEnergy(w);
+                row.appendChild(txt);
+
+                energyBox.appendChild(row);
+              });
+            } else {
+              var unk = document.createElement('div');
+              unk.className = 'energy-unknown';
+              var noteText = (eng && eng.note) ? (' (' + eng.note + ')') : '';
+              unk.textContent = 'Energy: không đọc được' + noteText;
+              energyBox.appendChild(unk);
+            }
+          }
         }
       }
 
@@ -2235,6 +2709,93 @@
         if (state.seats) {
           renderRecipients(state.seats);
         }
+
+        // Accounts
+        renderAccounts(state.accounts, state.sshHint);
+      }
+
+      function renderAccounts(accounts, sshHint) {
+        var container = document.getElementById('accounts-list');
+        if (!container) return;
+        clearChildren(container);
+
+        if (!Array.isArray(accounts) || accounts.length === 0) {
+          var empty = document.createElement('div');
+          empty.className = 'empty-placeholder';
+          empty.textContent = 'Chưa có thông tin tài khoản';
+          container.appendChild(empty);
+          return;
+        }
+
+        var sshTarget = getSshTarget(sshHint);
+
+        accounts.forEach(function (acc) {
+          var row = document.createElement('div');
+          row.className = 'account-row';
+
+          var info = document.createElement('div');
+          info.className = 'account-info';
+
+          var nameEl = document.createElement('span');
+          nameEl.className = 'account-name';
+          nameEl.textContent = acc.agent;
+          info.appendChild(nameEl);
+
+          var toolEl = document.createElement('span');
+          toolEl.className = 'account-tool';
+          toolEl.textContent = acc.tool || '';
+          info.appendChild(toolEl);
+
+          var lDisp = getLoginDisplay(acc.login);
+          var loginWrap = document.createElement('div');
+          loginWrap.className = 'account-login';
+
+          var dot = document.createElement('span');
+          dot.className = 'login-dot ' + lDisp.dotClass;
+          loginWrap.appendChild(dot);
+
+          var loginTxt = document.createElement('span');
+          loginTxt.textContent = lDisp.text;
+          loginWrap.appendChild(loginTxt);
+
+          info.appendChild(loginWrap);
+
+          if (acc.login && acc.login.detail && acc.login.detail !== lDisp.text) {
+            var detailEl = document.createElement('span');
+            detailEl.className = 'account-detail';
+            detailEl.textContent = '(' + acc.login.detail + ')';
+            info.appendChild(detailEl);
+          }
+
+          row.appendChild(info);
+
+          var cmdWrap = document.createElement('div');
+          cmdWrap.className = 'account-cmd-wrap';
+
+          var cmdStr = getLoginCommand(acc.tool, sshTarget);
+          var codeEl = document.createElement('input');
+          codeEl.type = 'text';
+          codeEl.readOnly = true;
+          codeEl.className = 'account-cmd-code';
+          codeEl.value = cmdStr;
+          codeEl.setAttribute('aria-label', 'Lệnh đăng nhập cho ' + acc.agent);
+          cmdWrap.appendChild(codeEl);
+
+          var copyBtn = document.createElement('button');
+          copyBtn.className = 'btn btn-secondary btn-sm copy-btn';
+          copyBtn.setAttribute('type', 'button');
+          copyBtn.setAttribute('aria-label', 'Sao chép lệnh đăng nhập cho ' + acc.agent);
+          copyBtn.textContent = 'Sao chép';
+
+          copyBtn.addEventListener('click', function () {
+            copyLoginCommand(cmdStr, codeEl, copyBtn);
+          });
+
+          cmdWrap.appendChild(copyBtn);
+          row.appendChild(cmdWrap);
+
+          container.appendChild(row);
+        });
       }
 
       // 5. Connect SSE
@@ -2255,6 +2816,35 @@
       connectSSE();
 
       // 6. Action Handlers
+      var initialCopyBtns = document.querySelectorAll('.copy-btn');
+      initialCopyBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var wrap = btn.closest('.account-cmd-wrap');
+          var input = wrap ? wrap.querySelector('.account-cmd-code') : null;
+          var text = input ? (input.value || input.textContent) : '';
+          copyLoginCommand(text, input, btn);
+        });
+      });
+
+      var refreshEnergyBtn = document.getElementById('refresh-energy-btn');
+      if (refreshEnergyBtn) {
+        refreshEnergyBtn.addEventListener('click', async function () {
+          refreshEnergyBtn.disabled = true;
+          try {
+            var res = await postJson('/api/energy/refresh', {});
+            if (res && res.error) {
+              showFeedback(topFeedback, res.error, true);
+            } else {
+              showFeedback(topFeedback, 'Đã làm mới Energy', false);
+            }
+          } catch (err) {
+            showFeedback(topFeedback, err.message, true);
+          } finally {
+            refreshEnergyBtn.disabled = false;
+          }
+        });
+      }
+
       if (stopBtn) {
         stopBtn.addEventListener('click', async function () {
           if (!confirm('Bạn có chắc chắn muốn Dừng khẩn cấp? Agent đang chạy sẽ bị dừng và hàng đợi sẽ bị xóa.')) {

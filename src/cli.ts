@@ -13,6 +13,9 @@ import { runSession, resumeSession, type SessionOutcome } from './core/session.t
 import { makeRunner, type Runner } from './runner/run.ts';
 import { createHost } from './server/host.ts';
 import { createServer } from './server/http.ts';
+import { createMonitor } from './energy/monitor.ts';
+import { readEnergy } from './energy/quota.ts';
+import { checkLogin } from './energy/login.ts';
 
 export interface CliDeps {
   runSession?: typeof runSession;
@@ -76,6 +79,15 @@ export async function serve(
   const hostFactory = effectiveDeps?.createHost ?? createHost;
   const serverFactory = effectiveDeps?.createServer ?? createServer;
 
+  const monitor = createMonitor({
+    cfg,
+    store,
+    readEnergy,
+    checkLogin,
+    now: () => new Date(),
+    env: effectiveEnv,
+  });
+
   const host = hostFactory({
     cfg,
     store,
@@ -85,6 +97,7 @@ export async function serve(
     env: effectiveEnv,
     runSession: effectiveDeps?.runSession,
     resumeSession: effectiveDeps?.resumeSession,
+    monitor,
   });
 
   const btmRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -95,6 +108,7 @@ export async function serve(
     store,
     host,
     webFile,
+    monitor,
   });
 
   const bind = bindOverride ?? cfg.host.dashboard.bind ?? '127.0.0.1';

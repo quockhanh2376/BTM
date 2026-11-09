@@ -1,0 +1,4 @@
+Bug: [web/index.html:2713](/srv/agent-projects/btm/web/index.html:2713) — Truy cập HTTP bằng IP/LAN khiến `navigator.clipboard` không khả dụng; nút Sao chép im lặng không làm gì. Cần fallback và xử lý lỗi `writeText`.
+Bug: [web/index.html:2442](/srv/agent-projects/btm/web/index.html:2442) — Làm tròn trước khi chọn màu khiến 19.9% thành vàng, 49.9% thành xanh, sai ngưỡng plan; chọn màu theo giá trị gốc.
+Bug: [web/index.html:1869](/srv/agent-projects/btm/web/index.html:1869) — Host `[::1]` không dùng `ssh_hint`; đã thử và nhận lệnh SSH tới loopback thay vì server.
+Cần sửa: [tests/web.test.ts:1005](/srv/agent-projects/btm/tests/web.test.ts:1005) — Test mới chỉ tìm chuỗi HTML, có thể pass nhờ các thanh 100% hardcode; cần test render Energy/login thực, ngưỡng màu, unknown/note, SSH và thao tác sao chép.

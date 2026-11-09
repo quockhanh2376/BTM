@@ -16,6 +16,7 @@ export const HostSchema = z.object({
     port: z.number().int(),
   }).strict(),
   data_dir: z.string(),
+  ssh_hint: z.string().default('admzon@100.96.250.103'),
 }).strict();
 
 export const SessionSchema = z.object({
