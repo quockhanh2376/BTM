@@ -70,15 +70,15 @@
 - `checkReady(t: Ticket, stateOf: (id: string) => TicketState | null): string[]` – trả danh sách lý do, rỗng = ready.
 - `reportHeader(t: Ticket, agentName: string, seatLabel: 'Dev'|'QC'|'Audit'): string`
 
-- [ ] **Step 1: Test** `tests/ticket.test.ts`:
+- [x] **Step 1: Test** `tests/ticket.test.ts`:
   - ticket mẫu ở `docs/tickets.md` §3 (thêm `type: feat`, `size: M`) parse đúng; `depends_on` mặc định `[]`, `from_audit` mặc định `false`.
   - `id: XYZ-0001` khi key `GTM` → ném; `number: 10, of: 9` → ném; acceptance 0 hoặc 6 mục → ném; `type: bug` → ném; scope `../x` → ném.
   - `loadTickets` 2 file cùng `G1` number 3 → ném `duplicate number`.
   - `checkReady`: size L → `['size_L']`; depends_on chưa passed → `['depends_on:GTM-0010']`; đủ → `[]`.
   - `reportHeader(t, 'Jacky', 'Dev') === 'GTM-0012 · G1#3/9 · Jacky-Dev'`.
   - `goalBranch(1,'UI đăng nhập + reset pass!!') === 'goal/G1-ui-dang-nhap-reset-pass'`; `slugify('!!!') === 'goal'`; tiêu đề 80 ký tự → slug ≤ 30, không kết thúc bằng `-`; `git check-ref-format --branch` chấp nhận kết quả.
-- [ ] **Step 2–4:** FAIL → implement (zod, tái dùng luật scope của `card.ts`) → PASS.
-- [ ] **Step 5:** Commit `feat: ticket schema, loader, definition of ready (P4 Task 1)`.
+- [x] **Step 2–4:** FAIL → implement (zod, tái dùng luật scope của `card.ts`) → PASS.
+- [x] **Step 5:** Commit `feat: ticket schema, loader, definition of ready (P4 Task 1)`.
 
 ### Task 2: Store – goals, tickets, lịch sử, bộ đếm
 

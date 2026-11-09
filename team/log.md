@@ -11,3 +11,6 @@
 - 2026-11-09 13:05 · V · P3-T6 xong (794s, báo OK). Cheki: đổi CRLF→LF, tsc sạch, vitest 520/541 (21 fail Windows như cũ), 3 test mới pass. Giao Q review
 - 2026-11-09 13:10 · Q · P3-T6 review: OK, không sửa code. Cheki: trả V fix1 (gọn chữ ký pmPrompt/initProject, bỏ nhánh openspec.cmd win32)
 - 2026-11-09 13:16 · V · P3-T6 fix1 xong (OK). Cheki: tsc sạch, vitest 520/541 (21 fail Windows như cũ) → accepted, commit. Plan 3 hoàn tất, mở PR plan3-energy → main chờ Zon merge
+- 2026-11-09 13:17 · Cheki · PR #4 plan3-energy→main (chờ Zon merge). Tạo nhánh plan4-tickets từ plan3-energy; giao P4-T1 cho V
+- 2026-11-09 13:31 · V · P4-T1 xong (OK). Cheki: tsc sạch, vitest 540/561 (21 Windows), 20 test mới pass, goalBranch qua git check-ref-format. Giao Q review
+- 2026-11-09 13:37 · Q · P4-T1 review OK. Cheki: accepted, commit. Giao P4-T2 (store goals/tickets/history/counter) cho V

@@ -1,0 +1,1 @@
+{"conversation_id":"0f11a20e-2c0a-472d-a903-130767f21866","status":"SUCCESS","response":"Đang chạy bộ test Vitest trong nền, chờ kết quả...\nOK\n","duration_seconds":1915.9707689,"num_turns":2,"usage":{"input_tokens":102304,"output_tokens":12480,"thinking_tokens":11058,"cache_read_tokens":1828550,"total_tokens":114784}}
