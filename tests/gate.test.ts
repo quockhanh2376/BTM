@@ -659,5 +659,30 @@ describe('runGate', () => {
       unlinkSync(reportPath);
       expect(reportHeaderOk(repo, ticket)).toBe(false);
     });
+
+    it('runGate: thay đổi trong team/tickets/ → ticket_tampered (kể cả khi scope có liệt kê)', () => {
+      const repo = tmpRepo({
+        'src/a.ts': 'v1',
+        'team/tickets/GTM-0001.md': 'original ticket content\n',
+      });
+      const base = headSha(repo);
+      mkdirSync(join(repo, 'team', 'reports'), { recursive: true });
+      writeFileSync(join(repo, 'team', 'reports', 'GTM-0001-dev.md'), 'GTM-0001 · G1#1/1 · Jacky-Dev\nOK\n');
+
+      // Dev modifies team/tickets/GTM-0001.md and src/a.ts
+      writeFileSync(join(repo, 'src/a.ts'), 'v2');
+      writeFileSync(join(repo, 'team/tickets/GTM-0001.md'), 'tampered content\n');
+      execFileSync('git', ['add', '-A'], { cwd: repo });
+      execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: dev commit'], { cwd: repo });
+
+      // Scope intentionally includes team/tickets/
+      const ticket = makeCard({
+        scope: ['src/a.ts', 'team/tickets/GTM-0001.md'],
+      });
+
+      const res = runGate(repo, ticket, base, { build: '', lint: '', test: '' });
+      expect(res.ok).toBe(false);
+      expect(res.reasons).toContain('ticket_tampered');
+    });
   });
 });

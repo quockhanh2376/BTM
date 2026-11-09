@@ -107,6 +107,11 @@ export function runGate(
     reasons.push('empty_diff');
   }
 
+  // 1b. mọi thay đổi trong team/tickets/ từ base..HEAD → ticket_tampered (kể cả khi scope có liệt kê)
+  if (changed.some((file) => file.startsWith('team/tickets/'))) {
+    reasons.push('ticket_tampered');
+  }
+
   // 2. file ngoài scope (luôn cho phép team/reports/) → out_of_scope:<file>
   const allowedScope = [...ticket.scope, 'team/reports/'];
   const outFiles = outsideScope(changed, allowedScope);

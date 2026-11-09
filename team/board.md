@@ -31,7 +31,7 @@
 | P4-T10 | Q | accepted | team/prompts/P4-T10-qeen.md | team/reports/P4-T10-qeen.md |
 | P4-REVIEW | reviewer độc lập | done – needs fixes (team/reviews/P4-review-1.md) |
 | P4-FIX-A | V+Q | accepted | team/prompts/P4-FIXA-victor.md | team/reports/P4-FIXA-dev.md |
-| P4-FIX-B | V | running | team/prompts/P4-FIXB-victor.md | team/reports/P4-FIXB-dev.md | – | – |
+| P4-FIX-B | V+Q | accepted | team/prompts/P4-FIXB-victor.md | team/reports/P4-FIXB-dev.md | – | – |
 | P5 (đội hình linh hoạt) | V→Q | waiting (sau khi Plan 4 merge) | docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).

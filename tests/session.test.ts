@@ -1551,7 +1551,7 @@ done_when: done
     customStore.close();
   });
 
-  it('khi PM bị abort hoặc timeout: commitAll WIP trên nhánh goal để working tree sạch', async () => {
+  it('khi PM bị abort hoặc timeout: dọn sạch team/tickets/, working tree sạch, không commit ticket dở dang', async () => {
     // Subtest 1: Abort
     const repoAbort = tmpRepo({ 'src/app.ts': '1' });
     const { deps: depsAbort, store: storeAbort } = makeDeps(repoAbort);
@@ -1570,8 +1570,9 @@ done_when: done
     const outcomeAbort = await runSession(depsAbort, ['Goal 1'], { approved: true });
     expect(outcomeAbort.status).toBe('stopped');
     expect(git(repoAbort, 'status', '--porcelain').trim()).toBe('');
+    expect(existsSync(join(repoAbort, 'team', 'tickets', 'draft.md'))).toBe(false);
     const lastCommitAbort = git(repoAbort, 'log', '-1', '--pretty=%B').trim();
-    expect(lastCommitAbort).toMatch(/^G1: WIP aborted/);
+    expect(lastCommitAbort).not.toMatch(/^G1: WIP/);
     storeAbort.close();
 
     // Subtest 2: Timeout
@@ -1592,8 +1593,9 @@ done_when: done
     const outcomeTimeout = await runSession(depsTimeout, ['Goal 1'], { approved: true });
     expect(outcomeTimeout.status).toBe('needs_owner');
     expect(git(repoTimeout, 'status', '--porcelain').trim()).toBe('');
+    expect(existsSync(join(repoTimeout, 'team', 'tickets', 'draft.md'))).toBe(false);
     const lastCommitTimeout = git(repoTimeout, 'log', '-1', '--pretty=%B').trim();
-    expect(lastCommitTimeout).toMatch(/^G1: WIP timeout/);
+    expect(lastCommitTimeout).not.toMatch(/^G1: WIP/);
     storeTimeout.close();
   });
 
@@ -3557,6 +3559,225 @@ Yêu cầu đóng note nhưng commit lỗi
       expect(git(repo, 'rev-parse', 'main').trim()).toBe(mainShaBefore);
       const logMain = git(repo, 'log', '-n', '1', '--oneline');
       expect(logMain).not.toContain('checkpoint');
+
+      store.close();
+    });
+
+    it('PM lỗi (exit_1) → khôi phục team/tickets/, không để file ticket rác, không upsert/setTicketState', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      const { runner } = createFakeRunner([
+        // PM writes a ticket file, but exits with error 1
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+          return { exitCode: 1, output: 'PM syntax failure' };
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['PM error test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('exit_1');
+
+      // File ticket không còn tồn tại trên disk
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0001.md'))).toBe(false);
+
+      // Không có commit ticket nào
+      const log = git(repo, 'log', '--oneline');
+      expect(log).not.toContain('GTM-0001');
+
+      // DB không có ticket GTM-0001
+      expect(store.getTicketState(repo, 'GTM-0001')).toBeNull();
+
+      store.close();
+    });
+
+    it('PM tạo ticket nhảy số (GTM-0001, GTM-0003) → pm_ticket_id_not_sequential, dọn dẹp tickets, counter không tăng', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      const { runner } = createFakeRunner([
+        // PM creates GTM-0001 and GTM-0003 (skipping GTM-0002)
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 2 });
+          writeTicketFile(cwd, { id: 'GTM-0003', goal: 'G1', number: 2, of: 2 });
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['PM non-sequential test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('pm_ticket_id_not_sequential');
+
+      // File tickets đã bị dọn dẹp
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0001.md'))).toBe(false);
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0003.md'))).toBe(false);
+
+      // Counter không bị bump lên 3 hay 4, vẫn là 1
+      expect(store.nextTicketSeq(repo)).toBe(1);
+      expect(store.getTicketState(repo, 'GTM-0001')).toBeNull();
+
+      store.close();
+    });
+
+    it('Coder từ lịch sử phiên trước → không được QC ticket đó (coder_cannot_qc_same_task)', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo, {
+        seats: { pm: 'claudine', dev: 'jacky', qc: 'jenny', audit: 'alex' },
+        rules: { coder_cannot_qc_same_task: true } as any,
+      });
+
+      // Tạo ticket GTM-0001 đã có lịch sử do jenny chuyển sang in_dev ở phiên trước
+      store.upsertTicket(repo, {
+        id: 'GTM-0001',
+        goal: 'G1',
+        number: 1,
+        of: 1,
+        title: 'Task 1',
+        type: 'feat',
+        size: 'S',
+        scope: ['src/a.ts'],
+        acceptance: ['ok'],
+        done_when: 'ok',
+        depends_on: [],
+        from_audit: false,
+      });
+      // Ghi nhận lịch sử: jenny đã từng chuyển sang in_dev (code ticket này)
+      store.setTicketState(repo, 'GTM-0001', 'in_dev', 'jenny', 'started coding in past session');
+      store.setTicketState(repo, 'GTM-0001', 'awaiting_qc', 'jenny', 'ready for qc');
+
+      // Tạo goal G1 và file ticket
+      store.createGoal(repo, 'Goal 1');
+      writeTicketFile(repo, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+      commitAll(repo, 'setup ticket', { name: 'core', email: 'core@btm.local' });
+
+      // Phiên này QC là jenny. Phiên bắt đầu với ticket awaiting_qc
+      const outcome = await runSession(deps, [{ n: 1 }], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('coder_cannot_qc_same_task');
+
+      store.close();
+    });
+
+    it('Coder từ lịch sử bất kỳ ticket nào của goal → không được Audit goal đó (auditor_is_coder)', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo, {
+        seats: { pm: 'claudine', dev: 'jacky', qc: 'jenny', audit: 'alex' },
+      });
+
+      // alex đã từng chuyển GTM-0001 sang in_dev trong lịch sử
+      store.upsertTicket(repo, {
+        id: 'GTM-0001',
+        goal: 'G1',
+        number: 1,
+        of: 1,
+        title: 'Task 1',
+        type: 'feat',
+        size: 'S',
+        scope: ['src/a.ts'],
+        acceptance: ['ok'],
+        done_when: 'ok',
+        depends_on: [],
+        from_audit: false,
+      });
+      store.setTicketState(repo, 'GTM-0001', 'in_dev', 'alex', 'alex coded in past session');
+      store.setTicketState(repo, 'GTM-0001', 'passed', 'jenny', 'qc passed');
+
+      // Tạo goal G1 và file ticket
+      store.createGoal(repo, 'Goal 1');
+      writeTicketFile(repo, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+      commitAll(repo, 'setup passed ticket', { name: 'core', email: 'core@btm.local' });
+
+      // Phiên này alex làm auditor. Tất cả ticket đã pass, bước vào audit
+      const outcome = await runSession(deps, [{ n: 1 }], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('auditor_is_coder');
+
+      store.close();
+    });
+
+    it('Dev sửa file ticket → gate rớt ticket_tampered, Core khôi phục ticket từ base và commit <ID>: restore tickets', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      let devRound = 0;
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1, title: 'Original title' });
+        },
+        // Dev round 1: modifies team/tickets/GTM-0001.md
+        (_s, agent, _p, cwd) => {
+          devRound++;
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1, title: 'Hacked title' });
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        // Dev round 2 (after gate fails ticket_tampered and restores): completes cleanly
+        (_s, agent, _p, cwd) => {
+          devRound++;
+          // Kiểm tra file ticket đã được khôi phục về Original title
+          const ticketContent = readFileSync(join(cwd, 'team', 'tickets', 'GTM-0001.md'), 'utf8');
+          expect(ticketContent).toContain('Original title');
+          expect(ticketContent).not.toContain('Hacked title');
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 2;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        // QC passes
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Dev tamper ticket test'], { approved: true });
+
+      expect(outcome.status).toBe('done');
+      expect(devRound).toBe(2);
+
+      // Có commit restore tickets
+      const commits = git(repo, 'log', '--oneline');
+      expect(commits).toContain('GTM-0001: restore tickets');
+
+      store.close();
+    });
+
+    it('Lệnh gate làm bẩn tree → Core tự clean trước khi gọi QC, QC không bị qc_modified_repo', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      // Cấu hình gate test command tạo ra file rác không bị gitignore
+      const { deps, store } = makeDeps(repo);
+      deps.cfg.gate.commands.test = 'echo dirty > gate-dirty.txt';
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        // QC runs and does not touch files
+        (_s, _a, _p, cwd) => {
+          // File gate-dirty.txt đã được dọn sạch trước khi QC chạy
+          expect(existsSync(join(cwd, 'gate-dirty.txt'))).toBe(false);
+          return makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass');
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Gate dirty tree test'], { approved: true });
+
+      // QC pass, không bị fail bởi qc_modified_repo
+      expect(outcome.status).toBe('done');
+      const qcReportPath = join(repo, 'team', 'reports', 'GTM-0001-qc.json');
+      expect(existsSync(qcReportPath)).toBe(true);
+      const qcData = JSON.parse(readFileSync(qcReportPath, 'utf8'));
+      expect(qcData.verdict).toBe('pass');
 
       store.close();
     });

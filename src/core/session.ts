@@ -361,20 +361,44 @@ function recordExistingTickets(repo: string): RecordedTickets {
 
 function restoreExistingTickets(repo: string, recorded: RecordedTickets): void {
   const ticketsDir = join(repo, 'team', 'tickets');
+  try {
+    git(repo, 'reset', 'HEAD', '--', 'team/tickets');
+  } catch {}
+  try {
+    git(repo, 'checkout', 'HEAD', '--', 'team/tickets');
+  } catch {}
   for (const [f, content] of recorded.contents.entries()) {
     try {
       writeFileSync(join(ticketsDir, f), content, 'utf8');
     } catch {}
   }
-  try {
-    git(repo, 'checkout', 'HEAD', '--', 'team/tickets');
-  } catch {}
   if (existsSync(ticketsDir)) {
     for (const f of readdirSync(ticketsDir)) {
       if (!recorded.files.has(f)) {
         try {
           rmSync(join(ticketsDir, f), { force: true });
         } catch {}
+      }
+    }
+  }
+}
+
+function cleanupPmWorkingTree(repo: string, recorded: RecordedTickets, prePmStatus?: Set<string>): void {
+  restoreExistingTickets(repo, recorded);
+  if (prePmStatus) {
+    const postPmStatus = getWorkingTreeChanges(repo);
+    for (const f of postPmStatus) {
+      if (!prePmStatus.has(f)) {
+        try {
+          git(repo, 'reset', 'HEAD', '--', f);
+        } catch {}
+        try {
+          git(repo, 'checkout', 'HEAD', '--', f);
+        } catch {
+          try {
+            rmSync(join(repo, f), { force: true, recursive: true });
+          } catch {}
+        }
       }
     }
   }
@@ -579,10 +603,8 @@ async function processGoal(
       d.store.endTurn(pmTurnId, 'error', reason);
       const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm', {
         isErrorOrTimeoutOrAbort: true,
-        taskId: `G${goal.n}`,
-        author: pmAuthor,
-        reason,
       });
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
       if (pmGuard.modifiedProtectedBranch) {
         return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
       }
@@ -598,10 +620,8 @@ async function processGoal(
       d.store.endTurn(pmTurnId, isAbort || pmOutput.timedOut ? (isAbort ? 'error' : 'timeout') : 'error', reason);
       const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm', {
         isErrorOrTimeoutOrAbort: true,
-        taskId: `G${goal.n}`,
-        author: pmAuthor,
-        reason,
       });
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
       if (pmGuard.modifiedProtectedBranch) {
         return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
       }
@@ -614,37 +634,25 @@ async function processGoal(
     d.store.endTurn(pmTurnId, 'ok');
 
     if (pmGuard.modifiedProtectedBranch) {
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
     if (pmGuard.switchedBranch) {
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_switched_branch'] };
+    }
+
+    if (pmModifiedExistingTickets(d.repo, recordedBeforePm)) {
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+      return { status: 'needs_owner', sessionId, tasks, notes: ['pm_modified_existing_ticket'] };
     }
 
     const postPmStatus = getWorkingTreeChanges(d.repo);
     const pmChanged = postPmStatus.filter((p) => !prePmStatus.has(p));
     const pmOutOfScope = pmChanged.filter((p) => !p.startsWith('team/tickets/'));
     if (pmOutOfScope.length > 0) {
-      for (const f of pmOutOfScope) {
-        try {
-          git(d.repo, 'reset', 'HEAD', '--', f);
-        } catch {}
-        try {
-          git(d.repo, 'checkout', 'HEAD', '--', f);
-        } catch {
-          try {
-            rmSync(join(d.repo, f), { force: true, recursive: true });
-          } catch {}
-        }
-      }
-      try {
-        commitAll(d.repo, `G${goal.n}: PM tickets`, pmAuthor);
-      } catch {}
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
       return { status: 'needs_owner', sessionId, tasks, notes: ['pm_out_of_scope'] };
-    }
-
-    if (pmModifiedExistingTickets(d.repo, recordedBeforePm)) {
-      restoreExistingTickets(d.repo, recordedBeforePm);
-      return { status: 'needs_owner', sessionId, tasks, notes: ['pm_modified_existing_ticket'] };
     }
 
     let tickets: Ticket[] = [];
@@ -653,13 +661,23 @@ async function processGoal(
       if (tickets.length === 0) {
         throw new TicketError(`No tickets created by PM for goal G${goal.n}`);
       }
-      for (const t of tickets) {
-        const numPart = parseInt(t.id.split('-')[1], 10);
-        if (isNaN(numPart) || numPart < seq) {
-          throw new TicketError(`Ticket ID "${t.id}" is smaller than expected nextTicketSeq (${seq})`);
-        }
+      const numParts = tickets.map((t) => {
+        const parts = t.id.split('-');
+        return parts.length === 2 && parts[0] === key ? parseInt(parts[1], 10) : NaN;
+      });
+      numParts.sort((a, b) => a - b);
+      const isSequential = numParts.every((num, idx) => num === seq + idx);
+      if (!isSequential) {
+        cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: ['pm_ticket_id_not_sequential'],
+        };
       }
     } catch (err: any) {
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
       return {
         status: 'needs_owner',
         sessionId,
@@ -770,6 +788,14 @@ async function processGoal(
         coders.add(t.agent);
       }
     }
+    try {
+      const hist = d.store.ticketHistory(d.repo, ticket.id);
+      for (const h of hist) {
+        if ((h.to_state === 'in_dev' || h.to_state === 'awaiting_qc') && h.by) {
+          coders.add(h.by);
+        }
+      }
+    } catch {}
 
     let ticketImages: string[] | undefined;
     if (ticket.note) {
@@ -992,6 +1018,39 @@ async function processGoal(
           if (hasAutoDenied) failureReasons.push('command_denied');
           if (!gateResult.ok) failureReasons.push(...gateResult.reasons);
 
+          if (failureReasons.includes('ticket_tampered')) {
+            try {
+              const headFiles = git(d.repo, 'ls-tree', '-r', '--name-only', 'HEAD', 'team/tickets')
+                .split(/\r?\n/)
+                .filter(Boolean);
+              const baseFiles = new Set(
+                git(d.repo, 'ls-tree', '-r', '--name-only', base, 'team/tickets')
+                  .split(/\r?\n/)
+                  .filter(Boolean)
+              );
+              for (const f of headFiles) {
+                if (!baseFiles.has(f)) {
+                  try { rmSync(join(d.repo, f), { force: true }); } catch {}
+                }
+              }
+              git(d.repo, 'checkout', base, '--', 'team/tickets');
+              commitAll(d.repo, `${ticket.id}: restore tickets`, { name: 'core', email: 'core@btm.local' });
+              const reloaded = loadTickets(d.repo, key, `G${goal.n}`);
+              const found = reloaded.find((t) => t.id === ticket.id);
+              if (found) {
+                Object.assign(ticket, found);
+              }
+            } catch {}
+          }
+
+          const dirtyAfterGateFail = git(d.repo, 'status', '--porcelain').trim();
+          if (dirtyAfterGateFail) {
+            try {
+              git(d.repo, 'checkout', '--', '.');
+              git(d.repo, 'clean', '-fd');
+            } catch {}
+          }
+
           d.store.endTurn(devTurnId, 'rejected', failureReasons.join('; '));
           for (const reason of failureReasons) {
             d.store.recordHandoffFailure(sessionId, ticket.id, reason);
@@ -1029,6 +1088,19 @@ async function processGoal(
           tasks[ticket.id] = 'returned';
           continue;
         }
+
+        // 5. #10 Lệnh gate làm bẩn tree.
+        // Sau khi chạy build/lint/test của gate, tree bẩn bởi file không bị ignore
+        // → git clean -fd + git checkout -- . các file đó rồi mới gọi QC (ghi log 1 dòng),
+        // để QC không bị qc_modified_repo oan.
+        const dirtyAfterGate = git(d.repo, 'status', '--porcelain').trim();
+        if (dirtyAfterGate) {
+          try {
+            git(d.repo, 'checkout', '--', '.');
+            git(d.repo, 'clean', '-fd');
+            console.log(`[gate] cleaned dirty tree after gate commands: ${dirtyAfterGate.replace(/\r?\n/g, ', ')}`);
+          } catch {}
+        }
       } else {
         skipDevThisRound = false;
         if (!base) {
@@ -1041,6 +1113,14 @@ async function processGoal(
 
       // Rule 8: coder_cannot_qc_same_task
       const qcAgent = Object.hasOwn(seats, 'qc') ? seats.qc : d.cfg.seats.qc;
+      try {
+        const hist = d.store.ticketHistory(d.repo, ticket.id);
+        for (const h of hist) {
+          if ((h.to_state === 'in_dev' || h.to_state === 'awaiting_qc') && h.by) {
+            coders.add(h.by);
+          }
+        }
+      } catch {}
       if (d.cfg.rules.coder_cannot_qc_same_task && coders.has(qcAgent)) {
         d.store.recordHandoffFailure(sessionId, ticket.id, 'coder_cannot_qc_same_task');
         return {
@@ -1208,6 +1288,16 @@ async function processGoal(
     if (t.seat === 'dev' && t.task_id && goalTicketIds.has(t.task_id) && t.agent) {
       goalCoders.add(t.agent);
     }
+  }
+  for (const tid of goalTicketIds) {
+    try {
+      const hist = d.store.ticketHistory(d.repo, tid);
+      for (const h of hist) {
+        if ((h.to_state === 'in_dev' || h.to_state === 'awaiting_qc') && h.by) {
+          goalCoders.add(h.by);
+        }
+      }
+    } catch {}
   }
   if (goalCoders.has(auditAgent)) {
     d.store.recordHandoffFailure(sessionId, `G${goal.n}`, 'auditor_is_coder');
@@ -1407,10 +1497,8 @@ async function processGoal(
     d.store.endTurn(pmFixTurnId, 'error', reason);
     const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm', {
       isErrorOrTimeoutOrAbort: true,
-      taskId: `G${goal.n}`,
-      author: pmAuthor,
-      reason,
     });
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     if (pmFixGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
@@ -1426,10 +1514,8 @@ async function processGoal(
     d.store.endTurn(pmFixTurnId, isAbort || pmFixOutput.timedOut ? (isAbort ? 'error' : 'timeout') : 'error', reason);
     const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm', {
       isErrorOrTimeoutOrAbort: true,
-      taskId: `G${goal.n}`,
-      author: pmAuthor,
-      reason,
     });
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     if (pmFixGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
@@ -1442,34 +1528,32 @@ async function processGoal(
   d.store.endTurn(pmFixTurnId, 'ok');
 
   if (pmFixGuard.modifiedProtectedBranch) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
   }
   if (pmFixGuard.switchedBranch) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     return { status: 'needs_owner', sessionId, tasks, notes: ['agent_switched_branch'] };
+  }
+
+  if (pmModifiedExistingTickets(d.repo, recordedBeforeFix)) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+    return { status: 'needs_owner', sessionId, tasks, notes: ['pm_modified_existing_ticket'] };
   }
 
   const postPmFixStatus = getWorkingTreeChanges(d.repo);
   const pmFixChanged = postPmFixStatus.filter((p) => !prePmFixStatus.has(p));
   const pmFixOutOfScope = pmFixChanged.filter((p) => !p.startsWith('team/tickets/'));
   if (pmFixOutOfScope.length > 0) {
-    for (const f of pmFixOutOfScope) {
-      try { git(d.repo, 'reset', 'HEAD', '--', f); } catch {}
-      try { git(d.repo, 'checkout', 'HEAD', '--', f); } catch {
-        try { rmSync(join(d.repo, f), { force: true, recursive: true }); } catch {}
-      }
-    }
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     return { status: 'needs_owner', sessionId, tasks, notes: ['pm_out_of_scope'] };
-  }
-
-  if (pmModifiedExistingTickets(d.repo, recordedBeforeFix)) {
-    restoreExistingTickets(d.repo, recordedBeforeFix);
-    return { status: 'needs_owner', sessionId, tasks, notes: ['pm_modified_existing_ticket'] };
   }
 
   let allGoalTicketsNow: Ticket[] = [];
   try {
     allGoalTicketsNow = loadTickets(d.repo, key, `G${goal.n}`);
   } catch (err: any) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     return {
       status: 'needs_owner',
       sessionId,
@@ -1480,6 +1564,7 @@ async function processGoal(
 
   const newTickets = allGoalTicketsNow.filter((t) => !recordedBeforeFix.files.has(`${t.id}.md`));
   if (newTickets.length === 0) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     return {
       status: 'needs_owner',
       sessionId,
@@ -1488,16 +1573,20 @@ async function processGoal(
     };
   }
 
-  for (const t of newTickets) {
-    const numPart = parseInt(t.id.split('-')[1], 10);
-    if (isNaN(numPart) || numPart < seq) {
-      return {
-        status: 'needs_owner',
-        sessionId,
-        tasks,
-        notes: [`PM ticket error: Ticket ID "${t.id}" is smaller than expected nextTicketSeq (${seq})`],
-      };
-    }
+  const numParts = newTickets.map((t) => {
+    const parts = t.id.split('-');
+    return parts.length === 2 && parts[0] === key ? parseInt(parts[1], 10) : NaN;
+  });
+  numParts.sort((a, b) => a - b);
+  const isSequential = numParts.every((num, idx) => num === seq + idx);
+  if (!isSequential) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+    return {
+      status: 'needs_owner',
+      sessionId,
+      tasks,
+      notes: ['pm_ticket_id_not_sequential'],
+    };
   }
 
   let maxUsed = seq;
