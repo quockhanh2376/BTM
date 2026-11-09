@@ -4,9 +4,47 @@ import Database from 'better-sqlite3';
 import type { Seat } from '../config.ts';
 import type { EnergyReading, EnergyWindow } from '../energy/quota.ts';
 import type { LoginHealth, LoginState } from '../energy/login.ts';
+import type { Ticket, TicketState, TicketType, TicketSize } from '../ticket/ticket.ts';
+import { goalBranch } from '../ticket/goal.ts';
 
 export type TurnResult = 'ok' | 'timeout' | 'error' | 'rejected';
 export type BoardState = 'pending' | 'in_dev' | 'awaiting_qc' | 'passed' | 'returned' | 'failed' | 'blocked';
+export type GoalState = 'open' | 'in_progress' | 'qc_done' | 'audit_passed' | 'approved' | 'merged';
+
+export interface GoalRow {
+  n: number;
+  title: string;
+  state: GoalState;
+  branch: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TicketRow {
+  project: string;
+  id: string;
+  goal: string;
+  number: number;
+  of: number;
+  title: string;
+  type: TicketType;
+  size: TicketSize;
+  state: TicketState;
+  fix_rounds: number;
+  base_sha: string | null;
+  updated_at: string;
+}
+
+export interface TicketHistoryRow {
+  id: number;
+  project: string;
+  ticket_id: string;
+  from_state: TicketState;
+  to_state: TicketState;
+  by: string;
+  reason: string;
+  at: string;
+}
 
 export interface QueueItem {
   id: number;
@@ -91,6 +129,19 @@ export interface Store {
   latestEnergy(agent: string): EnergyReading | null;
   saveLogin(h: LoginHealth): void;
   latestLogin(agent: string): LoginHealth | null;
+
+  // Plan 4 Task 2:
+  createGoal(project: string, title: string): { n: number; branch: string };
+  getGoal(project: string, n: number): GoalRow | null;
+  listGoals(project: string): GoalRow[];
+  setGoalState(project: string, n: number, state: GoalState, by: string, reason?: string): void;
+  upsertTicket(project: string, t: Ticket): void;
+  getTicketState(project: string, id: string): { state: TicketState; fix_rounds: number; base_sha: string | null } | null;
+  setTicketState(project: string, id: string, to: TicketState, by: string, reason: string, fixRounds?: number, baseSha?: string | null): void;
+  listTickets(project: string, goal?: string): TicketRow[];
+  ticketHistory(project: string, id: string): TicketHistoryRow[];
+  nextTicketSeq(project: string): number;
+  bumpTicketSeq(project: string, usedMax: number): void;
 
   close(): void;
 }
@@ -231,6 +282,49 @@ export function openStore(file: string): Store {
       detail TEXT NOT NULL,
       expires_at TEXT,
       checked_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS goals (
+      project TEXT NOT NULL,
+      n INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      state TEXT NOT NULL,
+      branch TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (project, n)
+    );
+
+    CREATE TABLE IF NOT EXISTS tickets (
+      project TEXT NOT NULL,
+      id TEXT NOT NULL,
+      goal TEXT NOT NULL,
+      number INTEGER NOT NULL,
+      of INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL,
+      size TEXT NOT NULL,
+      state TEXT NOT NULL,
+      fix_rounds INTEGER NOT NULL DEFAULT 0,
+      base_sha TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (project, id)
+    );
+
+    CREATE TABLE IF NOT EXISTS ticket_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT NOT NULL,
+      ticket_id TEXT NOT NULL,
+      from_state TEXT NOT NULL,
+      to_state TEXT NOT NULL,
+      by TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS project_counters (
+      project TEXT PRIMARY KEY,
+      next_ticket_seq INTEGER NOT NULL
     );
   `);
 
@@ -470,6 +564,140 @@ export function openStore(file: string): Store {
     ORDER BY id DESC
     LIMIT 1
   `);
+
+  const getMaxGoalNStmt = db.prepare(`
+    SELECT COALESCE(MAX(n), 0) AS max_n FROM goals WHERE project = ?
+  `);
+
+  const insertGoalStmt = db.prepare(`
+    INSERT INTO goals (project, n, title, state, branch, created_at, updated_at)
+    VALUES (?, ?, ?, 'open', ?, ?, ?)
+  `);
+
+  const getGoalStmt = db.prepare(`
+    SELECT n, title, state, branch, created_at, updated_at
+    FROM goals
+    WHERE project = ? AND n = ?
+  `);
+
+  const listGoalsStmt = db.prepare(`
+    SELECT n, title, state, branch, created_at, updated_at
+    FROM goals
+    WHERE project = ?
+    ORDER BY n ASC
+  `);
+
+  const updateGoalStateStmt = db.prepare(`
+    UPDATE goals SET state = ?, updated_at = ? WHERE project = ? AND n = ?
+  `);
+
+  const upsertTicketStmt = db.prepare(`
+    INSERT INTO tickets (
+      project, id, goal, number, of, title, type, size, state, fix_rounds, base_sha, updated_at
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, ?
+    )
+    ON CONFLICT(project, id) DO UPDATE SET
+      goal = excluded.goal,
+      number = excluded.number,
+      of = excluded.of,
+      title = excluded.title,
+      type = excluded.type,
+      size = excluded.size,
+      updated_at = excluded.updated_at
+  `);
+
+  const getTicketStateStmt = db.prepare(`
+    SELECT state, fix_rounds, base_sha
+    FROM tickets
+    WHERE project = ? AND id = ?
+  `);
+
+  const getTicketRowStmt = db.prepare(`
+    SELECT project, id, goal, number, of, title, type, size, state, fix_rounds, base_sha, updated_at
+    FROM tickets
+    WHERE project = ? AND id = ?
+  `);
+
+  const updateTicketStateStmt = db.prepare(`
+    UPDATE tickets
+    SET state = ?, fix_rounds = ?, base_sha = ?, updated_at = ?
+    WHERE project = ? AND id = ?
+  `);
+
+  const insertTicketHistoryStmt = db.prepare(`
+    INSERT INTO ticket_history (project, ticket_id, from_state, to_state, by, reason, at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const listTicketsAllStmt = db.prepare(`
+    SELECT project, id, goal, number, of, title, type, size, state, fix_rounds, base_sha, updated_at
+    FROM tickets
+    WHERE project = ?
+    ORDER BY CAST(SUBSTR(goal, 2) AS INTEGER) ASC, number ASC
+  `);
+
+  const listTicketsByGoalStmt = db.prepare(`
+    SELECT project, id, goal, number, of, title, type, size, state, fix_rounds, base_sha, updated_at
+    FROM tickets
+    WHERE project = ? AND goal = ?
+    ORDER BY number ASC
+  `);
+
+  const ticketHistoryStmt = db.prepare(`
+    SELECT id, project, ticket_id, from_state, to_state, by, reason, at
+    FROM ticket_history
+    WHERE project = ? AND ticket_id = ?
+    ORDER BY id ASC
+  `);
+
+  const getNextTicketSeqStmt = db.prepare(`
+    SELECT next_ticket_seq FROM project_counters WHERE project = ?
+  `);
+
+  const bumpTicketSeqStmt = db.prepare(`
+    INSERT INTO project_counters (project, next_ticket_seq)
+    VALUES (?, ?)
+    ON CONFLICT(project) DO UPDATE SET
+      next_ticket_seq = MAX(project_counters.next_ticket_seq, excluded.next_ticket_seq)
+  `);
+
+  const createGoalTx = db.transaction((project: string, title: string) => {
+    const row = getMaxGoalNStmt.get(project) as { max_n: number } | undefined;
+    const n = (row?.max_n ?? 0) + 1;
+    const branch = goalBranch(n, title);
+    const now = new Date().toISOString();
+    insertGoalStmt.run(project, n, title, branch, now, now);
+    return { n, branch };
+  });
+
+  const setTicketStateTx = db.transaction((
+    project: string,
+    id: string,
+    to: TicketState,
+    by: string,
+    reason: string,
+    fixRounds?: number,
+    baseSha?: string | null
+  ) => {
+    const row = getTicketRowStmt.get(project, id) as {
+      state: TicketState;
+      fix_rounds: number;
+      base_sha: string | null;
+    } | undefined;
+
+    if (!row) {
+      throw new Error(`Ticket "${id}" not found in project "${project}"`);
+    }
+
+    const fromState = row.state;
+    const newFixRounds = fixRounds !== undefined ? fixRounds : row.fix_rounds;
+    const newBaseSha = baseSha !== undefined ? baseSha : row.base_sha;
+    const now = new Date().toISOString();
+
+    updateTicketStateStmt.run(to, newFixRounds, newBaseSha, now, project, id);
+    insertTicketHistoryStmt.run(project, id, fromState, to, by, reason, now);
+  });
 
   return {
     setActiveProject(path: string): void {
@@ -877,6 +1105,86 @@ export function openStore(file: string): Store {
         res.expiresAt = String(row.expires_at);
       }
       return res;
+    },
+
+    // Plan 4 Task 2:
+    createGoal(project: string, title: string): { n: number; branch: string } {
+      return createGoalTx(project, title);
+    },
+
+    getGoal(project: string, n: number): GoalRow | null {
+      const row = getGoalStmt.get(project, n) as GoalRow | undefined;
+      return row ?? null;
+    },
+
+    listGoals(project: string): GoalRow[] {
+      return listGoalsStmt.all(project) as GoalRow[];
+    },
+
+    setGoalState(project: string, n: number, state: GoalState, by: string, reason?: string): void {
+      const now = new Date().toISOString();
+      updateGoalStateStmt.run(state, now, project, n);
+    },
+
+    upsertTicket(project: string, t: Ticket): void {
+      const now = new Date().toISOString();
+      upsertTicketStmt.run(
+        project,
+        t.id,
+        t.goal,
+        t.number,
+        t.of,
+        t.title,
+        t.type,
+        t.size,
+        now
+      );
+    },
+
+    getTicketState(
+      project: string,
+      id: string
+    ): { state: TicketState; fix_rounds: number; base_sha: string | null } | null {
+      const row = getTicketStateStmt.get(project, id) as {
+        state: TicketState;
+        fix_rounds: number;
+        base_sha: string | null;
+      } | undefined;
+      return row ?? null;
+    },
+
+    setTicketState(
+      project: string,
+      id: string,
+      to: TicketState,
+      by: string,
+      reason: string,
+      fixRounds?: number,
+      baseSha?: string | null
+    ): void {
+      setTicketStateTx(project, id, to, by, reason, fixRounds, baseSha);
+    },
+
+    listTickets(project: string, goal?: string): TicketRow[] {
+      if (goal !== undefined) {
+        return listTicketsByGoalStmt.all(project, goal) as TicketRow[];
+      }
+      return listTicketsAllStmt.all(project) as TicketRow[];
+    },
+
+    ticketHistory(project: string, id: string): TicketHistoryRow[] {
+      return ticketHistoryStmt.all(project, id) as TicketHistoryRow[];
+    },
+
+    nextTicketSeq(project: string): number {
+      const row = getNextTicketSeqStmt.get(project) as { next_ticket_seq: number } | undefined;
+      return row ? row.next_ticket_seq : 1;
+    },
+
+    bumpTicketSeq(project: string, usedMax: number): void {
+      const current = this.nextTicketSeq(project);
+      const next = Math.max(current, usedMax + 1);
+      bumpTicketSeqStmt.run(project, next);
     },
 
     close(): void {

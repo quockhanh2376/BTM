@@ -14,3 +14,5 @@
 - 2026-11-09 13:17 · Cheki · PR #4 plan3-energy→main (chờ Zon merge). Tạo nhánh plan4-tickets từ plan3-energy; giao P4-T1 cho V
 - 2026-11-09 13:31 · V · P4-T1 xong (OK). Cheki: tsc sạch, vitest 540/561 (21 Windows), 20 test mới pass, goalBranch qua git check-ref-format. Giao Q review
 - 2026-11-09 13:37 · Q · P4-T1 review OK. Cheki: accepted, commit. Giao P4-T2 (store goals/tickets/history/counter) cho V
+- 2026-11-09 13:56 · V · P4-T2 xong (OK). Cheki: tsc sạch, vitest 545/566 (21 Windows), store 26/26. Sửa plan Task 8: bỏ yêu cầu lịch sử goal (không có bảng, tickets.md chỉ yêu cầu lịch sử ticket). Giao Q review
+- 2026-11-09 14:01 · Q · P4-T2 review OK. Cheki: accepted, commit. Giao P4-T3 (init project với KEY) cho V

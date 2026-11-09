@@ -93,9 +93,9 @@
 - `listTickets(project, goal?)`, `ticketHistory(project, id)`.
 - `nextTicketSeq(project): number` (bắt đầu 1), `bumpTicketSeq(project, usedMax: number)` – counter = max(counter, usedMax+1), không bao giờ giảm.
 
-- [ ] **Step 1: Test:** tạo G1, G2 → n 1, 2; project khác bắt đầu lại 1. `setTicketState` pending→in_dev→passed tạo 2 dòng history đúng from/to/by/reason. `bumpTicketSeq(p, 12)` rồi `bumpTicketSeq(p, 5)` → `nextTicketSeq` = 13. Mở lại DB (close/open) giữ nguyên counter và state.
-- [ ] **Step 2–4:** FAIL → implement (`CREATE TABLE IF NOT EXISTS`, khoá `(project, n)` / `(project, id)`) → PASS.
-- [ ] **Step 5:** Commit `feat: store goals, tickets, history, id counter (P4 Task 2)`.
+- [x] **Step 1: Test:** tạo G1, G2 → n 1, 2; project khác bắt đầu lại 1. `setTicketState` pending→in_dev→passed tạo 2 dòng history đúng from/to/by/reason. `bumpTicketSeq(p, 12)` rồi `bumpTicketSeq(p, 5)` → `nextTicketSeq` = 13. Mở lại DB (close/open) giữ nguyên counter và state.
+- [x] **Step 2–4:** FAIL → implement (`CREATE TABLE IF NOT EXISTS`, khoá `(project, n)` / `(project, id)`) → PASS.
+- [x] **Step 5:** Commit `feat: store goals, tickets, history, id counter (P4 Task 2)`.
 
 ### Task 3: Init project với KEY
 
@@ -172,7 +172,7 @@ Luồng: goal `qc_done` + có ghế audit → agent audit ≠ mọi coder của 
 
 - Chỉ nhận khi goal `qc_done` (không có ghế audit) hoặc `audit_passed`; working tree sạch; không có phiên chạy (khoá `btm.lock`).
 - `approved` → `git checkout main` → `git merge --no-ff goal/... -m "G<n>: <tiêu đề>"` → `merged`. Conflict → `merge --abort`, quay về nhánh cũ, goal giữ trạng thái, `code: 'conflict'`.
-- [ ] **Step 1: Test:** goal `in_progress` → `not_ready`; goal `qc_done` → main có merge commit, goal `merged`, history có `approved` và `merged`; conflict giả (sửa cùng dòng trên main) → `conflict`, `git rev-parse main` không đổi. CLI `approve G9` không tồn tại → exit 1.
+- [ ] **Step 1: Test:** goal `in_progress` → `not_ready`; goal `qc_done` → main có merge commit, goal `merged`; conflict giả (sửa cùng dòng trên main) → `conflict`, `git rev-parse main` không đổi. CLI `approve G9` không tồn tại → exit 1.
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5:** Commit `feat: owner approves and merges goals (P4 Task 8)`.
 
