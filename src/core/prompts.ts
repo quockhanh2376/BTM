@@ -39,7 +39,14 @@ export function pmPrompt(goals: string[], notes?: Array<string | PromptNote>): s
   return lines.join('\n');
 }
 
-export function devPrompt(card: TaskCard, fixNotes: string[] = [], allow: string[] = []): string {
+export function devPrompt(
+  card: TaskCard,
+  fixNotes: string[] = [],
+  allow: string[] = [],
+  handoffOrOptions?: boolean | { handoff?: boolean }
+): string {
+  const isHandoff =
+    typeof handoffOrOptions === 'boolean' ? handoffOrOptions : Boolean(handoffOrOptions?.handoff);
   const goal = card.goal.replace(/\r?\n/g, ' ').trim();
   const scope = card.scope.map((s) => s.replace(/\r?\n/g, ' ').trim()).join(', ');
   const doneWhen = card.done_when.replace(/\r?\n/g, ' ').trim();
@@ -58,6 +65,9 @@ export function devPrompt(card: TaskCard, fixNotes: string[] = [], allow: string
   if (card.note) {
     const noteId = card.note.replace(/^team\/inbox\//, '').replace(/\.md$/, '');
     lines.splice(2, 0, `Đọc team/inbox/${noteId}.md và ảnh đính kèm; làm/chấm theo ảnh.`);
+  }
+  if (isHandoff) {
+    lines.push(`Bàn giao: đọc git log nhánh phiên và team/reports/${card.id}-dev.md trước khi sửa`);
   }
   return lines.join('\n');
 }

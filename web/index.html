@@ -435,6 +435,35 @@
       text-align: right;
     }
 
+    .seat-swap-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .seat-swap-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .seat-swap-select {
+      background-color: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+
+    .seat-swap-select:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     .last-line-container {
       display: flex;
       flex-direction: column;
@@ -1420,6 +1449,10 @@
           <div class="seat-info-item"><span>Bắt đầu:</span><span id="pm-since">—</span></div>
           <div class="seat-info-item"><span>Số lượt:</span><span id="pm-turns">0</span></div>
         </div>
+        <div class="seat-swap-row">
+          <label for="pm-agent-select" class="seat-swap-label">Người ngồi ghế</label>
+          <select id="pm-agent-select" class="seat-swap-select" aria-label="Người ngồi ghế"></select>
+        </div>
         <div class="last-line-container">
           <span class="last-line-label">Dòng log cuối:</span>
           <pre class="last-line-text" id="pm-last-line">—</pre>
@@ -1469,6 +1502,10 @@
           <div class="seat-info-item"><span>Bắt đầu:</span><span id="dev-since">—</span></div>
           <div class="seat-info-item"><span>Số lượt:</span><span id="dev-turns">0</span></div>
         </div>
+        <div class="seat-swap-row">
+          <label for="dev-agent-select" class="seat-swap-label">Người ngồi ghế</label>
+          <select id="dev-agent-select" class="seat-swap-select" aria-label="Người ngồi ghế"></select>
+        </div>
         <div class="last-line-container">
           <span class="last-line-label">Dòng log cuối:</span>
           <pre class="last-line-text" id="dev-last-line">—</pre>
@@ -1517,6 +1554,10 @@
           <div class="seat-info-item"><span>Task:</span><span id="qc-task">—</span></div>
           <div class="seat-info-item"><span>Bắt đầu:</span><span id="qc-since">—</span></div>
           <div class="seat-info-item"><span>Số lượt:</span><span id="qc-turns">0</span></div>
+        </div>
+        <div class="seat-swap-row">
+          <label for="qc-agent-select" class="seat-swap-label">Người ngồi ghế</label>
+          <select id="qc-agent-select" class="seat-swap-select" aria-label="Người ngồi ghế"></select>
         </div>
         <div class="last-line-container">
           <span class="last-line-label">Dòng log cuối:</span>
@@ -2014,11 +2055,18 @@
 
       function updateApproveButton(snapshot) {
         if (!approveBtn) return;
+        var status = snapshot && snapshot.session ? snapshot.session.status : null;
         if (snapshot && snapshot.session && snapshot.session.status === 'awaiting_approval') {
           approveBtn.disabled = false;
+          approveBtn.textContent = 'Duyệt thẻ';
+          approveBtn.removeAttribute('title');
+        } else if (status === 'needs_owner' || status === 'stopped') {
+          approveBtn.disabled = false;
+          approveBtn.textContent = 'Tiếp tục phiên';
           approveBtn.removeAttribute('title');
         } else {
           approveBtn.disabled = true;
+          approveBtn.textContent = 'Duyệt thẻ';
           approveBtn.setAttribute('title', 'Không có thẻ chờ duyệt');
         }
       }
@@ -2438,7 +2486,7 @@
         });
       }
 
-      function renderSeat(seatKey, cardData, isCurrentHolder) {
+      function renderSeat(seatKey, cardData, isCurrentHolder, isBusy) {
         var cardEl = document.getElementById('seat-card-' + seatKey);
         if (!cardEl) return;
 
@@ -2446,6 +2494,28 @@
           cardEl.classList.add('is-holder');
         } else {
           cardEl.classList.remove('is-holder');
+        }
+
+        var selectEl = document.getElementById(seatKey + '-agent-select');
+        if (selectEl) {
+          selectEl.disabled = Boolean(isBusy);
+          if (cardData && Array.isArray(cardData.candidates)) {
+            var currentOptions = Array.from(selectEl.options).map(function (o) { return o.value; });
+            var sameOptions = currentOptions.length === cardData.candidates.length &&
+              currentOptions.every(function (v, i) { return v === cardData.candidates[i]; });
+            if (!sameOptions) {
+              clearChildren(selectEl);
+              cardData.candidates.forEach(function (cand) {
+                var opt = document.createElement('option');
+                opt.value = cand;
+                opt.textContent = cand;
+                selectEl.appendChild(opt);
+              });
+            }
+            if (document.activeElement !== selectEl && cardData.agent) {
+              selectEl.value = cardData.agent;
+            }
+          }
         }
 
         if (cardData) {
@@ -2614,9 +2684,10 @@
             seatsMap[s.seat] = s;
           });
         }
-        renderSeat('pm', seatsMap['pm'], state.holder === 'pm');
-        renderSeat('dev', seatsMap['dev'], state.holder === 'dev');
-        renderSeat('qc', seatsMap['qc'], state.holder === 'qc');
+        var isBusy = (state.session && state.session.status === 'running') || Boolean(state.holder);
+        renderSeat('pm', seatsMap['pm'], state.holder === 'pm', isBusy);
+        renderSeat('dev', seatsMap['dev'], state.holder === 'dev', isBusy);
+        renderSeat('qc', seatsMap['qc'], state.holder === 'qc', isBusy);
 
         // Task Board
         latestTasks = Array.isArray(state.tasks) ? state.tasks : [];
@@ -2845,6 +2916,31 @@
         });
       }
 
+      ['pm', 'dev', 'qc'].forEach(function (sk) {
+        var selectEl = document.getElementById(sk + '-agent-select');
+        if (selectEl) {
+          selectEl.addEventListener('change', async function () {
+            var newAgent = selectEl.value;
+            try {
+              var res = await postJson('/api/seat', { seat: sk, agent: newAgent });
+              if (res && res.error) {
+                showFeedback(topFeedback, res.error, true);
+              } else {
+                showFeedback(topFeedback, 'Đã đổi người ngồi ghế ' + sk, false);
+              }
+            } catch (err) {
+              showFeedback(topFeedback, err.message, true);
+              if (latestSnapshot && Array.isArray(latestSnapshot.seats)) {
+                var prevCard = latestSnapshot.seats.find(function (s) { return s.seat === sk; });
+                if (prevCard) {
+                  selectEl.value = prevCard.agent;
+                }
+              }
+            }
+          });
+        }
+      });
+
       if (stopBtn) {
         stopBtn.addEventListener('click', async function () {
           if (!confirm('Bạn có chắc chắn muốn Dừng khẩn cấp? Agent đang chạy sẽ bị dừng và hàng đợi sẽ bị xóa.')) {
@@ -2868,13 +2964,17 @@
 
       if (approveBtn) {
         approveBtn.addEventListener('click', async function () {
+          var status = latestSnapshot && latestSnapshot.session ? latestSnapshot.session.status : null;
+          var isResume = status === 'needs_owner' || status === 'stopped';
+          var endpoint = isResume ? '/api/resume' : '/api/approve';
+          var successMsg = isResume ? 'Đã gửi lệnh tiếp tục phiên' : 'Đã duyệt thẻ';
           approveBtn.disabled = true;
           try {
-            var res = await postJson('/api/approve', {});
+            var res = await postJson(endpoint, {});
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
-              showFeedback(topFeedback, 'Đã duyệt thẻ', false);
+              showFeedback(topFeedback, successMsg, false);
             }
           } catch (err) {
             showFeedback(topFeedback, err.message, true);

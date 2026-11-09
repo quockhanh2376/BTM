@@ -1,7 +1,7 @@
 import { existsSync, statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Config, Seat, Tool } from '../config.ts';
-import type { Store, BoardState, QueueItem } from '../store/db.ts';
+import { effectiveSeats, type Store, type BoardState, type QueueItem } from '../store/db.ts';
 import { loadTaskCards } from '../task/card.ts';
 import type { EnergyWindow } from '../energy/quota.ts';
 import type { LoginState } from '../energy/login.ts';
@@ -25,6 +25,7 @@ export interface SeatCard {
     state: LoginState;
     detail: string;
   };
+  candidates: string[];
 }
 
 export interface AccountCard {
@@ -166,10 +167,14 @@ function getAccounts(store: Store, cfg: Config): AccountCard[] {
 }
 
 function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
-  const seats = Object.keys(cfg.seats) as Seat[];
+  const effSeats = effectiveSeats(cfg, store);
+  const seats = Object.keys(effSeats) as Seat[];
   return seats.map((seat) => {
-    const agent = cfg.seats[seat];
+    const agent = effSeats[seat];
     const tool = cfg.agents[agent].tool;
+    const candidates = Object.entries(cfg.agents)
+      .filter(([_, a]) => a.can_sit.includes(seat))
+      .map(([name]) => name);
     return {
       seat,
       agent,
@@ -181,6 +186,7 @@ function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
       lastLine: '',
       energy: getSeatEnergy(store, agent),
       login: getSeatLogin(store, agent),
+      candidates,
     };
   });
 }
@@ -296,10 +302,14 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const runningTurn = turns.find((t) => t.ended_at === null);
   const holder: Seat | null = runningTurn ? runningTurn.seat : null;
 
-  const seatKeys = Object.keys(cfg.seats) as Seat[];
+  const effSeats = effectiveSeats(cfg, store);
+  const seatKeys = Object.keys(effSeats) as Seat[];
   const seats: SeatCard[] = seatKeys.map((seat) => {
-    const agent = cfg.seats[seat];
+    const agent = effSeats[seat];
     const tool = cfg.agents[agent].tool;
+    const candidates = Object.entries(cfg.agents)
+      .filter(([_, a]) => a.can_sit.includes(seat))
+      .map(([name]) => name);
 
     let status: 'running' | 'waiting' | 'idle' = 'idle';
     if (holder === seat) {
@@ -329,6 +339,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       lastLine,
       energy: getSeatEnergy(store, agent),
       login: getSeatLogin(store, agent),
+      candidates,
     };
   });
 

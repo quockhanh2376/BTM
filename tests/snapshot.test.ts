@@ -125,6 +125,7 @@ describe('Snapshot and Log Tail', () => {
         lastLine: '',
         energy: { status: 'unknown', windows: [], readAt: '' },
         login: { state: 'unknown', detail: 'Chưa rõ' },
+        candidates: ['elon'],
       });
       expect(snap.seats[1]).toEqual({
         seat: 'dev',
@@ -137,6 +138,7 @@ describe('Snapshot and Log Tail', () => {
         lastLine: '',
         energy: { status: 'unknown', windows: [], readAt: '' },
         login: { state: 'unknown', detail: 'Chưa rõ' },
+        candidates: ['jacky', 'jenny'],
       });
       expect(snap.seats[2]).toEqual({
         seat: 'qc',
@@ -149,7 +151,22 @@ describe('Snapshot and Log Tail', () => {
         lastLine: '',
         energy: { status: 'unknown', windows: [], readAt: '' },
         login: { state: 'unknown', detail: 'Chưa rõ' },
+        candidates: ['elon', 'jenny'],
       });
+    });
+
+    it('uses effectiveSeats and provides candidates for each seat card', () => {
+      store.setSetting('seat:dev', 'jenny');
+      const snap = buildSnapshot(store, cfg);
+      const devCard = snap.seats.find((s) => s.seat === 'dev');
+      expect(devCard?.agent).toBe('jenny');
+      expect(devCard?.candidates).toEqual(['jacky', 'jenny']);
+
+      const pmCard = snap.seats.find((s) => s.seat === 'pm');
+      expect(pmCard?.candidates).toEqual(['elon']);
+
+      const qcCard = snap.seats.find((s) => s.seat === 'qc');
+      expect(qcCard?.candidates).toEqual(['elon', 'jenny']);
     });
 
     it('returns project set and 3 cards idle when active project exists but no session', () => {

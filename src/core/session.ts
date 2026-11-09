@@ -2,7 +2,7 @@ import { realpathSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstat
 import { relative, isAbsolute, join, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { checkForbiddenEnv } from '../config.ts';
-import type { Store, TurnResult } from '../store/db.ts';
+import { effectiveSeats, type Store, type TurnResult, type BoardState } from '../store/db.ts';
 import type { Runner } from '../runner/run.ts';
 import { parseTaskCard, CardError, type TaskCard } from '../task/card.ts';
 import { runGate } from '../gate/gate.ts';
@@ -129,10 +129,44 @@ async function workOnCards(
   const gateFn = d.gate ?? (d.monitor ? d.monitor.gate.bind(d.monitor) : undefined);
 
   for (const card of cards) {
-    const base = headSha(d.repo);
+    const taskStates = d.store.listTaskStates(sessionId).filter((s) => s.task_id === card.id);
+    const existingState = taskStates.length > 0 ? taskStates[taskStates.length - 1] : undefined;
+    const initialTaskState = existingState ? existingState.state : (tasks[card.id] ?? 'pending');
+
+    if (initialTaskState === 'passed' || initialTaskState === 'failed' || initialTaskState === 'blocked') {
+      tasks[card.id] = initialTaskState;
+      continue;
+    }
+
+    let base = existingState?.base_sha || null;
     let fixNotes: string[] = [];
-    let fixRounds = 0;
+    let fixRounds = existingState ? existingState.fix_rounds : 0;
+    if (initialTaskState === 'returned') {
+      const reportsDir = join(d.repo, 'team', 'reports');
+      const qcReportPath = join(reportsDir, `${card.id}-qc.json`);
+      if (existsSync(qcReportPath)) {
+        try {
+          const qcData = JSON.parse(readFileSync(qcReportPath, 'utf8'));
+          if (Array.isArray(qcData.bugs) || Array.isArray(qcData.fix)) {
+            fixNotes = [...(qcData.bugs || []), ...(qcData.fix || [])];
+          }
+        } catch {}
+      }
+      if (fixNotes.length === 0) {
+        const failures = d.store.listHandoffFailures(sessionId).filter((f) => f.task_id === card.id);
+        if (failures.length > 0) {
+          fixNotes = failures.map((f) => f.reason);
+        }
+      }
+    }
+
+    let skipDevThisRound = (initialTaskState === 'awaiting_qc');
     const coders = new Set<string>();
+    for (const t of d.store.listTurns(sessionId)) {
+      if (t.seat === 'dev' && t.task_id === card.id && t.agent) {
+        coders.add(t.agent);
+      }
+    }
 
     let cardImages: string[] | undefined;
     if (card.note) {
@@ -152,153 +186,181 @@ async function workOnCards(
     }
 
     while (true) {
-      const devAgent = d.cfg.seats.dev;
+      const seats = effectiveSeats(d.cfg, d.store);
+      const devAgent = Object.hasOwn(seats, 'dev') ? seats.dev : d.cfg.seats.dev;
       const devAuthor = authorForAgent(devAgent);
-      coders.add(devAgent);
 
-      if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+      const pastDevTurns = d.store
+        .listTurns(sessionId)
+        .filter((t) => t.seat === 'dev' && t.task_id === card.id);
+      const prevCoder = pastDevTurns.length > 0 ? pastDevTurns[pastDevTurns.length - 1].agent : null;
+
+      const currentStates = d.store.listTaskStates(sessionId).filter((s) => s.task_id === card.id);
+      const currentState = currentStates.length > 0 ? currentStates[currentStates.length - 1].state : tasks[card.id];
+      const isHandoff =
+        (currentState === 'returned' || currentState === 'in_dev') &&
+        prevCoder !== null &&
+        prevCoder !== devAgent;
+
+      if (!skipDevThisRound) {
+        if (!base) {
+          base = headSha(d.repo);
+        }
+        coders.add(devAgent);
+
+        if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+          try {
+            await refreshFn([devAgent]);
+          } catch {}
+        }
+        if (gateFn) {
+          const gateCheck = gateFn(devAgent);
+          if (!gateCheck.ok) {
+            d.store.recordHandoffFailure(sessionId, card.id, gateCheck.reason);
+            return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+          }
+        }
+
+        if (isOutOfTurns(d.store, sessionId, d.cfg, 'dev')) {
+          return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
+        }
+
+        d.store.setTaskState(sessionId, card.id, 'in_dev', fixRounds, base);
+        const devTurnId = d.store.startTurn(sessionId, 'dev', devAgent, card.id);
+        const devLogFile = join(d.logDir, `turn-${devTurnId}.log`);
+        d.store.setTurnLog(devTurnId, devLogFile);
+        const devPromptText = devPrompt(card, fixNotes, d.cfg.runner.agy_allow_commands, isHandoff);
+        let devOutput;
         try {
-          await refreshFn([devAgent]);
-        } catch {}
-      }
-      if (gateFn) {
-        const gateCheck = gateFn(devAgent);
-        if (!gateCheck.ok) {
-          d.store.recordHandoffFailure(sessionId, card.id, gateCheck.reason);
-          return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+          devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
+            signal: d.signal,
+            images: cardImages,
+          });
+        } catch (err) {
+          const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+          const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+          d.store.endTurn(devTurnId, 'error', reason);
+          if (isAbort) {
+            return { status: 'stopped', sessionId, tasks, notes: [reason] };
+          }
+          try {
+            commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
+          } catch {
+            // commitAll error: keep needs_owner, do not throw
+          }
+          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
         }
-      }
 
-      if (isOutOfTurns(d.store, sessionId, d.cfg, 'dev')) {
-        return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
-      }
-
-      d.store.setTaskState(sessionId, card.id, 'in_dev', fixRounds);
-      const devTurnId = d.store.startTurn(sessionId, 'dev', devAgent, card.id);
-      const devLogFile = join(d.logDir, `turn-${devTurnId}.log`);
-      d.store.setTurnLog(devTurnId, devLogFile);
-      const devPromptText = devPrompt(card, fixNotes, d.cfg.runner.agy_allow_commands);
-      let devOutput;
-      try {
-        devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
-          signal: d.signal,
-          images: cardImages,
-        });
-      } catch (err) {
-        const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
-        const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
-        d.store.endTurn(devTurnId, 'error', reason);
-        if (isAbort) {
-          return { status: 'stopped', sessionId, tasks, notes: [reason] };
+        if (devOutput.timedOut) {
+          const result: TurnResult = 'timeout';
+          const reason = 'timeout';
+          d.store.endTurn(devTurnId, result, reason);
+          try {
+            commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
+          } catch {
+            // commitAll error: keep needs_owner, do not throw
+          }
+          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
         }
-        try {
-          commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
-        } catch {
-          // commitAll error: keep needs_owner, do not throw
+
+        const devText = (devOutput.lastMessage || '') + ' ' + (devOutput.output || '');
+        const hasAutoDenied =
+          (devOutput.output || '').includes('auto-denied') ||
+          (devOutput.lastMessage || '').includes('auto-denied');
+
+        if (!hasAutoDenied && devOutput.exitCode !== 0) {
+          const result: TurnResult = 'error';
+          const reason = `exit_${devOutput.exitCode}`;
+          d.store.endTurn(devTurnId, result, reason);
+          try {
+            commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
+          } catch {
+            // commitAll error: keep needs_owner, do not throw
+          }
+          return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
         }
-        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-      }
 
-      if (devOutput.timedOut) {
-        const result: TurnResult = 'timeout';
-        const reason = 'timeout';
-        d.store.endTurn(devTurnId, result, reason);
-        try {
-          commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
-        } catch {
-          // commitAll error: keep needs_owner, do not throw
+        if (devText.includes('BLOCKED')) {
+          d.store.endTurn(devTurnId, 'ok');
+          try {
+            commitAll(d.repo, `${card.id}: blocked`, devAuthor);
+          } catch {
+            // commitAll error: keep needs_owner, do not throw
+          }
+          tasks[card.id] = 'blocked';
+          d.store.setTaskState(sessionId, card.id, 'blocked', fixRounds, base);
+          return { status: 'needs_owner', sessionId, tasks, notes: ['Dev reported BLOCKED'] };
         }
-        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-      }
 
-      const devText = (devOutput.lastMessage || '') + ' ' + (devOutput.output || '');
-      const hasAutoDenied =
-        (devOutput.output || '').includes('auto-denied') ||
-        (devOutput.lastMessage || '').includes('auto-denied');
-
-      if (!hasAutoDenied && devOutput.exitCode !== 0) {
-        const result: TurnResult = 'error';
-        const reason = `exit_${devOutput.exitCode}`;
-        d.store.endTurn(devTurnId, result, reason);
-        try {
-          commitAll(d.repo, `WIP ${card.id}: ${reason}`, devAuthor);
-        } catch {
-          // commitAll error: keep needs_owner, do not throw
-        }
-        return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-      }
-
-      if (devText.includes('BLOCKED')) {
         d.store.endTurn(devTurnId, 'ok');
         try {
-          commitAll(d.repo, `${card.id}: blocked`, devAuthor);
-        } catch {
-          // commitAll error: keep needs_owner, do not throw
+          commitAll(d.repo, `${card.id}: dev implementation`, devAuthor);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
         }
-        tasks[card.id] = 'blocked';
-        d.store.setTaskState(sessionId, card.id, 'blocked', fixRounds);
-        return { status: 'needs_owner', sessionId, tasks, notes: ['Dev reported BLOCKED'] };
+
+        const timeoutMs = (d.cfg.turn.timeout_minutes.dev ?? 0) * 60 * 1000;
+        const gateResult = runGate(d.repo, card, base, d.cfg.gate.commands, {
+          timeoutMs,
+          require_report_schema: d.cfg.gate.require_report_schema,
+        });
+        if (!gateResult.ok || hasAutoDenied) {
+          const failureReasons: string[] = [];
+          if (hasAutoDenied) {
+            failureReasons.push('command_denied');
+          }
+          if (!gateResult.ok) {
+            failureReasons.push(...gateResult.reasons);
+          }
+
+          d.store.endTurn(devTurnId, 'rejected', failureReasons.join('; '));
+          for (const reason of failureReasons) {
+            d.store.recordHandoffFailure(sessionId, card.id, reason);
+          }
+
+          const deniedNote = 'command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ';
+          fixNotes = [
+            ...(hasAutoDenied ? [deniedNote] : []),
+            ...(!gateResult.ok ? gateResult.reasons : []),
+          ];
+          fixRounds++;
+          if (fixRounds > d.cfg.turn.max_fix_rounds) {
+            tasks[card.id] = 'failed';
+            d.store.setTaskState(sessionId, card.id, 'failed', fixRounds, base);
+            return {
+              status: 'needs_owner',
+              sessionId,
+              tasks,
+              notes: [
+                `Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${failureReasons.join(', ')}`,
+              ],
+            };
+          }
+          d.store.setTaskState(sessionId, card.id, 'returned', fixRounds, base);
+          continue;
+        }
+      } else {
+        skipDevThisRound = false;
+        if (!base) {
+          base = existingState?.base_sha || headSha(d.repo);
+        }
       }
 
-      d.store.endTurn(devTurnId, 'ok');
-      try {
-        commitAll(d.repo, `${card.id}: dev implementation`, devAuthor);
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
-      }
-
-      const timeoutMs = (d.cfg.turn.timeout_minutes.dev ?? 0) * 60 * 1000;
-      const gateResult = runGate(d.repo, card, base, d.cfg.gate.commands, {
-        timeoutMs,
-        require_report_schema: d.cfg.gate.require_report_schema,
-      });
-      if (!gateResult.ok || hasAutoDenied) {
-        const failureReasons: string[] = [];
-        if (hasAutoDenied) {
-          failureReasons.push('command_denied');
-        }
-        if (!gateResult.ok) {
-          failureReasons.push(...gateResult.reasons);
-        }
-
-        d.store.endTurn(devTurnId, 'rejected', failureReasons.join('; '));
-        for (const reason of failureReasons) {
-          d.store.recordHandoffFailure(sessionId, card.id, reason);
-        }
-
-        const deniedNote = 'command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ';
-        fixNotes = [
-          ...(hasAutoDenied ? [deniedNote] : []),
-          ...(!gateResult.ok ? gateResult.reasons : []),
-        ];
-        fixRounds++;
-        if (fixRounds > d.cfg.turn.max_fix_rounds) {
-          tasks[card.id] = 'failed';
-          d.store.setTaskState(sessionId, card.id, 'failed', fixRounds);
-          return {
-            status: 'needs_owner',
-            sessionId,
-            tasks,
-            notes: [
-              `Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${failureReasons.join(', ')}`,
-            ],
-          };
-        }
-        d.store.setTaskState(sessionId, card.id, 'returned', fixRounds);
-        continue;
-      }
-
-      d.store.setTaskState(sessionId, card.id, 'awaiting_qc', fixRounds);
+      d.store.setTaskState(sessionId, card.id, 'awaiting_qc', fixRounds, base);
 
       // Rule 8: coder_cannot_qc_same_task
-      const qcAgent = d.cfg.seats.qc;
+      const qcAgent = Object.hasOwn(seats, 'qc') ? seats.qc : d.cfg.seats.qc;
       if (d.cfg.rules.coder_cannot_qc_same_task && coders.has(qcAgent)) {
+        d.store.recordHandoffFailure(sessionId, card.id, 'coder_cannot_qc_same_task');
         return {
           status: 'needs_owner',
           sessionId,
           tasks,
-          notes: [`Seat 'qc' is occupied by '${qcAgent}', who also coded task '${card.id}'`],
+          notes: [
+            `Seat 'qc' is occupied by '${qcAgent}', who also coded task '${card.id}'`,
+            'coder_cannot_qc_same_task',
+          ],
         };
       }
 
@@ -398,7 +460,7 @@ async function workOnCards(
 
       if (qcResult.verdict === 'pass') {
         tasks[card.id] = 'passed';
-        d.store.setTaskState(sessionId, card.id, 'passed', fixRounds);
+        d.store.setTaskState(sessionId, card.id, 'passed', fixRounds, base);
         break;
       }
 
@@ -406,7 +468,7 @@ async function workOnCards(
       fixNotes = [...qcResult.bugs, ...qcResult.fix];
       if (fixRounds > d.cfg.turn.max_fix_rounds) {
         tasks[card.id] = 'failed';
-        d.store.setTaskState(sessionId, card.id, 'failed', fixRounds);
+        d.store.setTaskState(sessionId, card.id, 'failed', fixRounds, base);
         return {
           status: 'needs_owner',
           sessionId,
@@ -414,8 +476,33 @@ async function workOnCards(
           notes: [`Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: ${fixNotes.join(', ')}`],
         };
       }
-      d.store.setTaskState(sessionId, card.id, 'returned', fixRounds);
+      d.store.setTaskState(sessionId, card.id, 'returned', fixRounds, base);
     }
+  }
+
+  const failedOrBlocked = new Set<string>();
+  for (const [id, state] of Object.entries(tasks)) {
+    if (state === 'failed' || state === 'blocked') {
+      failedOrBlocked.add(id);
+    }
+  }
+  for (const s of d.store.listTaskStates(sessionId)) {
+    if (s.state === 'failed' || s.state === 'blocked') {
+      failedOrBlocked.add(s.task_id);
+      if (!tasks[s.task_id]) {
+        tasks[s.task_id] = s.state;
+      }
+    }
+  }
+
+  if (failedOrBlocked.size > 0) {
+    const list = Array.from(failedOrBlocked).sort();
+    return {
+      status: 'needs_owner',
+      sessionId,
+      tasks,
+      notes: [`Các thẻ chưa hoàn thành (failed/blocked): ${list.join(', ')}`],
+    };
   }
 
   return {
@@ -550,7 +637,7 @@ export async function runSession(
   }
 
   try {
-    const pmAgent = d.cfg.seats.pm;
+    const pmAgent = effectiveSeats(d.cfg, d.store).pm;
     const pmAuthor = authorForAgent(pmAgent);
 
     const dirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
@@ -644,7 +731,7 @@ export async function runSession(
     const gateFn = d.gate ?? (d.monitor ? d.monitor.gate.bind(d.monitor) : undefined);
 
     if (refreshFn && d.cfg.energy.read_on.includes('session_open')) {
-      const sittingAgents = Array.from(new Set(Object.values(d.cfg.seats)));
+      const sittingAgents = Array.from(new Set(Object.values(effectiveSeats(d.cfg, d.store))));
       try {
         await refreshFn(sittingAgents);
       } catch {}
@@ -844,8 +931,15 @@ export async function resumeSession(
   }
 
   const session = d.store.getSession(sessionId);
-  if (!session || session.status !== 'awaiting_approval') {
-    throw new Error(`Session ${sessionId} is not in awaiting_approval status`);
+  if (
+    !session ||
+    (session.status !== 'awaiting_approval' &&
+      session.status !== 'needs_owner' &&
+      session.status !== 'stopped')
+  ) {
+    throw new Error(
+      `Session ${sessionId} is not in awaiting_approval, needs_owner, or stopped status`
+    );
   }
 
   if (session.project && session.project !== d.repo) {
@@ -859,7 +953,7 @@ export async function resumeSession(
   try {
     const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
     if (refreshFn && d.cfg.energy.read_on.includes('session_open')) {
-      const sittingAgents = Array.from(new Set(Object.values(d.cfg.seats)));
+      const sittingAgents = Array.from(new Set(Object.values(effectiveSeats(d.cfg, d.store))));
       try {
         await refreshFn(sittingAgents);
       } catch {}
@@ -906,9 +1000,28 @@ export async function resumeSession(
       throw err;
     }
 
+    const existingStates = d.store.listTaskStates(sessionId);
+    const existingStateMap = new Map<string, { state: BoardState; fix_rounds: number }>();
+    for (const s of existingStates) {
+      existingStateMap.set(s.task_id, s);
+    }
+
     for (const card of cards) {
-      tasks[card.id] = 'pending';
-      d.store.setTaskState(sessionId, card.id, 'pending', 0);
+      const existing = existingStateMap.get(card.id);
+      if (existing) {
+        if (
+          existing.state === 'passed' ||
+          existing.state === 'failed' ||
+          existing.state === 'blocked'
+        ) {
+          tasks[card.id] = existing.state;
+        } else {
+          tasks[card.id] = 'pending';
+        }
+      } else {
+        tasks[card.id] = 'pending';
+        d.store.setTaskState(sessionId, card.id, 'pending', 0);
+      }
     }
 
     const outcome = await workOnCards(d, sessionId, cards, tasks);

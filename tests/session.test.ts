@@ -3,7 +3,7 @@ import { writeFileSync, readFileSync, mkdirSync, realpathSync, chmodSync, exists
 import { dirname, join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { loadConfig, type Config, type Seat } from '../src/config.ts';
-import { openStore, type Store } from '../src/store/db.ts';
+import { openStore, effectiveSeats, type Store } from '../src/store/db.ts';
 import { tmpRepo } from './helpers.ts';
 import * as gitModule from '../src/git.ts';
 import { git, commitAll, headSha } from '../src/git.ts';
@@ -3446,6 +3446,415 @@ note: N-${noteId}
       const failures = store.listHandoffFailures(outcome.sessionId!);
       expect(failures.length).toBeGreaterThan(0);
       expect(failures[0].reason).toContain('hồi lúc');
+    });
+  });
+
+  describe('Task 5: Seat swap, effectiveSeats, handoff prompt and QC conflict', () => {
+    it('effectiveSeats returns cfg.seats by default and overridden seat from store setting', () => {
+      const repo = tmpRepo({});
+      const { store, cfg } = makeDeps(repo);
+      const eff1 = effectiveSeats(cfg, store);
+      expect(eff1).toEqual(cfg.seats);
+
+      store.setSetting('seat:dev', 'jenny');
+      const eff2 = effectiveSeats(cfg, store);
+      expect(eff2.dev).toBe('jenny');
+      expect(eff2.pm).toBe(cfg.seats.pm);
+      expect(eff2.qc).toBe(cfg.seats.qc);
+      store.close();
+    });
+
+    it('effectiveSeats ignores override if agent not in cfg.agents or can_sit does not contain seat, and logs', () => {
+      const repo = tmpRepo({});
+      const { store, cfg } = makeDeps(repo);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      // Agent not in cfg.agents
+      store.setSetting('seat:dev', 'unknown_agent');
+      const eff1 = effectiveSeats(cfg, store);
+      expect(eff1.dev).toBe(cfg.seats.dev);
+      expect(logSpy).toHaveBeenCalled();
+
+      logSpy.mockClear();
+
+      // Agent in cfg.agents but can_sit doesn't have 'dev' (elon only has pm, qc)
+      store.setSetting('seat:dev', 'elon');
+      const eff2 = effectiveSeats(cfg, store);
+      expect(eff2.dev).toBe(cfg.seats.dev);
+      expect(logSpy).toHaveBeenCalled();
+
+      logSpy.mockClear();
+
+      // Dangerous prototype keys
+      for (const dangerous of ['__proto__', 'constructor', 'toString']) {
+        store.setSetting('seat:dev', dangerous);
+        const eff3 = effectiveSeats(cfg, store);
+        expect(eff3.dev).toBe(cfg.seats.dev);
+      }
+
+      logSpy.mockRestore();
+      store.close();
+    });
+
+    it('resumeSession resumes needs_owner and stopped sessions without calling PM, preserving fix_rounds and non-pending states', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '1' });
+      const { deps, store } = makeDeps(repo);
+
+      // Create a session in stopped status with 3 tasks
+      const sId = store.createSession(['Resume test'], repo);
+      store.setSessionStatus(sId, 'stopped');
+      mkdirSync(join(repo, 'team', 'tasks'), { recursive: true });
+      writeFileSync(
+        join(repo, 'team', 'tasks', 'T-001.md'),
+        `---\nid: T-001\ngoal: "Task 1"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+      );
+      writeFileSync(
+        join(repo, 'team', 'tasks', 'T-002.md'),
+        `---\nid: T-002\ngoal: "Task 2"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+      );
+      store.setSessionTasks(sId, ['T-001', 'T-002']);
+      store.setTaskState(sId, 'T-001', 'passed', 2);
+      store.setTaskState(sId, 'T-002', 'returned', 1);
+
+      git(repo, 'checkout', '-b', `session/${sId}`);
+      commitAll(repo, 'PM cards', { name: 'elon', email: 'elon@btm.local' });
+
+      let pmCalled = false;
+      let devCalledForT001 = false;
+      let devCalledForT002 = false;
+
+      const { runner } = createFakeRunner([
+        (seat, agent, prompt, cwd) => {
+          if (seat === 'pm') pmCalled = true;
+          if (seat === 'dev') {
+            if (prompt.includes('Task 1')) devCalledForT001 = true;
+            if (prompt.includes('Task 2')) devCalledForT002 = true;
+            writeFileSync(join(cwd, 'src', 'app.ts'), 'dev done');
+            mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+            writeFileSync(
+              join(cwd, 'team', 'reports', 'T-002-dev.md'),
+              `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+            );
+          }
+        },
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'pass',
+            bugs: [],
+            fix: [],
+            confirm: ['ok'],
+          }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await resumeSession(deps, sId);
+      expect(outcome.status).toBe('done');
+      expect(pmCalled).toBe(false);
+      expect(devCalledForT001).toBe(false); // passed was preserved and skipped
+      expect(devCalledForT002).toBe(true);  // returned was resumed
+      expect(outcome.tasks['T-001']).toBe('passed');
+      expect(outcome.tasks['T-002']).toBe('passed');
+
+      store.close();
+    });
+
+    it('devPrompt includes handoff instruction when handoff is true and omits it when false', () => {
+      const card: TaskCard = {
+        id: 'T-001',
+        goal: 'Handoff test',
+        scope: ['src/a.ts'],
+        acceptance: ['done'],
+        done_when: 'ok',
+      };
+      const pNormal = devPrompt(card, [], ['cat', 'ls']);
+      expect(pNormal).not.toContain('Bàn giao:');
+
+      const pHandoff = devPrompt(card, [], ['cat', 'ls'], true);
+      expect(pHandoff).toContain('Bàn giao: đọc git log nhánh phiên và team/reports/T-001-dev.md trước khi sửa');
+    });
+
+    it('when dev is swapped to jenny: next dev turn calls runner with jenny', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '1' });
+      const { deps, store } = makeDeps(repo);
+      store.setSetting('seat:dev', 'jenny');
+      store.setSetting('seat:qc', 'elon'); // set qc to elon so no conflict with jenny
+
+      let devAgentCalled = '';
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: "Test seat swap"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+          );
+        },
+        (_s, agent, _p, cwd) => {
+          devAgentCalled = agent;
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'dev done');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'reports', 'T-001-dev.md'),
+            `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+          );
+        },
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'pass',
+            bugs: [],
+            fix: [],
+            confirm: ['ok'],
+          }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Test seat swap'], { approved: true });
+      expect(outcome.status).toBe('done');
+      expect(devAgentCalled).toBe('jenny');
+      store.close();
+    });
+
+    it('when jenny coded card and qc is also jenny: QC fails with coder_cannot_qc_same_task and needs_owner', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '1' });
+      const { deps, store, cfg } = makeDeps(repo);
+      store.setSetting('seat:dev', 'jenny');
+      // cfg.seats.qc is already jenny
+      expect(cfg.seats.qc).toBe('jenny');
+
+      let qcRan = false;
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: "Test coder cannot qc"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+          );
+        },
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'dev done');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'reports', 'T-001-dev.md'),
+            `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+          );
+        },
+        () => {
+          qcRan = true;
+          return { exitCode: 0, output: 'QC run' };
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Test coder cannot qc'], { approved: true });
+      expect(qcRan).toBe(false);
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('coder_cannot_qc_same_task');
+      const failures = store.listHandoffFailures(outcome.sessionId!);
+      expect(failures.length).toBeGreaterThan(0);
+      expect(failures[0].reason).toBe('coder_cannot_qc_same_task');
+      store.close();
+    });
+
+    it('prompt bàn giao xuất hiện khi Dev của một thẻ đang returned/in_dev khác agent đã code thẻ đó trước', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '1' });
+      const { deps, store } = makeDeps(repo);
+
+      let round2DevPrompt = '';
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: "Test handoff prompt"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+          );
+        },
+        (_s, agent, _p, cwd) => {
+          // Dev 1: jacky
+          expect(agent).toBe('jacky');
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'dev 1 done');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'reports', 'T-001-dev.md'),
+            `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+          );
+          // Swap seat to jenny for next turn:
+          store.setSetting('seat:dev', 'jenny');
+          store.setSetting('seat:qc', 'elon');
+        },
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'fail',
+            bugs: ['cần sửa'],
+            fix: ['sửa lại'],
+            confirm: [],
+          }),
+        }),
+        (_s, agent, prompt, cwd) => {
+          // Dev 2: jenny (handoff from jacky)
+          expect(agent).toBe('jenny');
+          round2DevPrompt = prompt;
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'dev 2 done');
+          writeFileSync(
+            join(cwd, 'team', 'reports', 'T-001-dev.md'),
+            `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+          );
+        },
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'pass',
+            bugs: [],
+            fix: [],
+            confirm: ['ok'],
+          }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Test handoff prompt'], { approved: true });
+      expect(outcome.status).toBe('done');
+      expect(round2DevPrompt).toContain('Bàn giao: đọc git log nhánh phiên và team/reports/T-001-dev.md trước khi sửa');
+      store.close();
+    });
+
+    it('dừng sau gate, resume → QC prompt chứa base_sha cũ và diff không rỗng', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'console.log("v1");\n' });
+      const { deps, store } = makeDeps(repo);
+
+      let qcPromptCaptured = '';
+      let initialBaseSha = '';
+      let devRan = false;
+      let stoppedAfterGate = false;
+
+      // Cấu hình gate để dừng sau khi Dev xong và gate qua (chặn QC turn đầu tiên)
+      deps.gate = (_agent: string) => {
+        if (devRan && !stoppedAfterGate) {
+          return { ok: false, reason: 'gate_stop_after_dev_gate' };
+        }
+        return { ok: true };
+      };
+
+      const { runner } = createFakeRunner([
+        // 1. PM
+        (_s, _a, _p, cwd) => {
+          mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'tasks', 'T-001.md'),
+            `---\nid: T-001\ngoal: "Update app to v2"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+          );
+        },
+        // 2. Dev (lần đầu)
+        (_s, _a, _p, cwd) => {
+          initialBaseSha = headSha(cwd);
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'console.log("v2");\n');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'reports', 'T-001-dev.md'),
+            `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+          );
+          devRan = true;
+        },
+      ]);
+      deps.runner = runner;
+
+      const firstOutcome = await runSession(deps, ['Test base_sha resume'], { approved: true });
+      expect(firstOutcome.status).toBe('needs_owner');
+      expect(firstOutcome.notes).toContain('gate_stop_after_dev_gate');
+
+      // Kiểm tra task state trong DB là awaiting_qc
+      const states = store.listTaskStates(firstOutcome.sessionId!);
+      const t001State = states.find((s) => s.task_id === 'T-001');
+      expect(t001State?.state).toBe('awaiting_qc');
+      expect(t001State?.base_sha).toBe(initialBaseSha);
+
+      // Bây giờ resume: mở lại gate cho QC
+      stoppedAfterGate = true;
+      deps.gate = () => ({ ok: true });
+
+      const { runner: resumeRunner } = createFakeRunner([
+        // QC runner
+        (_s, _a, prompt) => {
+          qcPromptCaptured = prompt;
+          return {
+            lastMessage: JSON.stringify({
+              verdict: 'pass',
+              bugs: [],
+              fix: [],
+              confirm: ['ok'],
+            }),
+          };
+        },
+      ]);
+      deps.runner = resumeRunner;
+
+      const resumeOutcome = await resumeSession(deps, firstOutcome.sessionId!);
+      expect(resumeOutcome.status).toBe('done');
+
+      // QC prompt phải chứa base_sha cũ (không phải HEAD của dev commit)
+      expect(qcPromptCaptured).toContain(`base commit ${initialBaseSha}`);
+
+      // Kiểm tra diff từ base_sha trong QC prompt tới HEAD không rỗng
+      const diffOutput = git(repo, 'diff', `${initialBaseSha}..HEAD`, '--', 'src/app.ts');
+      expect(diffOutput.trim()).not.toBe('');
+      expect(diffOutput).toContain('+console.log("v2");');
+
+      store.close();
+    });
+
+    it('kết thúc phiên: nếu còn thẻ failed/blocked (kể cả có từ trước khi resume) → needs_owner kèm danh sách thẻ, không "done"', async () => {
+      const repo = tmpRepo({ 'src/app.ts': '1' });
+      const { deps, store } = makeDeps(repo);
+
+      const sId = store.createSession(['Residual failed/blocked test'], repo);
+      store.setSessionStatus(sId, 'needs_owner');
+      mkdirSync(join(repo, 'team', 'tasks'), { recursive: true });
+      writeFileSync(
+        join(repo, 'team', 'tasks', 'T-001.md'),
+        `---\nid: T-001\ngoal: "Task 1"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+      );
+      writeFileSync(
+        join(repo, 'team', 'tasks', 'T-002.md'),
+        `---\nid: T-002\ngoal: "Task 2"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+      );
+      store.setSessionTasks(sId, ['T-001', 'T-002']);
+      // T-001 đã blocked từ trước khi resume
+      store.setTaskState(sId, 'T-001', 'blocked', 0);
+      store.setTaskState(sId, 'T-002', 'pending', 0);
+
+      git(repo, 'checkout', '-b', `session/${sId}`);
+      commitAll(repo, 'PM cards', { name: 'elon', email: 'elon@btm.local' });
+
+      const { runner } = createFakeRunner([
+        // Dev for T-002
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'dev done');
+          mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
+          writeFileSync(
+            join(cwd, 'team', 'reports', 'T-002-dev.md'),
+            `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+          );
+        },
+        // QC for T-002
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'pass',
+            bugs: [],
+            fix: [],
+            confirm: ['ok'],
+          }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await resumeSession(deps, sId);
+      // Kết quả phải là needs_owner, KHÔNG PHẢI 'done'
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.tasks['T-001']).toBe('blocked');
+      expect(outcome.tasks['T-002']).toBe('passed');
+      // Notes phải kèm danh sách thẻ bị failed/blocked
+      expect(outcome.notes.some((n) => n.includes('T-001'))).toBe(true);
+
+      store.close();
     });
   });
 });

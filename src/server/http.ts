@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, lstat
 import { join, relative, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import type { Config, Seat } from '../config.ts';
-import type { Store } from '../store/db.ts';
+import { effectiveSeats, type Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
 import { commitAll } from '../git.ts';
 import { inboxPath, detectImage } from './inbox.ts';
@@ -22,6 +22,7 @@ export interface HostApi {
     }
   ): Promise<{ ok: boolean; error?: string }>;
   approve(): Promise<{ ok: boolean; error?: string }>;
+  resume?(): Promise<{ ok: boolean; status?: number; error?: string }>;
   stop(): { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
   command(
     to: Seat | 'team',
@@ -29,6 +30,10 @@ export interface HostApi {
   ): { ok: boolean; id?: number; error?: string } | Promise<{ ok: boolean; id?: number; error?: string }>;
   setAutoApprove?(enabled: boolean): void | Promise<void>;
   busy?(): boolean;
+  setSeat?(
+    seat: Seat,
+    agent: string
+  ): { ok: boolean; status?: number; error?: string };
 }
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
@@ -343,6 +348,26 @@ export function createServer(o: {
           return;
         }
 
+        if (pathname === '/api/resume') {
+          const ResumeSchema = z.object({}).passthrough();
+          const parsed = ResumeSchema.safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: 'Invalid body' });
+            return;
+          }
+          if (o.host.busy?.()) {
+            sendJson(res, 409, { error: 'Phiên/lượt đang chạy' });
+            return;
+          }
+          if (o.host.resume) {
+            const result = await o.host.resume();
+            sendJson(res, result.ok ? 200 : (result.status || 400), result);
+          } else {
+            sendJson(res, 501, { error: 'Not implemented' });
+          }
+          return;
+        }
+
         if (pathname === '/api/stop') {
           const StopSchema = z.object({}).passthrough();
           const parsed = StopSchema.safeParse(body);
@@ -356,7 +381,7 @@ export function createServer(o: {
         }
 
         if (pathname === '/api/command') {
-          const allowedSeats = [...Object.keys(o.cfg.seats), 'team'];
+          const allowedSeats = [...Object.keys(effectiveSeats(o.cfg, o.store)), 'team'];
           const CommandSchema = z.object({
             to: z.string().refine((val) => allowedSeats.includes(val), { message: 'Invalid recipient' }),
             text: z.string().trim().min(1).max(2000),
@@ -501,6 +526,49 @@ export function createServer(o: {
             await monitor.refresh(Object.keys(o.cfg.agents), true);
           }
           sendJson(res, 200, { ok: true });
+          return;
+        }
+
+        if (pathname === '/api/seat') {
+          const SeatBodySchema = z.object({
+            seat: z.string(),
+            agent: z.string(),
+          });
+          const parsed = SeatBodySchema.safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
+            return;
+          }
+          if (o.host.busy?.()) {
+            sendJson(res, 409, { error: 'Phiên/lượt đang chạy' });
+            return;
+          }
+          const { seat, agent } = parsed.data;
+          if (!Object.hasOwn(o.cfg.seats, seat)) {
+            sendJson(res, 400, { error: `Ghế "${seat}" không hợp lệ` });
+            return;
+          }
+          if (!Object.hasOwn(o.cfg.agents, agent)) {
+            sendJson(res, 400, { error: `Agent "${agent}" không thể ngồi ghế "${seat}"` });
+            return;
+          }
+          const agentCfg = o.cfg.agents[agent];
+          if (!agentCfg || !agentCfg.can_sit.includes(seat as Seat)) {
+            sendJson(res, 400, { error: `Agent "${agent}" không thể ngồi ghế "${seat}"` });
+            return;
+          }
+          if (o.host.setSeat) {
+            const result = await o.host.setSeat(seat as Seat, agent);
+            if (!result.ok) {
+              sendJson(res, result.status || 400, { error: result.error });
+              return;
+            }
+          } else {
+            const current = effectiveSeats(o.cfg, o.store)[seat as Seat];
+            o.store.setSetting(`seat:${seat}`, agent);
+            console.log(`Đổi ghế ${seat}: ${current} → ${agent}`);
+          }
+          sendJson(res, 200, { ok: true, seat, agent });
           return;
         }
 

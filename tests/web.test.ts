@@ -1190,4 +1190,28 @@ describe('Web Dashboard (web/index.html)', () => {
     });
   });
 
+  describe('Task 5: Seat swap dropdown and disabled when busy', () => {
+    it('each seat card has a label "Người ngồi ghế" and a select element', () => {
+      ['pm', 'dev', 'qc'].forEach((seat) => {
+        expect(html).toContain(`id="seat-card-${seat}"`);
+        expect(html).toContain(`id="${seat}-agent-select"`);
+      });
+      const labelMatches = html.match(/Người ngồi ghế/g);
+      expect(labelMatches).not.toBeNull();
+      expect(labelMatches!.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('handles seat change by sending POST to /api/seat and disables select when busy', () => {
+      expect(html).toContain('/api/seat');
+      expect(html).toMatch(/POST/i);
+      expect(html).toMatch(/agent-select[\s\S]*?disabled\s*=/);
+    });
+
+    it('nút Duyệt thẻ hiện "Tiếp tục phiên" và bật khi needs_owner/stopped (gọi /api/resume), "Duyệt thẻ" khi awaiting_approval', () => {
+      expect(html).toContain('Tiếp tục phiên');
+      expect(html).toContain('/api/resume');
+      expect(html).toMatch(/status\s*===\s*['"]needs_owner['"]\s*\|\|\s*status\s*===\s*['"]stopped['"]/);
+    });
+  });
+
 });

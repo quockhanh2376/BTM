@@ -811,5 +811,50 @@ describe('Store SQLite', () => {
 
       store.close();
     });
+
+    it('task_states.base_sha: migration thêm cột base_sha và lưu base_sha khi setTaskState', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'btm-store-migrate-base-sha-'));
+      const dbPath = join(tmpDir, 'test.db');
+
+      // Tạo DB SQLite cũ với task_states KHÔNG CÓ cột base_sha
+      const rawDb = new Database(dbPath);
+      rawDb.exec(`
+        CREATE TABLE sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          goals_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          ended_at TEXT
+        );
+        CREATE TABLE task_states (
+          session_id INTEGER NOT NULL,
+          task_id TEXT NOT NULL,
+          state TEXT NOT NULL,
+          fix_rounds INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (session_id, task_id)
+        );
+      `);
+      rawDb.close();
+
+      const store = openStore(dbPath);
+
+      // Lưu task state với base_sha
+      store.setTaskState(1, 'T-001', 'in_dev', 0, 'sha-base-1234');
+      const states = store.listTaskStates(1);
+      expect(states).toHaveLength(1);
+      expect(states[0].task_id).toBe('T-001');
+      expect(states[0].state).toBe('in_dev');
+      expect(states[0].base_sha).toBe('sha-base-1234');
+
+      // Cập nhật trạng thái tiếp theo mà không truyền base_sha thì vẫn giữ base_sha cũ
+      store.setTaskState(1, 'T-001', 'awaiting_qc', 0);
+      const states2 = store.listTaskStates(1);
+      expect(states2[0].state).toBe('awaiting_qc');
+      expect(states2[0].base_sha).toBe('sha-base-1234');
+
+      store.close();
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
   });
 });

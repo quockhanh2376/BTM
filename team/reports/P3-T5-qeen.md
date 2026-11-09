@@ -1,0 +1,4 @@
+- Bug: [http.ts:526](/srv/agent-projects/btm/src/server/http.ts:526), host cũng mắc: agent `__proto__`/`constructor`/`toString` gây TypeError → 500 thay vì 400 (đã thử); dùng `Object.hasOwn` và bổ sung test.
+- Cần sửa: Bàn giao chưa dùng được qua luồng thật: API cấm đổi khi chạy, nhưng [resumeSession:870](/srv/agent-projects/btm/src/core/session.ts:870) chỉ nhận `awaiting_approval`, rồi reset task về `pending`; phiên dừng `needs_owner` không thể tiếp tục thẻ `returned`/`in_dev` với Dev mới.
+- Cần sửa: Test bàn giao đang đổi setting ngay trong runner, vượt guard API; cần test dừng phiên → đổi ghế qua host/API → tiếp tục thẻ, kiểm tra prompt và cấm coder cũ làm QC.
+- Bug: [db.ts:105](/srv/agent-projects/btm/src/store/db.ts:105) tin override đã lưu mà không kiểm tra config hiện tại; xóa agent hoặc đổi `can_sit` rồi khởi động lại sẽ khiến snapshot lỗi hoặc chạy agent không còn được phép ngồi ghế.
