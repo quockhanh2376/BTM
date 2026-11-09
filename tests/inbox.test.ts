@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, symlinkSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { inboxPath, detectImage } from '../src/server/inbox.js';
+import { inboxPath, detectImage, readInboxFile } from '../src/server/inbox.js';
+import { execFileSync } from 'node:child_process';
+import { tmpRepo } from './helpers.ts';
 
 describe('inboxPath', () => {
   let projectDir: string;
@@ -139,5 +141,36 @@ describe('detectImage', () => {
   it('returns null for unknown buffer', () => {
     expect(detectImage(Buffer.from('not an image'))).toBeNull();
     expect(detectImage(Buffer.alloc(0))).toBeNull();
+  });
+});
+
+describe('readInboxFile', () => {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@btm.local', ...args], { cwd });
+
+  it('đọc file trong working tree', () => {
+    const repo = tmpRepo({});
+    mkdirSync(join(repo, 'team', 'inbox'), { recursive: true });
+    writeFileSync(join(repo, 'team', 'inbox', 'N-1.png'), PNG);
+    expect(readInboxFile(repo, 'N-1.png')?.equals(PNG)).toBe(true);
+  });
+
+  it('file chỉ nằm trên nhánh khác (note đã huỷ) → đọc từ git, đúng từng byte', () => {
+    const repo = tmpRepo({});
+    git(repo, 'checkout', '-q', '-b', 'session/1');
+    mkdirSync(join(repo, 'team', 'inbox'), { recursive: true });
+    writeFileSync(join(repo, 'team', 'inbox', 'N-2.png'), PNG);
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'inbox N-2');
+    git(repo, 'checkout', '-q', 'main');
+    expect(existsSync(join(repo, 'team', 'inbox', 'N-2.png'))).toBe(false);
+    expect(readInboxFile(repo, 'N-2.png')?.equals(PNG)).toBe(true);
+  });
+
+  it('không có ở đâu → null; tên không hợp lệ → null', () => {
+    const repo = tmpRepo({});
+    expect(readInboxFile(repo, 'N-9.png')).toBeNull();
+    expect(readInboxFile(repo, '../x.png')).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
-import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 const VALID_INBOX_NAME = /^N-\d+(\.(md|png|jpg|webp))?$/;
@@ -48,6 +49,34 @@ export function inboxPath(project: string, name: string): string {
   }
 
   return filePath;
+}
+
+/**
+ * Reads an inbox file: working tree first, else the newest commit on any branch that has it
+ * (each note is committed on its own session branch, so a cancelled note's image is not on the
+ * branch currently checked out). Returns null when missing everywhere or the name is invalid.
+ */
+export function readInboxFile(project: string, name: string): Buffer | null {
+  let filePath: string;
+  try {
+    filePath = inboxPath(project, name);
+  } catch {
+    return null;
+  }
+  try {
+    if (lstatSync(filePath).isFile()) return readFileSync(filePath);
+  } catch {}
+  const rel = `team/inbox/${name}`;
+  try {
+    const sha = execFileSync('git', ['log', '--all', '-1', '--format=%H', '--', rel], {
+      cwd: project,
+      encoding: 'utf8',
+    }).trim();
+    if (!sha) return null;
+    return execFileSync('git', ['show', `${sha}:${rel}`], { cwd: project, maxBuffer: 20 * 1024 * 1024 });
+  } catch {
+    return null;
+  }
 }
 
 export interface DetectedImage {

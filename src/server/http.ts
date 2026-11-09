@@ -7,7 +7,7 @@ import type { Config, Seat } from '../config.ts';
 import { effectiveSeats, type Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
 import { commitAll } from '../git.ts';
-import { inboxPath, detectImage } from './inbox.ts';
+import { inboxPath, detectImage, readInboxFile } from './inbox.ts';
 import type { createMonitor } from '../energy/monitor.ts';
 
 export interface HostApi {
@@ -174,23 +174,8 @@ export function createServer(o: {
           return;
         }
 
-        let imgPath: string;
-        try {
-          imgPath = inboxPath(activeProject, note.image);
-          const stat = lstatSync(imgPath);
-          if (!stat.isFile()) {
-            sendJson(res, 404, { error: 'Not found' });
-            return;
-          }
-        } catch {
-          sendJson(res, 404, { error: 'Not found' });
-          return;
-        }
-
-        let imgBuf: Buffer;
-        try {
-          imgBuf = readFileSync(imgPath);
-        } catch {
+        const imgBuf = readInboxFile(activeProject, note.image);
+        if (!imgBuf) {
           sendJson(res, 404, { error: 'Not found' });
           return;
         }
