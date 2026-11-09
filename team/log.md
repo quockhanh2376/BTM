@@ -36,3 +36,5 @@
 - 2026-11-09 15:18 · Cheki · Demo dashboard qua SSH tunnel cho Zon. Ghi nhận: (1) ảnh note N-1/N-2 (đã huỷ) 404 vì ảnh chỉ nằm trên nhánh session cũ – lỗi có sẵn; (2) Energy Elon-PM 'không đọc được'
 - 2026-11-09 15:19 · Cheki · Bấm 'Làm mới Energy': Elon-PM đọc được qua /usage (5h 95%, tuần 96%) – lỗi 'không đọc được' chỉ là cache từ code cũ trước restart. Jacky tuần còn 45%
 - 2026-11-09 15:29 · Cheki · Fix ảnh note 404 (readInboxFile đọc từ git khi file nằm ở nhánh session khác) trên nhánh fix/inbox-image từ main; VM 544/544 ×3, N-1..N-3 thật đọc được. PR #5 chờ Zon merge → deploy + restart
+- 2026-11-09 15:33 · V · P4-T6 xong (báo OK) NHƯNG xoá test: session 71→14, qc 32→3 (code luật vẫn còn). tsc sạch, vitest 480/498. Cheki: trả fix1 – khôi phục từng test cho luồng ticket
+- 2026-11-09 15:55 · Zon merge PR #5. Cheki: VM /srv/agent-projects/btm fast-forward main 2670dcb, tsc sạch, restart btm 08:55 UTC; /api/notes/1..3/image đều 200, dashboard hiện ảnh N-1/N-2. (Gộp main vào plan4-tickets sau khi V xong P4-T6 fix1)
