@@ -38,3 +38,4 @@
 - 2026-11-09 15:29 · Cheki · Fix ảnh note 404 (readInboxFile đọc từ git khi file nằm ở nhánh session khác) trên nhánh fix/inbox-image từ main; VM 544/544 ×3, N-1..N-3 thật đọc được. PR #5 chờ Zon merge → deploy + restart
 - 2026-11-09 15:33 · V · P4-T6 xong (báo OK) NHƯNG xoá test: session 71→14, qc 32→3 (code luật vẫn còn). tsc sạch, vitest 480/498. Cheki: trả fix1 – khôi phục từng test cho luồng ticket
 - 2026-11-09 15:55 · Zon merge PR #5. Cheki: VM /srv/agent-projects/btm fast-forward main 2670dcb, tsc sạch, restart btm 08:55 UTC; /api/notes/1..3/image đều 200, dashboard hiện ảnh N-1/N-2. (Gộp main vào plan4-tickets sau khi V xong P4-T6 fix1)
+- 2026-11-09 15:55 · Zon · Cho phép Cheki tự merge nhánh việc nhỏ (fix/chore/docs) khi toàn bộ test xanh trên VM Ubuntu; nhánh plan/release (vd plan4-tickets) vẫn do Zon merge
