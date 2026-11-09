@@ -83,3 +83,13 @@ OK
 - Bảng task nhóm theo goal: tiêu đề `G1 · UI login + reset pass · 6/9 đạt`, mỗi dòng ticket hiện `#3/9 · GTM-0012`.
 - Thẻ ghế và nhật ký hiện Ticket ID đang làm.
 - Goal `qc_done`/`audit_passed` có nút **Duyệt merge** (chỉ anh).
+
+## 7. Đã chốt bổ sung cho Kế hoạch 4 (anh Zon, 2026-11-09)
+
+- **Tên:** hệ thống *BTM Tickets*; pipeline 6 chặng **Intake → Plan → Build → Verify → Audit → Release** (dashboard: Tiếp nhận · Lập kế hoạch · Đang làm · Kiểm thử · Kiểm tra bảo mật · Phát hành).
+- **Nhánh theo goal** `goal/G<n>-<tên-ngắn>` thay cho nhánh theo phiên; một goal có thể qua nhiều phiên; merge vào `main` một lần khi anh duyệt.
+- **Commit bắt đầu bằng Ticket ID** (`GTM-0012: …`); gate từ chối commit thiếu mã.
+- **Ticket có `type`** (`feat|fix|chore|security`) và **`size`** (`S|M|L`); `L` phải tách trước khi giao Dev.
+- **Lịch sử ticket** trong SQLite: mỗi lần đổi trạng thái ghi ai, khi nào, từ → đến, lý do; dashboard xem dòng thời gian.
+- **Definition of Ready:** đủ trường bắt buộc, acceptance đo được, size ≠ L, `depends_on` đã `passed`. **Definition of Done:** QC pass, báo cáo có mã ticket, commit có mã ticket.
+- **Chưa làm:** ưu tiên P0–P2, deadline/SLA, nhiều người một ticket, đồng bộ Jira/GitHub Issues.
