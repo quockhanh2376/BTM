@@ -4,12 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openStore, type Store } from '../src/store/db.ts';
 import { loadConfig, type Config } from '../src/config.ts';
-import { createHost } from '../src/server/host.ts';
+import { createHost as realCreateHost } from '../src/server/host.ts';
 import { tmpRepo } from './helpers.ts';
 import type { Runner, TurnOutput } from '../src/runner/run.ts';
 import { directPrompt } from '../src/core/prompts.ts';
 import { git } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
+
+// Test không gọi CLI thật để đọc Energy/đăng nhập (Plan 3 Global Constraints): mặc định monitor giả luôn OK.
+// Test nào cần monitor riêng vẫn truyền `monitor` để ghi đè.
+const okMonitor = { refresh: async () => {}, gate: () => ({ ok: true as const }) };
+const createHost = (d: Parameters<typeof realCreateHost>[0]) =>
+  realCreateHost({ monitor: okMonitor as any, ...d });
 
 function deferred<T>() {
   let resolve!: (val: T | PromiseLike<T>) => void;
