@@ -15,8 +15,8 @@
 | P4-T4 | V | accepted | team/prompts/P4-T4-victor.md | team/reports/P4-T4-dev.md |
 | P4-T4 | Q | accepted | team/prompts/P4-T4-qeen.md | team/reports/P4-T4-qeen.md |
 | P3-race | Cheki | accepted (3845e57) | – | – |
-| P4-T5 | V | running | team/prompts/P4-T5-victor.md | team/reports/P4-T5-dev.md |
-| P4-T5 | Q | waiting (sau V) | team/prompts/P4-T5-qeen.md | team/reports/P4-T5-qeen.md |
+| P4-T5 | V | accepted | team/prompts/P4-T5-victor.md | team/reports/P4-T5-dev.md |
+| P4-T5 | Q | accepted | team/prompts/P4-T5-qeen.md | team/reports/P4-T5-qeen.md |
 | P4-T6…T9 | V→Q | waiting | docs/superpowers/plans/2026-11-09-btm-v1-tickets.md | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).

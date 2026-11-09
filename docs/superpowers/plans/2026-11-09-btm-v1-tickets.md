@@ -130,9 +130,9 @@
 - `devTicketPrompt(t: Ticket, agentName: string, fixNotes?: string[], allow?: string[], handoff?: boolean)`, `qcTicketPrompt(t: Ticket, base: string, agentName: string)`
 - `parseTicketQcResult(text, expect: { ticket: string; goal: string; number: number }): QcResult` – JSON phải có `ticket/goal/number` khớp, sai → `fail` + `qc_output_invalid`.
 
-- [ ] **Step 1: Test:** pmTicketPrompt chứa `team/tickets/`, `G1`, `GTM-0013`, các trường bắt buộc + `type`/`size`, "size L phải tách"; có `auditFindings` → dòng yêu cầu ticket sửa `from_audit: true`. devTicketPrompt/qcTicketPrompt chứa `team/tickets/GTM-0012.md` và đúng chuỗi `reportHeader`. QC JSON thiếu `ticket` hoặc `number` lệch → `verdict: 'fail'`, `fix` có `qc_output_invalid`.
-- [ ] **Step 2–4:** FAIL → implement → PASS.
-- [ ] **Step 5:** Commit `feat: ticket-aware prompts and qc result (P4 Task 5)`.
+- [x] **Step 1: Test:** pmTicketPrompt chứa `team/tickets/`, `G1`, `GTM-0013`, các trường bắt buộc + `type`/`size`, "size L phải tách"; có `auditFindings` → dòng yêu cầu ticket sửa `from_audit: true`. devTicketPrompt/qcTicketPrompt chứa `team/tickets/GTM-0012.md` và đúng chuỗi `reportHeader`. QC JSON thiếu `ticket` hoặc `number` lệch → `verdict: 'fail'`, `fix` có `qc_output_invalid`.
+- [x] **Step 2–4:** FAIL → implement → PASS.
+- [x] **Step 5:** Commit `feat: ticket-aware prompts and qc result (P4 Task 5)`.
 
 ### Task 6: Phiên chạy theo goal
 

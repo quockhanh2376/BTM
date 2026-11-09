@@ -77,3 +77,69 @@ export function parseQcResult(text: string): QcResult {
 
   return parseAndValidate(trimmed);
 }
+
+function parseAndValidateTicket(
+  jsonStr: string,
+  expect: { ticket: string; goal: string; number: number }
+): QcResult {
+  try {
+    const raw = JSON.parse(jsonStr);
+    const parsed = QcResultSchema.safeParse(raw);
+    if (!parsed.success) {
+      return createInvalidResult();
+    }
+
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      raw.ticket !== expect.ticket ||
+      raw.goal !== expect.goal ||
+      raw.number !== expect.number
+    ) {
+      return createInvalidResult();
+    }
+
+    const data = parsed.data;
+    const verdict: 'pass' | 'fail' =
+      data.verdict === 'pass' && (data.bugs.length > 0 || data.fix.length > 0)
+        ? 'fail'
+        : data.verdict;
+
+    return {
+      verdict,
+      bugs: data.bugs,
+      fix: data.fix,
+      confirm: data.confirm,
+    };
+  } catch {
+    return createInvalidResult();
+  }
+}
+
+export function parseTicketQcResult(
+  text: string,
+  expect: { ticket: string; goal: string; number: number }
+): QcResult {
+  if (typeof text !== 'string') {
+    return createInvalidResult();
+  }
+
+  const jsonFenceRegex = /```json\s*([\s\S]*?)```/gi;
+  const matches = [...text.matchAll(jsonFenceRegex)];
+
+  if (matches.length > 0) {
+    const lastContent = matches[matches.length - 1][1].trim();
+    return parseAndValidateTicket(lastContent, expect);
+  }
+
+  if (text.includes('```')) {
+    return createInvalidResult();
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return createInvalidResult();
+  }
+
+  return parseAndValidateTicket(trimmed, expect);
+}

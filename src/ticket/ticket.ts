@@ -15,6 +15,12 @@ export type TicketState =
   | 'blocked'
   | 'cancelled';
 
+export interface AuditFinding {
+  ticket: string;
+  severity: 'high' | 'medium' | 'low';
+  text: string;
+}
+
 export interface Ticket {
   id: string;
   goal: string; /* "G1" */

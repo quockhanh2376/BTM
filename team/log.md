@@ -31,3 +31,4 @@
 - 2026-11-09 14:51 · Zon · Merge PR #4 (Plan 3) vào main (8fc36a2)
 - 2026-11-09 14:51 · Cheki · VM /srv/agent-projects/btm (user agent): backup việc dở → nhánh backup/vm-20261109 (7cb6641) + /srv/agent-projects/btm-backup-20261109.patch + ...-untracked.tgz; rồi checkout main 8fc36a2 (qua bundle vì VM không fetch được GitHub). deps không đổi, tsc sạch, vitest 541/541. Service btm vẫn chạy code cũ (khởi động 02:19 UTC) – chưa restart
 - 2026-11-09 14:52 · Cheki · Zon đồng ý: restart service btm trên VM (sudo admzon) lúc 07:52 UTC → active, dashboard 127.0.0.1:8080 trả 200, chạy main 8fc36a2
+- 2026-11-09 14:58 · V · P4-T5 fix1 xong (lọc xuống dòng auditFindings + test). Cheki kiểm: tsc sạch, vitest 564/582 (18 Windows) → accepted, commit

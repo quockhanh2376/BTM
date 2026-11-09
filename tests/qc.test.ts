@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseQcResult, type QcResult } from '../src/qc/result.ts';
+import { parseQcResult, parseTicketQcResult, type QcResult } from '../src/qc/result.ts';
 
 describe('QC Result parser', () => {
   describe('Clean JSON', () => {
@@ -474,6 +474,116 @@ I reviewed {src/a.ts, src/b.ts} and found everything good.
 
       const second = parseQcResult('invalid output 2');
       expect(second).toEqual<QcResult>({
+        verdict: 'fail',
+        bugs: [],
+        fix: ['qc_output_invalid'],
+        confirm: [],
+      });
+    });
+  });
+
+  describe('parseTicketQcResult (Ticket-aware QC Result parser)', () => {
+    const expectSpec = {
+      ticket: 'GTM-0012',
+      goal: 'G1',
+      number: 3,
+    };
+
+    it('parses valid ticket qc result with matching ticket, goal, number', () => {
+      const text = `
+Here is my review:
+\`\`\`json
+{
+  "verdict": "pass",
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 3,
+  "bugs": [],
+  "fix": [],
+  "confirm": []
+}
+\`\`\`
+All good.
+`;
+      const res = parseTicketQcResult(text, expectSpec);
+      expect(res.verdict).toBe('pass');
+      expect(res.bugs).toEqual([]);
+      expect(res.fix).toEqual([]);
+      expect(res.confirm).toEqual([]);
+    });
+
+    it('returns fail + qc_output_invalid khi thiếu ticket hoặc ticket sai', () => {
+      const missingTicket = `
+\`\`\`json
+{
+  "verdict": "pass",
+  "goal": "G1",
+  "number": 3,
+  "bugs": [],
+  "fix": []
+}
+\`\`\`
+`;
+      expect(parseTicketQcResult(missingTicket, expectSpec)).toEqual({
+        verdict: 'fail',
+        bugs: [],
+        fix: ['qc_output_invalid'],
+        confirm: [],
+      });
+
+      const wrongTicket = `
+\`\`\`json
+{
+  "verdict": "pass",
+  "ticket": "GTM-0099",
+  "goal": "G1",
+  "number": 3,
+  "bugs": [],
+  "fix": []
+}
+\`\`\`
+`;
+      expect(parseTicketQcResult(wrongTicket, expectSpec)).toEqual({
+        verdict: 'fail',
+        bugs: [],
+        fix: ['qc_output_invalid'],
+        confirm: [],
+      });
+    });
+
+    it('returns fail + qc_output_invalid khi number lệch hoặc goal lệch', () => {
+      const wrongNum = `
+\`\`\`json
+{
+  "verdict": "pass",
+  "ticket": "GTM-0012",
+  "goal": "G1",
+  "number": 4,
+  "bugs": [],
+  "fix": []
+}
+\`\`\`
+`;
+      expect(parseTicketQcResult(wrongNum, expectSpec)).toEqual({
+        verdict: 'fail',
+        bugs: [],
+        fix: ['qc_output_invalid'],
+        confirm: [],
+      });
+
+      const wrongGoal = `
+\`\`\`json
+{
+  "verdict": "pass",
+  "ticket": "GTM-0012",
+  "goal": "G2",
+  "number": 3,
+  "bugs": [],
+  "fix": []
+}
+\`\`\`
+`;
+      expect(parseTicketQcResult(wrongGoal, expectSpec)).toEqual({
         verdict: 'fail',
         bugs: [],
         fix: ['qc_output_invalid'],
