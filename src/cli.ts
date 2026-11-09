@@ -293,6 +293,7 @@ export async function main(
   let parsed: {
     values: {
       config?: string;
+      key?: string;
       goal?: string[];
       approved?: boolean;
       json?: boolean;
@@ -308,6 +309,9 @@ export async function main(
         config: {
           type: 'string',
           default: './btm.config.yaml',
+        },
+        key: {
+          type: 'string',
         },
         goal: {
           type: 'string',
@@ -379,7 +383,14 @@ Options:
     if (command === 'init') {
       const name = positionals[1];
       if (!name) {
-        console.error('Error: Project name required. Usage: btm init <name>');
+        console.error('Error: Project name required. Usage: btm init <name> --key <KEY>');
+        process.exitCode = 1;
+        return 1;
+      }
+
+      const key = values.key;
+      if (!key || typeof key !== 'string' || !/^[A-Z]{2,5}$/.test(key)) {
+        console.error('Error: Project key required. Project key must match /^[A-Z]{2,5}$/. Usage: btm init <name> --key <KEY>');
         process.exitCode = 1;
         return 1;
       }
@@ -388,7 +399,7 @@ Options:
         const btmRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
         const templatesFrom = join(btmRoot, 'team', 'templates');
 
-        const projectPath = initProject(cfg.host.projects_root, name, templatesFrom);
+        const projectPath = initProject(cfg.host.projects_root, name, templatesFrom, { key });
         const dbPath = join(cfg.host.data_dir, 'btm.db');
         const store = openStore(dbPath);
         try {

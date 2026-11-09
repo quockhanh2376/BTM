@@ -11,7 +11,7 @@ import {
   type Ticket,
   type TicketState,
 } from '../src/ticket/ticket.ts';
-import { slugify, goalBranch } from '../src/ticket/goal.ts';
+import { slugify, goalBranch, readProjectKey } from '../src/ticket/goal.ts';
 
 describe('Ticket – schema, parser, DoR', () => {
   const sampleTicketMd = `---
@@ -335,5 +335,36 @@ describe('goalBranch & slugify', () => {
     expect(slug.endsWith('-')).toBe(false);
     expect(slug.startsWith('-')).toBe(false);
     expect(/^[a-z0-9-]+$/.test(slug)).toBe(true);
+  });
+});
+
+describe('readProjectKey', () => {
+  it('đọc team/project.yaml trả đúng key', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'btm-key-test-'));
+    mkdirSync(join(tmp, 'team'), { recursive: true });
+    writeFileSync(join(tmp, 'team', 'project.yaml'), 'key: GTM\n');
+
+    expect(readProjectKey(tmp)).toBe('GTM');
+  });
+
+  it('project thiếu file team/project.yaml → ném Error', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'btm-nokey-test-'));
+    expect(() => readProjectKey(tmp)).toThrow(/not found/i);
+  });
+
+  it('file team/project.yaml có key sai định dạng hoặc YAML lỗi → ném Error', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'btm-badkey-test-'));
+    mkdirSync(join(tmp, 'team'), { recursive: true });
+    writeFileSync(join(tmp, 'team', 'project.yaml'), 'key: gtm\n');
+    expect(() => readProjectKey(tmp)).toThrow(/invalid.*key/i);
+
+    writeFileSync(join(tmp, 'team', 'project.yaml'), 'key: TOOLONG\n');
+    expect(() => readProjectKey(tmp)).toThrow(/invalid.*key/i);
+
+    writeFileSync(join(tmp, 'team', 'project.yaml'), 'no_key: 123\n');
+    expect(() => readProjectKey(tmp)).toThrow(/invalid.*key/i);
+
+    writeFileSync(join(tmp, 'team', 'project.yaml'), '--- : broken yaml\n');
+    expect(() => readProjectKey(tmp)).toThrow(/invalid yaml/i);
   });
 });

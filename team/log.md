@@ -16,3 +16,9 @@
 - 2026-11-09 13:37 · Q · P4-T1 review OK. Cheki: accepted, commit. Giao P4-T2 (store goals/tickets/history/counter) cho V
 - 2026-11-09 13:56 · V · P4-T2 xong (OK). Cheki: tsc sạch, vitest 545/566 (21 Windows), store 26/26. Sửa plan Task 8: bỏ yêu cầu lịch sử goal (không có bảng, tickets.md chỉ yêu cầu lịch sử ticket). Giao Q review
 - 2026-11-09 14:01 · Q · P4-T2 review OK. Cheki: accepted, commit. Giao P4-T3 (init project với KEY) cho V
+- 2026-11-09 14:02 · Cheki · Sửa plan Task 4/6: Task 4 chỉ thêm commitsMissingTicketId + reportHeaderOk (không đổi runGate vì session còn dùng TaskCard); Task 6 đổi runGate sang Ticket. Soạn prompt P4-T4
+- 2026-11-09 14:09 · Cheki · Tạo SSH key mới trên máy Windows (cheki@ASWVNWKS268-20261109) để vào VM Ubuntu 100.96.250.103; chờ Zon thêm public key
+- 2026-11-09 14:13 · V · P4-T3 xong (OK). Cheki: tsc sạch, vitest 551/572 (21 Windows). Lưu ý: init không còn tạo team/tasks nhưng session dùng tới Task 6 (nhánh chưa merge). Giao Q review
+- 2026-11-09 14:19 · Q · P4-T3 review OK. Cheki: accepted, commit. Giao P4-T4 cho V
+- 2026-11-09 14:19 · Cheki · VM Ubuntu: test PR #4 (bản clone tạm /tmp/btm-pr4-test, user agent): tsc sạch; 21 test fail-Windows đều PASS trên Linux; NHƯNG tests/host.test.ts chập chờn 5/6 lần (lỗi race hàng đợi dev→qc = P3-race, laptop cũ chưa sửa xong). PR #4 chưa nên merge
+- 2026-11-09 14:19 · Cheki · VM /srv/agent-projects/btm có việc dở chưa push: commit 40d4022 (tickets §7, trùng nội dung c70198e) + diff chưa commit P3-T6 (bản song song) và P3-race (host.ts). Không đụng. VM git fetch GitHub lỗi (key github-btm của agent)

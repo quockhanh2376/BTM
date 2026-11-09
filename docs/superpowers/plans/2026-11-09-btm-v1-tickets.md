@@ -103,9 +103,9 @@
 
 **Interfaces – Produces:** `initProject(root, name, templatesFrom, opts: { key: string; runOpenspec?: … })`; `readProjectKey(repo: string): string` (đọc `team/project.yaml`, ném nếu thiếu/sai).
 
-- [ ] **Step 1: Test:** `btm init moon --key GTM` → có `team/project.yaml` (`key: GTM`), `team/tickets/`, `team/goals/`, **không** có `team/tasks/`; thiếu `--key` hoặc `--key gtm`/`--key TOOLONG` → exit 1, không tạo thư mục. `readProjectKey` trên project thiếu file → ném.
-- [ ] **Step 2–4:** FAIL → implement → PASS. Giữ nguyên phần OpenSpec của P3-T6.
-- [ ] **Step 5:** Commit `feat: project key on init (P4 Task 3)`.
+- [x] **Step 1: Test:** `btm init moon --key GTM` → có `team/project.yaml` (`key: GTM`), `team/tickets/`, `team/goals/`, **không** có `team/tasks/`; thiếu `--key` hoặc `--key gtm`/`--key TOOLONG` → exit 1, không tạo thư mục. `readProjectKey` trên project thiếu file → ném.
+- [x] **Step 2–4:** FAIL → implement → PASS. Giữ nguyên phần OpenSpec của P3-T6.
+- [x] **Step 5:** Commit `feat: project key on init (P4 Task 3)`.
 
 ### Task 4: Gate – commit có mã ticket, dòng mã báo cáo
 
@@ -113,9 +113,10 @@
 
 **Interfaces – Produces:**
 - `commitsMissingTicketId(repo, base, id): string[]` – trả sha các commit `base..HEAD` có subject không bắt đầu bằng `<id>: `.
-- `runGate(repo, ticket: Ticket, base, cmds, opts)` – nhận `Ticket` thay `TaskCard`; thêm lý do `commit_missing_ticket_id`, `report_header_invalid` (dòng đầu `team/reports/<id>-dev.md` ≠ `reportHeader(...)` bỏ qua phần tên agent: chỉ so `<ID> · G<n>#<k>/<of> ·`).
+- `reportHeaderOk(repo, t: Ticket): boolean` – dòng không rỗng đầu tiên của `team/reports/<id>-dev.md` bắt đầu bằng `<ID> · G<n>#<k>/<of> · ` (bỏ qua tên agent); thiếu file → false.
+- `runGate` **chưa đổi chữ ký** ở task này (session còn dùng `TaskCard` tới Task 6). Task 6 đổi `runGate` sang `Ticket` và thêm lý do `commit_missing_ticket_id`, `report_header_invalid` dùng 2 hàm trên.
 
-- [ ] **Step 1: Test:** Gate: commit `GTM-0012: x` ok; commit `WIP x` → `commit_missing_ticket_id`; báo cáo dòng đầu `OK` → `report_header_invalid`.
+- [ ] **Step 1: Test:** `commitsMissingTicketId`: commit `GTM-0012: x` → `[]`; thêm commit `WIP x` → trả đúng sha đó; commit `GTM-00123: x` (ID khác) → bị trả. `reportHeaderOk`: dòng đầu `GTM-0012 · G1#3/9 · Jacky-Dev` → true; `OK` → false; dòng trống đầu file rồi header → true; thiếu file → false.
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5:** Commit `feat: ticket id in commits, report header gate (P4 Task 4)`.
 
@@ -142,7 +143,7 @@ Luồng mỗi goal (tuần tự, chung giới hạn lượt của phiên):
 1. Goal mới → `createGoal`; checkout `goal/G<n>-<slug>` (tạo từ `main` nếu chưa có). Goal → `in_progress`.
 2. Chưa có ticket nào cho goal → lượt PM (`pmPrompt`); PM chỉ được ghi `team/tickets/`; `loadTickets(goal)` lỗi hoặc ID < `nextTicketSeq`/sai KEY → `needs_owner` (lý do rõ), không giao Dev. Ok → `upsertTicket` từng cái (state `pending`, by `pm`), `bumpTicketSeq`, commit `<ID đầu>..<ID cuối>: PM tickets for G<n>`.
 3. Duyệt thẻ (`require_task_approval`) như cũ nhưng theo goal.
-4. Ticket theo `number`, bỏ `passed`/`cancelled`; `checkReady` lỗi → `blocked`. Dev → gate → QC như Kế hoạch 1–3, mọi commit Core đổi thành `<ID>: …` (vd `GTM-0012: WIP timeout`), mọi đổi trạng thái qua `setTicketState(by = agent id, reason)`.
+4. Ticket theo `number`, bỏ `passed`/`cancelled`; `checkReady` lỗi → `blocked`. `runGate(repo, ticket: Ticket, …)` thay `TaskCard`, thêm lý do `commit_missing_ticket_id` + `report_header_invalid` (hàm Task 4). Dev → gate → QC như Kế hoạch 1–3, mọi commit Core đổi thành `<ID>: …` (vd `GTM-0012: WIP timeout`), mọi đổi trạng thái qua `setTicketState(by = agent id, reason)`.
 5. Mọi ticket goal `passed` → goal `qc_done`; Core ghi `team/goals/G<n>.md` (bảng: number, ID, tiêu đề, trạng thái, vòng sửa) và commit `G<n>: summary`.
 
 - [ ] **Step 1: Test** (runner giả): goal mới tạo đúng nhánh, PM ghi 2 ticket → Dev/QC chạy theo number, goal `qc_done`, có `team/goals/G1.md`, mọi commit trong nhánh bắt đầu bằng `GTM-` hoặc `G1:`. PM ghi ID trùng → `needs_owner`, không lượt Dev. Phiên 2 `--goal-id G1` sau khi phiên 1 dừng sau ticket 1 → chỉ chạy ticket 2, counter không reset. Ticket depends_on ticket `failed` → `blocked` với `not_ready`. Hết lượt giữa goal → `out_of_turns` như cũ.
