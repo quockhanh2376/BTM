@@ -29,6 +29,13 @@ export function directPrompt(to: Seat, text: string, allow: string[] = []): stri
       `Trả lời ngắn: Bug / Cần sửa / Cần xác nhận; ổn ghi OK.`,
     ].join('\n');
   }
+  if (to === 'audit') {
+    return [
+      `Bạn là Audit (chỉ đọc). Hãy kiểm tra yêu cầu trực tiếp sau: ${cleanText}`,
+      `Chỉ đọc, không sửa file, cấm git commit và push.`,
+      `Trả lời ngắn: kết quả kiểm tra bảo mật; ổn ghi OK.`,
+    ].join('\n');
+  }
   return cleanText;
 }
 
@@ -151,3 +158,29 @@ export function qcTicketPrompt(t: Ticket, base: string, agentName: string): stri
 
   return lines.join('\n');
 }
+
+export function auditPrompt(
+  goal: { n: number; title: string },
+  base: string,
+  ticketIds: string[],
+  agentName: string
+): string {
+  const goalId = `G${goal.n}`;
+  const cleanTitle = goal.title.replace(/\r?\n/g, ' ').trim();
+  const ticketsStr = ticketIds.join(', ');
+
+  const lines = [
+    `Bạn là Audit (${agentName}). Hãy kiểm tra bảo mật toàn bộ thay đổi của mục tiêu ${goalId} (${cleanTitle}) từ commit base ${base} đến HEAD.`,
+    `Các ticket đã hoàn thành trong mục tiêu: ${ticketsStr}.`,
+    `Checklist kiểm tra: lộ secret/token, injection (SQL/command/path), xác thực & phân quyền, upload/đường dẫn file, dependency mới, log lộ dữ liệu nhạy cảm.`,
+    `Bạn là vai trò CHỈ ĐỌC: không sửa file, không ghi file, cấm git commit và push. Core sẽ tự ghi báo cáo team/reports/${goalId}-audit.md từ câu trả lời của bạn.`,
+    `Trả về khối JSON ở cuối câu trả lời theo định dạng:`,
+    '```json',
+    '{"verdict": "pass"|"fail", "findings": [{"ticket": "ID", "severity": "high"|"medium"|"low", "text": "chi tiết"}]}',
+    '```',
+    `Nếu có lỗi mức high hoặc medium, verdict bắt buộc là fail. Nếu không có vấn đề, findings là mảng rỗng [] và verdict là pass.`,
+  ];
+
+  return lines.join('\n');
+}
+

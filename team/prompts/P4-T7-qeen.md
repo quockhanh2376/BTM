@@ -12,3 +12,5 @@
 7. `npx tsc --noEmit` sạch; `npx vitest run` không tăng fail (18 Windows).
 
 **Báo cáo:** team/reports/P4-T7-qeen.md
+8. Audit lỗi hệ thống (audit_output_invalid / audit_modified_repo / fail không finding) → needs_owner, KHÔNG gọi PM.
+Ghi chú Cheki: Ubuntu 612/612 ×3 lần.

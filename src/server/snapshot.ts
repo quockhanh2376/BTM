@@ -168,7 +168,7 @@ function getAccounts(store: Store, cfg: Config): AccountCard[] {
 
 function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
   const effSeats = effectiveSeats(cfg, store);
-  const seats = Object.keys(effSeats) as Seat[];
+  const seats = (Object.keys(effSeats) as Seat[]).filter((seat) => Boolean(effSeats[seat]));
   return seats.map((seat) => {
     const agent = effSeats[seat];
     const tool = cfg.agents[agent].tool;
@@ -303,7 +303,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const holder: Seat | null = runningTurn ? runningTurn.seat : null;
 
   const effSeats = effectiveSeats(cfg, store);
-  const seatKeys = Object.keys(effSeats) as Seat[];
+  const seatKeys = (Object.keys(effSeats) as Seat[]).filter((seat) => Boolean(effSeats[seat]));
   const seats: SeatCard[] = seatKeys.map((seat) => {
     const agent = effSeats[seat];
     const tool = cfg.agents[agent].tool;

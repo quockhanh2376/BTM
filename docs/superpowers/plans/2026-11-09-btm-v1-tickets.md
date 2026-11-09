@@ -162,9 +162,9 @@ Luồng mỗi goal (tuần tự, chung giới hạn lượt của phiên):
 
 Luồng: goal `qc_done` + có ghế audit → agent audit ≠ mọi coder của goal (vi phạm → `needs_owner`) → `pass` → `audit_passed`; `fail` → lượt PM với `auditFindings` → ticket mới `from_audit: true`, `of` tăng cho ticket mới → chạy tiếp bước 4 Task 6.
 
-- [ ] **Step 1: Test:** config không có `audit` vẫn load, phiên bỏ qua audit; audit pass → `audit_passed`; audit fail high → PM nhận findings, ticket mới `G1#3/3` `from_audit: true` chạy rồi audit lại; coder ngồi ghế audit → `needs_owner`; output audit rác → fail.
-- [ ] **Step 2–4:** FAIL → implement → PASS.
-- [ ] **Step 5:** Commit `feat: optional audit seat (P4 Task 7)`.
+- [x] **Step 1: Test:** config không có `audit` vẫn load, phiên bỏ qua audit; audit pass → `audit_passed`; audit fail high → PM nhận findings, ticket mới `G1#3/3` `from_audit: true` chạy rồi audit lại; coder ngồi ghế audit → `needs_owner`; output audit rác → fail.
+- [x] **Step 2–4:** FAIL → implement → PASS.
+- [x] **Step 5:** Commit `feat: optional audit seat (P4 Task 7)`.
 
 ### Task 8: Duyệt & merge goal
 

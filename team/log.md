@@ -45,3 +45,7 @@
 - 2026-11-09 16:15 · Cheki · Giao P4-T7 (ghế audit Kai tuỳ chọn + siết PM chỉ được tạo ticket mới) cho V
 - 2026-11-09 16:24 · Zon mở PR #6 plan4-tickets→main. Cheki: CHƯA nên merge (T7 đang làm, T8/T9 chưa; dashboard còn đọc team/tasks; project go-to-the-moon chưa có team/project.yaml → btm run sẽ lỗi nếu deploy). Cần thêm bước chuyển đổi project cũ vào Plan 4
 - 2026-11-09 16:25 · Zon đồng ý: PR #6 chuyển Draft (mô tả có checklist T1–T10); thêm Task 10 'btm migrate --key' vào Plan 4 (ghi team/project.yaml lên main của project cũ, không merge session/*, giữ team/tasks)
+- 2026-11-09 16:49 · V · P4-T7 xong (OK): session 72→80, config +3, audit 12 test; tsc sạch; Windows 593/611. Cheki: trả fix1 – audit lỗi hệ thống (output rác / audit sửa repo / fail không finding) phải needs_owner, không gọi PM viết ticket
+- 2026-11-09 17:02 · V · P4-T7 fix1 xong. Cheki: tsc sạch; Windows 594/612; VM Ubuntu 612/612 ×3 (lần đầu script VM test nhầm code cũ vì nhánh đang checkout – đã sửa script, chạy lại). Giao Q review
+- 2026-11-09 17:06 · Q · P4-T7 review lượt 1 không có kết quả: lệnh 'git diff src/server/snapshot.ts' bị chặn → agy dừng cả lượt. Chạy lại kèm nhắc lệnh
+- 2026-11-09 17:12 · Q · P4-T7 review (lượt 2) OK. Cheki: accepted, commit. Giao P4-T8 (duyệt & merge goal) cho V

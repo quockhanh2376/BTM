@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { writeFileSync, readFileSync, mkdirSync, realpathSync, existsSync, chmodSync, lstatSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, realpathSync, existsSync, chmodSync, lstatSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { loadConfig, type Config, type Seat } from '../src/config.ts';
@@ -906,7 +906,10 @@ describe('Goal & Ticket Session Coordinator', () => {
     const { deps, store } = makeDeps(repo, {
       session: {
         ...loadConfig('btm.config.yaml').session,
-        max_turns_per_seat: { pm: 5, dev: 1, qc: 5 },
+        max_turns_per_seat: {
+          ...loadConfig('btm.config.yaml').session.max_turns_per_seat,
+          dev: 1,
+        },
       },
     });
 
@@ -963,6 +966,7 @@ describe('Goal & Ticket Session Coordinator', () => {
     const repo = tmpRepo({ 'src/app.ts': '0' });
     const { deps, store } = makeDeps(repo, {
       seats: {
+        ...loadConfig('btm.config.yaml').seats,
         pm: 'elon',
         dev: 'jenny',
         qc: 'jenny',
@@ -998,6 +1002,7 @@ describe('Goal & Ticket Session Coordinator', () => {
     const repo = tmpRepo({ 'src/app.ts': '1' });
     const { deps, store } = makeDeps(repo, {
       seats: {
+        ...loadConfig('btm.config.yaml').seats,
         pm: 'elon',
         dev: 'alice',
         qc: 'alice',
@@ -1038,6 +1043,7 @@ describe('Goal & Ticket Session Coordinator', () => {
     const repo = tmpRepo({ 'src/app.ts': '1' });
     const { deps, store } = makeDeps(repo, {
       seats: {
+        ...loadConfig('btm.config.yaml').seats,
         pm: 'elon',
         dev: 'custom-dev',
         qc: 'jenny',
@@ -2810,6 +2816,404 @@ Yêu cầu đóng note nhưng commit lỗi
       expect(outcome.status).toBe('needs_owner');
       expect(outcome.tasks['GTM-0001']).toBe('blocked');
       expect(outcome.notes.some((n) => n.includes('GTM-0001'))).toBe(true);
+
+      store.close();
+    });
+  });
+
+  describe('Task 7: Audit Seat (Kai) & PM Tightening', () => {
+    function getAuditDeps(repo: string, auditAgent = 'kai') {
+      const base = loadConfig('btm.config.yaml');
+      return makeDeps(repo, {
+        seats: {
+          ...base.seats,
+          audit: auditAgent,
+        },
+        agents: {
+          ...base.agents,
+          kai: {
+            tool: 'antigravity-cli',
+            command: 'agy',
+            can_sit: ['audit'],
+          },
+        },
+      });
+    }
+
+    it('audit pass → goal audit_passed, report G1-audit.md committed', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = getAuditDeps(repo, 'kai');
+
+      const { runner, calls } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'pass',
+            findings: [],
+          }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Security Goal'], { approved: true });
+
+      expect(outcome.status).toBe('done');
+      expect(calls.length).toBe(4);
+      expect(calls[0].seat).toBe('pm');
+      expect(calls[1].seat).toBe('dev');
+      expect(calls[2].seat).toBe('qc');
+      expect(calls[3].seat).toBe('audit');
+      expect(calls[3].agentId).toBe('kai');
+
+      const goal = store.getGoal(repo, 1);
+      expect(goal?.state).toBe('audit_passed');
+
+      const auditReportPath = join(repo, 'team', 'reports', 'G1-audit.md');
+      expect(existsSync(auditReportPath)).toBe(true);
+      const auditContent = readFileSync(auditReportPath, 'utf8');
+      expect(auditContent).toContain('Verdict: pass');
+
+      const log = git(repo, 'log', '--oneline', '-n', '3');
+      expect(log).toContain('G1: audit pass');
+      expect(log).toContain('G1: summary');
+
+      store.close();
+    });
+
+    it('auditor_is_coder: auditor coded a ticket in the goal → needs_owner, lý do auditor_is_coder', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      // Jacky is coder and also set as auditor
+      const base = loadConfig('btm.config.yaml');
+      const { deps, store } = makeDeps(repo, {
+        seats: {
+          ...base.seats,
+          audit: 'jacky',
+        },
+        agents: {
+          ...base.agents,
+          jacky: {
+            tool: 'antigravity-cli',
+            command: 'agy',
+            can_sit: ['dev', 'audit'],
+          },
+        },
+      });
+
+      let auditCalled = false;
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+        () => {
+          auditCalled = true;
+          return { lastMessage: JSON.stringify({ verdict: 'pass', findings: [] }) };
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Auditor conflict test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes.some((n) => n.includes('auditor_is_coder'))).toBe(true);
+      expect(auditCalled).toBe(false);
+
+      store.close();
+    });
+
+    it('audit_modified_repo: working tree dirty after audit → needs_owner, note audit_modified_repo, không gọi PM', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = getAuditDeps(repo, 'kai');
+
+      const { runner, calls } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+        (_s, _a, _p, cwd) => {
+          // Audit agent wrongfully writes a file!
+          writeFileSync(join(cwd, 'bad_audit_leak.txt'), 'illegal write');
+          return {
+            lastMessage: JSON.stringify({
+              verdict: 'pass',
+              findings: [],
+            }),
+          };
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Security Goal Dirty Audit'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('audit_modified_repo');
+      expect(calls.length).toBe(4);
+      expect(calls.some((c) => c.seat === 'pm' && calls.indexOf(c) > 3)).toBe(false);
+
+      // The dirty file was cleaned
+      expect(existsSync(join(repo, 'bad_audit_leak.txt'))).toBe(false);
+
+      // Report G1-audit.md exists
+      const reportPath = join(repo, 'team', 'reports', 'G1-audit.md');
+      expect(existsSync(reportPath)).toBe(true);
+      const content = readFileSync(reportPath, 'utf8');
+      expect(content).toContain('audit_modified_repo');
+
+      store.close();
+    });
+
+    it('audit fail high → PM nhận findings, tạo ticket mới from_audit: true, chạy Dev+QC và audit lại pass', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = getAuditDeps(repo, 'kai');
+
+      let pmFixPromptReceived = '';
+      const { runner, calls } = createFakeRunner([
+        // 1. PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // 2. Dev 1
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        // 3. QC 1
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+        // 4. Audit 1: fail with high finding
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'fail',
+            findings: [
+              { ticket: 'GTM-0001', severity: 'high', text: 'Hardcoded secret token in app.ts' },
+            ],
+          }),
+        }),
+        // 5. PM 2: fix ticket
+        (_s, _a, prompt, cwd) => {
+          pmFixPromptReceived = prompt;
+          writeTicketFile(cwd, {
+            id: 'GTM-0002',
+            goal: 'G1',
+            number: 2,
+            of: 2,
+            from_audit: true,
+          });
+        },
+        // 6. Dev 2
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 2;\n');
+          writeDevReport(cwd, { id: 'GTM-0002', goal: 'G1', number: 2, of: 2 }, agent);
+        },
+        // 7. QC 2
+        () => makeQcResponse({ id: 'GTM-0002', goal: 'G1', number: 2 }, 'pass'),
+        // 8. Audit 2: pass
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'pass',
+            findings: [],
+          }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Security Goal'], { approved: true });
+
+      expect(outcome.status).toBe('done');
+      expect(calls.length).toBe(8);
+      expect(pmFixPromptReceived).toContain('from_audit: true');
+      expect(pmFixPromptReceived).toContain('Hardcoded secret token in app.ts');
+
+      const t2State = store.getTicketState(repo, 'GTM-0002');
+      expect(t2State?.state).toBe('passed');
+
+      const goal = store.getGoal(repo, 1);
+      expect(goal?.state).toBe('audit_passed');
+
+      store.close();
+    });
+
+    it('output audit rác → audit_output_invalid, needs_owner, không gọi PM', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = getAuditDeps(repo, 'kai');
+
+      const { runner, calls } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+        () => ({
+          lastMessage: 'Totally corrupt output not json at all',
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Corrupt Audit Test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('audit_output_invalid');
+      expect(calls.length).toBe(4);
+      expect(calls.some((c) => c.seat === 'pm' && calls.indexOf(c) > 3)).toBe(false);
+
+      const reportPath = join(repo, 'team', 'reports', 'G1-audit.md');
+      expect(existsSync(reportPath)).toBe(true);
+      const content = readFileSync(reportPath, 'utf8');
+      expect(content).toContain('audit_output_invalid');
+
+      store.close();
+    });
+
+    it('audit fail rỗng findings → audit_fail_no_findings, needs_owner, không gọi PM', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = getAuditDeps(repo, 'kai');
+
+      const { runner, calls } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'fail',
+            findings: [],
+          }),
+        }),
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Empty Findings Fail Test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('audit_fail_no_findings');
+      expect(calls.length).toBe(4);
+      expect(calls.some((c) => c.seat === 'pm' && calls.indexOf(c) > 3)).toBe(false);
+
+      const reportPath = join(repo, 'team', 'reports', 'G1-audit.md');
+      expect(existsSync(reportPath)).toBe(true);
+      const content = readFileSync(reportPath, 'utf8');
+      expect(content).toContain('Verdict: fail');
+
+      store.close();
+    });
+
+    it('pm_modified_existing_ticket: PM modifies existing ticket file during initial turn → needs_owner, reverts file', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      // Pre-create an existing ticket in repo (e.g. from an earlier goal G0)
+      writeTicketFile(repo, { id: 'GTM-0000', goal: 'G0', number: 1, of: 1, title: 'Original Title' });
+      commitAll(repo, 'Init GTM-0000', { name: 'core', email: 'core@btm.local' });
+
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          // PM modifies existing GTM-0000.md!
+          writeTicketFile(cwd, { id: 'GTM-0000', goal: 'G0', number: 1, of: 1, title: 'Hacked Title' });
+          // PM also creates valid GTM-0001.md
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('pm_modified_existing_ticket');
+
+      // Check that existing file GTM-0000.md was restored!
+      const content = readFileSync(join(repo, 'team', 'tickets', 'GTM-0000.md'), 'utf8');
+      expect(content).toContain('Original Title');
+      expect(content).not.toContain('Hacked Title');
+
+      // Check that new file GTM-0001.md was removed!
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0001.md'))).toBe(false);
+
+      store.close();
+    });
+
+    it('pm_modified_existing_ticket: PM deletes existing ticket file during initial turn → needs_owner, restores file', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      writeTicketFile(repo, { id: 'GTM-0000', goal: 'G0', number: 1, of: 1, title: 'To Be Kept' });
+      commitAll(repo, 'Init GTM-0000', { name: 'core', email: 'core@btm.local' });
+
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          // PM deletes GTM-0000.md!
+          rmSync(join(cwd, 'team', 'tickets', 'GTM-0000.md'));
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('pm_modified_existing_ticket');
+
+      // Check that GTM-0000.md was restored!
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0000.md'))).toBe(true);
+
+      store.close();
+    });
+
+    it('pm_modified_existing_ticket: PM modifies existing ticket during audit fix turn → needs_owner, reverts file', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = getAuditDeps(repo, 'kai');
+
+      const { runner, calls } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1, title: 'Original GTM-0001' });
+        },
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'fail',
+            findings: [{ ticket: 'GTM-0001', severity: 'high', text: 'Security bug' }],
+          }),
+        }),
+        // PM fix turn: instead of creating GTM-0002, modifies GTM-0001!
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1, title: 'Illegally Modified' });
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Audit fix tightening test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('pm_modified_existing_ticket');
+
+      // Verify that GTM-0001 was restored to its committed content
+      const content = readFileSync(join(repo, 'team', 'tickets', 'GTM-0001.md'), 'utf8');
+      expect(content).toContain('Original GTM-0001');
+      expect(content).not.toContain('Illegally Modified');
 
       store.close();
     });
