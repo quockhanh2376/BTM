@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   parseAgyQuota,
+  parseClaudeUsage,
   readCodexLimits,
   readEnergy,
   type EnergyWindow,
@@ -101,6 +102,320 @@ describe('parseAgyQuota', () => {
       { name: '5h', remainingPercent: 83.123, resetsAt: '2026-11-08T19:57:00Z' },
       { name: 'week', remainingPercent: 63.456, resetsAt: '2026-11-15T00:22:39Z' }
     ]);
+  });
+});
+
+describe('parseClaudeUsage', () => {
+  const sampleClaudeJson = JSON.stringify({
+    local_command: 'usage',
+    is_error: false,
+    total_cost_usd: 0,
+    result: [
+      'Current session: 4% used · resets Nov 9, 5:40am (UTC)',
+      'Current week (all models): 3% used · resets Nov 15, 9am (UTC)',
+      'Current week (Fable): 0% used · resets Nov 15, 9am (UTC)'
+    ].join('\n')
+  });
+
+  it('phân tích đúng mẫu thật 2026-11-09 (now = 2026-11-09T01:00Z → 5h 96 %, week 97 %)', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+    const windows = parseClaudeUsage(sampleClaudeJson, now);
+    expect(windows).toEqual([
+      { name: '5h', remainingPercent: 96, resetsAt: '2026-11-09T05:40:00.000Z' },
+      { name: 'week', remainingPercent: 97, resetsAt: '2026-11-15T09:00:00.000Z' }
+    ]);
+  });
+
+  it('trả về null khi is_error: true', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+    const errJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: true,
+      result: [
+        'Current session: 4% used · resets Nov 9, 5:40am (UTC)',
+        'Current week (all models): 3% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(errJson, now)).toBeNull();
+  });
+
+  it('trả về null khi dòng đổi định dạng', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+    const changedSession = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: unparseable format',
+        'Current week (all models): 3% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(changedSession, now)).toBeNull();
+
+    const changedWeek = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 4% used · resets Nov 9, 5:40am (UTC)',
+        'Current week (all models): resets tomorrow'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(changedWeek, now)).toBeNull();
+  });
+
+  it('trả về null khi thiếu một trong hai dòng (Current session hoặc Current week)', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+    const missingSession = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: 'Current week (all models): 3% used · resets Nov 15, 9am (UTC)'
+    });
+    expect(parseClaudeUsage(missingSession, now)).toBeNull();
+
+    const missingWeek = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: 'Current session: 4% used · resets Nov 9, 5:40am (UTC)'
+    });
+    expect(parseClaudeUsage(missingWeek, now)).toBeNull();
+  });
+
+  it('trả về null khi local_command !== "usage"', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+    const wrongCmd = JSON.stringify({
+      local_command: 'cost',
+      is_error: false,
+      result: [
+        'Current session: 4% used · resets Nov 9, 5:40am (UTC)',
+        'Current week (all models): 3% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(wrongCmd, now)).toBeNull();
+  });
+
+  it('trả về null khi JSON hỏng hoặc result không phải chuỗi', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+    expect(parseClaudeUsage('not-json', now)).toBeNull();
+    expect(parseClaudeUsage(JSON.stringify({ local_command: 'usage', is_error: false }), now)).toBeNull();
+    expect(parseClaudeUsage(JSON.stringify({ local_command: 'usage', is_error: false, result: 123 }), now)).toBeNull();
+  });
+
+  it('tính sang năm sau khi ngày Jan 2 và now là 30/12', () => {
+    const endOfYear = new Date('2026-12-30T10:00:00.000Z');
+    const rolloverJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 10% used · resets Dec 30, 3:00pm (UTC)',
+        'Current week (all models): 20% used · resets Jan 2, 9am (UTC)'
+      ].join('\n')
+    });
+    const windows = parseClaudeUsage(rolloverJson, endOfYear);
+    expect(windows).toEqual([
+      { name: '5h', remainingPercent: 90, resetsAt: '2026-12-30T15:00:00.000Z' },
+      { name: 'week', remainingPercent: 80, resetsAt: '2027-01-02T09:00:00.000Z' }
+    ]);
+  });
+
+  it('không làm tròn % số thực của claude', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+    const floatJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 4.25% used · resets Nov 9, 5:40am (UTC)',
+        'Current week (all models): 3.5% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    const windows = parseClaudeUsage(floatJson, now);
+    expect(windows).toEqual([
+      { name: '5h', remainingPercent: 95.75, resetsAt: '2026-11-09T05:40:00.000Z' },
+      { name: 'week', remainingPercent: 96.5, resetsAt: '2026-11-15T09:00:00.000Z' }
+    ]);
+  });
+
+  it('xử lý chuỗi có chứa mã ANSI', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+    const wrapped = `\x1B[32m${sampleClaudeJson}\x1B[0m`;
+    const windows = parseClaudeUsage(wrapped, now);
+    expect(windows).toEqual([
+      { name: '5h', remainingPercent: 96, resetsAt: '2026-11-09T05:40:00.000Z' },
+      { name: 'week', remainingPercent: 97, resetsAt: '2026-11-15T09:00:00.000Z' }
+    ]);
+  });
+
+  it('tháng phải đúng 3 chữ (Jan..Dec) theo sau là khoảng trắng; tháng dài hoặc lạ → null', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+
+    // Tháng dài: November
+    const longMonthJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 4% used · resets November 9, 5:40am (UTC)',
+        'Current week (all models): 3% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(longMonthJson, now)).toBeNull();
+
+    // Tháng lạ: Foo
+    const weirdMonthJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 4% used · resets Foo 9, 5:40am (UTC)',
+        'Current week (all models): 3% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(weirdMonthJson, now)).toBeNull();
+
+    // Thiếu khoảng trắng sau tháng: Nov9
+    const noSpaceMonthJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 4% used · resets Nov9, 5:40am (UTC)',
+        'Current week (all models): 3% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(noSpaceMonthJson, now)).toBeNull();
+  });
+
+  it('chuyển đổi đúng 12am thành 00:xx và 12pm thành 12:xx', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+    const noonMidnightJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 10% used · resets Nov 9, 12:45am (UTC)',
+        'Current week (all models): 20% used · resets Nov 15, 12:15pm (UTC)'
+      ].join('\n')
+    });
+    const windows = parseClaudeUsage(noonMidnightJson, now);
+    expect(windows).toEqual([
+      { name: '5h', remainingPercent: 90, resetsAt: '2026-11-09T00:45:00.000Z' },
+      { name: 'week', remainingPercent: 80, resetsAt: '2026-11-15T12:15:00.000Z' }
+    ]);
+
+    // Test cả dạng không có phút: 12am và 12pm
+    const noMinutesJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 10% used · resets Nov 9, 12am (UTC)',
+        'Current week (all models): 20% used · resets Nov 15, 12pm (UTC)'
+      ].join('\n')
+    });
+    const windowsNoMin = parseClaudeUsage(noMinutesJson, now);
+    expect(windowsNoMin).toEqual([
+      { name: '5h', remainingPercent: 90, resetsAt: '2026-11-09T00:00:00.000Z' },
+      { name: 'week', remainingPercent: 80, resetsAt: '2026-11-15T12:00:00.000Z' }
+    ]);
+  });
+
+  it('trả về null khi ngày không tồn tại (Feb 30)', () => {
+    const now = new Date('2026-02-01T00:00:00.000Z');
+    const invalidDateJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 5% used · resets Feb 30, 9am (UTC)',
+        'Current week (all models): 5% used · resets Feb 20, 9am (UTC)'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(invalidDateJson, now)).toBeNull();
+  });
+
+  it('suy năm ở biên: đúng 24 giờ trước now giữ năm hiện tại, 24 giờ + 1 phút trước now cộng 1 năm', () => {
+    // now = 2026-06-01T12:00:00.000Z
+    const refNow = new Date('2026-06-01T12:00:00.000Z');
+
+    // Biên 1: Đúng 24 giờ trước now -> May 31, 12:00pm (UTC) = 2026-05-31T12:00:00.000Z
+    // (refNow - resetMs = đúng 24h, không > 24h -> giữ năm 2026)
+    const exactly24hAgoJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 15% used · resets May 31, 12:00pm (UTC)',
+        'Current week (all models): 25% used · resets Jun 5, 9am (UTC)'
+      ].join('\n')
+    });
+    const windows24h = parseClaudeUsage(exactly24hAgoJson, refNow);
+    expect(windows24h).toEqual([
+      { name: '5h', remainingPercent: 85, resetsAt: '2026-05-31T12:00:00.000Z' },
+      { name: 'week', remainingPercent: 75, resetsAt: '2026-06-05T09:00:00.000Z' }
+    ]);
+
+    // Biên 2: 24 giờ + 1 phút trước now -> May 31, 11:59am (UTC)
+    // (refNow - resetMs = 24h 1m > 24h -> cộng 1 năm sang 2027)
+    const over24hJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 15% used · resets May 31, 11:59am (UTC)',
+        'Current week (all models): 25% used · resets Jun 5, 9am (UTC)'
+      ].join('\n')
+    });
+    const windowsOver24h = parseClaudeUsage(over24hJson, refNow);
+    expect(windowsOver24h).toEqual([
+      { name: '5h', remainingPercent: 85, resetsAt: '2027-05-31T11:59:00.000Z' },
+      { name: 'week', remainingPercent: 75, resetsAt: '2026-06-05T09:00:00.000Z' }
+    ]);
+  });
+
+  it('xử lý giá trị %: 0% và 100% hợp lệ, -1% hoặc 101% → null', () => {
+    const now = new Date('2026-11-09T01:00:00.000Z');
+
+    // 0% used -> remainingPercent = 100
+    const zeroPercentJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 0% used · resets Nov 9, 5:40am (UTC)',
+        'Current week (all models): 0% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    const windowsZero = parseClaudeUsage(zeroPercentJson, now);
+    expect(windowsZero).toEqual([
+      { name: '5h', remainingPercent: 100, resetsAt: '2026-11-09T05:40:00.000Z' },
+      { name: 'week', remainingPercent: 100, resetsAt: '2026-11-15T09:00:00.000Z' }
+    ]);
+
+    // 100% used -> remainingPercent = 0
+    const hundredPercentJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 100% used · resets Nov 9, 5:40am (UTC)',
+        'Current week (all models): 100% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    const windowsHundred = parseClaudeUsage(hundredPercentJson, now);
+    expect(windowsHundred).toEqual([
+      { name: '5h', remainingPercent: 0, resetsAt: '2026-11-09T05:40:00.000Z' },
+      { name: 'week', remainingPercent: 0, resetsAt: '2026-11-15T09:00:00.000Z' }
+    ]);
+
+    // -1% used -> null
+    const negativePercentJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: -1% used · resets Nov 9, 5:40am (UTC)',
+        'Current week (all models): 10% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(negativePercentJson, now)).toBeNull();
+
+    // 101% used -> null
+    const over100PercentJson = JSON.stringify({
+      local_command: 'usage',
+      is_error: false,
+      result: [
+        'Current session: 10% used · resets Nov 9, 5:40am (UTC)',
+        'Current week (all models): 101% used · resets Nov 15, 9am (UTC)'
+      ].join('\n')
+    });
+    expect(parseClaudeUsage(over100PercentJson, now)).toBeNull();
   });
 });
 
@@ -290,27 +605,155 @@ describe('readEnergy', () => {
   const fixedNow = new Date('2026-11-08T15:00:00.000Z');
   const now = () => fixedNow;
 
-  it('claude-code: trả về unknown với note "CLI không có lệnh hạn mức"', async () => {
-    const runCalls: string[][] = [];
-    const run = async (argv: string[]) => {
-      runCalls.push(argv);
-      return { exitCode: 0, timedOut: false, durationMs: 10, output: '' };
+  const sampleClaudeOutput = JSON.stringify({
+    local_command: 'usage',
+    is_error: false,
+    result: [
+      'Current session: 4% used · resets Nov 9, 5:40am (UTC)',
+      'Current week (all models): 3% used · resets Nov 15, 9am (UTC)',
+      'Current week (Fable): 0% used · resets Nov 15, 9am (UTC)'
+    ].join('\n')
+  });
+
+  it('claude-code: chạy claude -p /usage và trả về fresh khi parse thành công', async () => {
+    const runCalls: Array<{ argv: string[]; opts?: any }> = [];
+    const run = async (argv: string[], opts?: any) => {
+      runCalls.push({ argv, opts });
+      return { exitCode: 0, timedOut: false, durationMs: 100, output: sampleClaudeOutput };
     };
 
     const reading = await readEnergy('claude', 'claude-code', {
       run,
       codexHome: '/tmp/codex',
-      now
+      now: () => new Date('2026-11-09T01:00:00.000Z')
     });
 
-    expect(runCalls.length).toBe(0);
+    expect(runCalls.length).toBe(1);
+    expect(runCalls[0].argv).toEqual(['claude', '-p', '/usage', '--output-format', 'json']);
+    expect(runCalls[0].opts?.cwd).toBe(tmpdir());
+    expect(reading).toEqual({
+      agent: 'claude',
+      status: 'fresh',
+      windows: [
+        { name: '5h', remainingPercent: 96, resetsAt: '2026-11-09T05:40:00.000Z' },
+        { name: 'week', remainingPercent: 97, resetsAt: '2026-11-15T09:00:00.000Z' }
+      ],
+      readAt: '2026-11-09T01:00:00.000Z'
+    });
+  });
+
+  it('claude-code: trả về unknown với note đúng khi exit code khác 0', async () => {
+    const run = async () => ({
+      exitCode: 1,
+      timedOut: false,
+      durationMs: 50,
+      output: 'Error'
+    });
+
+    const reading = await readEnergy('claude', 'claude-code', {
+      run,
+      codexHome: '/tmp/codex',
+      now: () => new Date('2026-11-09T01:00:00.000Z')
+    });
+
     expect(reading).toEqual({
       agent: 'claude',
       status: 'unknown',
       windows: [],
-      readAt: fixedNow.toISOString(),
-      note: 'CLI không có lệnh hạn mức'
+      readAt: '2026-11-09T01:00:00.000Z',
+      note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
     });
+  });
+
+  it('claude-code: trả về unknown với note đúng khi timed out', async () => {
+    const run = async () => ({
+      exitCode: null,
+      timedOut: true,
+      durationMs: 60000,
+      output: ''
+    });
+
+    const reading = await readEnergy('claude', 'claude-code', {
+      run,
+      codexHome: '/tmp/codex',
+      now: () => new Date('2026-11-09T01:00:00.000Z')
+    });
+
+    expect(reading).toEqual({
+      agent: 'claude',
+      status: 'unknown',
+      windows: [],
+      readAt: '2026-11-09T01:00:00.000Z',
+      note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
+    });
+  });
+
+  it('claude-code: trả về unknown với note đúng khi output không parse được', async () => {
+    const run = async () => ({
+      exitCode: 0,
+      timedOut: false,
+      durationMs: 50,
+      output: '{"local_command":"usage","is_error":false,"result":"invalid format"}'
+    });
+
+    const reading = await readEnergy('claude', 'claude-code', {
+      run,
+      codexHome: '/tmp/codex',
+      now: () => new Date('2026-11-09T01:00:00.000Z')
+    });
+
+    expect(reading).toEqual({
+      agent: 'claude',
+      status: 'unknown',
+      windows: [],
+      readAt: '2026-11-09T01:00:00.000Z',
+      note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
+    });
+  });
+
+  it('claude-code: trả về unknown với note đúng khi run ném lỗi (exception)', async () => {
+    const run = async () => {
+      throw new Error('spawn claude ENOENT');
+    };
+
+    const reading = await readEnergy('claude', 'claude-code', {
+      run,
+      codexHome: '/tmp/codex',
+      now: () => new Date('2026-11-09T01:00:00.000Z')
+    });
+
+    expect(reading).toEqual({
+      agent: 'claude',
+      status: 'unknown',
+      windows: [],
+      readAt: '2026-11-09T01:00:00.000Z',
+      note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
+    });
+  });
+
+  it('claude-code: tự đặt timeout 60s khi deps.run trả Promise không bao giờ resolve (fake timers) → unknown', async () => {
+    vi.useFakeTimers();
+    try {
+      const run = () => new Promise<any>(() => {});
+      const readingPromise = readEnergy('claude', 'claude-code', {
+        run,
+        codexHome: '/tmp/codex',
+        now: () => new Date('2026-11-09T01:00:00.000Z')
+      });
+
+      vi.advanceTimersByTime(60000);
+
+      const reading = await readingPromise;
+      expect(reading).toEqual({
+        agent: 'claude',
+        status: 'unknown',
+        windows: [],
+        readAt: '2026-11-09T01:00:00.000Z',
+        note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('antigravity-cli: chạy đúng lệnh agy /quota qua script -qec và trả về fresh', async () => {
