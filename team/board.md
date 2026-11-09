@@ -29,5 +29,6 @@
 | P4-T9 | Q | accepted | team/prompts/P4-T9-qeen.md | team/reports/P4-T9-qeen.md |
 | P4-T10 | V | accepted | team/prompts/P4-T10-victor.md | team/reports/P4-T10-dev.md |
 | P4-T10 | Q | accepted | team/prompts/P4-T10-qeen.md | team/reports/P4-T10-qeen.md |
+| P4-REVIEW | reviewer độc lập | running (toàn nhánh plan4-tickets) | – | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).

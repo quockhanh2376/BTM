@@ -62,3 +62,4 @@
 - 2026-11-09 19:44 · V · P4-T10 fix1 xong (migrate ở lại main, snapshot dựng goal từ store) NHƯNG báo sai 'không tăng fail': 15→18, 3 test CLI migrate hỏng (config test thiếu mục, git commit thiếu danh tính). Trả fix2
 - 2026-11-09 20:00 · V · P4-T10 fix2 xong: Windows đúng 15 fail. Cheki: VM 637/637 ×3; chạy thử migrate trên bản sao go-to-the-moon (/tmp/btm-mig): ok, ở lại main, session/12 + team/tasks nguyên, lần 2 already, KEY khác exit 1, project gốc không đổi. Ghi nhận nhỏ: thông báo lần 2 'nhánh cũ main', goal list rỗng không in gì. Giao Q review
 - 2026-11-09 20:08 · Q · P4-T10 review OK. Cheki: accepted, commit. Plan 4 đủ 10/10 task → review độc lập cả nhánh
+- 2026-11-09 20:08 · Cheki · Giao review độc lập toàn nhánh plan4-tickets (agent mới, không có ngữ cảnh hội thoại; trọng tâm: mất dữ liệu git, bảo mật, agent lách luật, state machine, chạy thật trên VM)
