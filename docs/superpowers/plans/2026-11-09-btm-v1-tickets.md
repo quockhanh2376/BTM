@@ -58,7 +58,7 @@
 
 ### Task 1: Ticket – schema, đọc file, Definition of Ready
 
-**Files:** Create `src/ticket/ticket.ts`, `src/ticket/goal.ts` (chỉ `slugify`, `goalBranch`), `tests/ticket.test.ts`. (Giữ `card.ts` tới Task 6 rồi xoá.)
+**Files:** Create `src/ticket/ticket.ts`, `src/ticket/goal.ts` (chỉ `slugify`, `goalBranch`), `tests/ticket.test.ts`. (Giữ `card.ts` tới Task 9 rồi xoá.)
 
 **Interfaces – Produces:**
 - `slugify(title: string): string`, `goalBranch(n: number, title: string): string` → `goal/G<n>-<slug>` (`normalize('NFD')` bỏ `\p{M}`, `đ/Đ→d`).
@@ -136,7 +136,7 @@
 
 ### Task 6: Phiên chạy theo goal
 
-**Files:** Modify `src/core/session.ts`, `src/cli.ts`, `src/server/host.ts`; tests `tests/session.test.ts`, `tests/host.test.ts`; Delete `src/task/card.ts`, `tests/card.test.ts`.
+**Files:** Modify `src/core/session.ts`, `src/core/prompts.ts` (xoá pmPrompt/devPrompt/qcPrompt cũ), `src/qc/result.ts` (xoá parseQcResult cũ), `src/gate/gate.ts`, `src/cli.ts`, `src/server/host.ts`; tests `tests/session.test.ts`, `tests/host.test.ts`, `tests/gate.test.ts`, `tests/qc.test.ts`, `tests/init.test.ts`. (`src/task/card.ts` còn dùng ở `snapshot.ts` → xoá ở Task 9.)
 
 **Interfaces – Consumes:** Task 1–5. **Produces:** `runSession(d, goals: Array<string | { n: number }>)` – chuỗi = goal mới, `{n}` = tiếp tục goal cũ; CLI `btm run --goal "<tiêu đề>"` / `--goal-id G1`.
 
@@ -148,7 +148,7 @@ Luồng mỗi goal (tuần tự, chung giới hạn lượt của phiên):
 5. Mọi ticket goal `passed` → goal `qc_done`; Core ghi `team/goals/G<n>.md` (bảng: number, ID, tiêu đề, trạng thái, vòng sửa) và commit `G<n>: summary`.
 
 - [ ] **Step 1: Test** (runner giả): goal mới tạo đúng nhánh, PM ghi 2 ticket → Dev/QC chạy theo number, goal `qc_done`, có `team/goals/G1.md`, mọi commit trong nhánh bắt đầu bằng `GTM-` hoặc `G1:`. PM ghi ID trùng → `needs_owner`, không lượt Dev. Phiên 2 `--goal-id G1` sau khi phiên 1 dừng sau ticket 1 → chỉ chạy ticket 2, counter không reset. Ticket depends_on ticket `failed` → `blocked` với `not_ready`. Hết lượt giữa goal → `out_of_turns` như cũ.
-- [ ] **Step 2–4:** FAIL → implement → PASS (xoá `card.ts` + import cũ; `tsc` sạch).
+- [ ] **Step 2–4:** FAIL → implement → PASS (session/gate/host/cli không còn import `card.ts`; `tsc` sạch).
 - [ ] **Step 5:** Commit `feat: sessions run goals and tickets (P4 Task 6)`.
 
 ### Task 7: Ghế audit (Kai) – tuỳ chọn
@@ -180,7 +180,7 @@ Luồng: goal `qc_done` + có ghế audit → agent audit ≠ mọi coder của 
 
 ### Task 9: Dashboard – bảng theo goal, pipeline, lịch sử, nút Duyệt merge
 
-**Files:** Modify `src/server/snapshot.ts`, `src/server/http.ts`, `src/server/host.ts`, `web/index.html`; tests `tests/snapshot.test.ts`, `tests/http.test.ts`, `tests/web.test.ts`.
+**Files:** Modify `src/server/snapshot.ts`, `src/server/http.ts`, `src/server/host.ts`, `web/index.html`; tests `tests/snapshot.test.ts`, `tests/http.test.ts`, `tests/web.test.ts`; Delete `src/task/card.ts`, `tests/card.test.ts` (snapshot đọc `loadTickets` + store thay `loadTaskCards` + `listTaskStates`).
 
 **Interfaces – Produces:**
 - Snapshot thêm `goals: Array<{ n; title; state; stage: 'intake'|'plan'|'build'|'verify'|'audit'|'release'; passed: number; total: number; tickets: Array<{ id; number; of; title; type; size; state; fix_rounds }> }>`; `seats[].ticket` = Ticket ID đang làm.
