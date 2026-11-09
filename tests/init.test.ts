@@ -977,6 +977,7 @@ runner:
     };
 
     const projPath = initProject(tmpRoot, 'slow-proj', repoTemplates, { key: 'GTM' });
+    git(projPath, 'checkout', '-b', 'goal/G1-slow');
     capturedStore.setActiveProject(projPath);
 
     // Kích hoạt 1 lệnh Dev giả

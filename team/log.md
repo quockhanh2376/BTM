@@ -75,3 +75,5 @@
 - 2026-11-09 22:20 · V · FIX-B xong (session 90→96, gate 34→35). Cheki: tsc sạch; VM 653/653 ×3; đọc code dọn tree sau gate an toàn; ghi nhận: khôi phục ticket bị catch{} nuốt lỗi. Giao Q review (lượt đầu dùng stream-json – xem tab Terminal)
 - 2026-11-09 22:29 · Q · FIX-B review OK. Cheki: accepted, commit
 - 2026-11-09 22:30 · Cheki · Giao FIX-C: lệnh trực tiếp dashboard (host.ts processQueue) qua guard, chỉ chạy trên nhánh goal, tách guard ra src/core/guard.ts
+- 2026-11-09 23:08 · V · FIX-C xong (guard.ts tách riêng; lệnh trực tiếp chỉ chạy trên nhánh goal, có guard; host 34→38 test). Cheki: tsc sạch; VM 657/657 ×3. Giao Q review
+- 2026-11-09 23:16 · Q · FIX-C review OK. Cheki: accepted, commit. Bắt đầu review độc lập lần 2 toàn nhánh
