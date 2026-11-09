@@ -1,0 +1,1 @@
+{"conversation_id":"0f11a20e-2c0a-472d-a903-130767f21866","status":"SUCCESS","response":"Đang chạy kiểm thử `npx vitest run` trong nền để xác minh kết quả kiểm thử trên Windows.\nOK\n","duration_seconds":30622.0912412,"num_turns":13,"usage":{"input_tokens":2306639,"output_tokens":89036,"thinking_tokens":67701,"cache_read_tokens":52746872,"total_tokens":2395675}}

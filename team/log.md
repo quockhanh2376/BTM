@@ -64,3 +64,6 @@
 - 2026-11-09 20:08 · Q · P4-T10 review OK. Cheki: accepted, commit. Plan 4 đủ 10/10 task → review độc lập cả nhánh
 - 2026-11-09 20:08 · Cheki · Giao review độc lập toàn nhánh plan4-tickets (agent mới, không có ngữ cảnh hội thoại; trọng tâm: mất dữ liệu git, bảo mật, agent lách luật, state machine, chạy thật trên VM)
 - 2026-11-09 20:16 · Reviewer độc lập: needs fixes, 10 lỗi (team/reviews/P4-review-1.md). Cheki xác minh #1 (reset --hard trên nhánh đang checkout → có thể ghi đè main) và #2/#8. Chia 2 đợt: FIX-A an toàn git (#1 #2 #3 #4 #8) → FIX-B luật ticket (#5 #6 #7 #9 #10). Giao FIX-A cho V
+- 2026-11-09 21:06 · V · P4-FIX-A xong (guardAgentTurn, session 81→88 test, 15 fail Windows). Cheki: lỗ hổng còn lại – agent commit LÊN main thì main giữ commit (test chỉ checkout, không commit). Trả fix1: ghi sha protected branch trước lượt, update-ref khôi phục
+- 2026-11-09 21:27 · V · FIX-A fix1 xong: protectedHead + update-ref, test QC/Dev/PM commit lên main; session 90 test; Windows 631/646 (15). Giao Q review FIX-A; test VM song song
+- 2026-11-09 21:36 · Q · FIX-A review OK. Cheki: kiểm 5 chỗ gọi agent đều có snapshot+guard mọi nhánh; VM 646/646 ×3 → accepted, commit. Ghi nhận: lệnh trực tiếp từ dashboard (host.ts processQueue) chưa qua guard – đưa vào review cuối. Giao FIX-B

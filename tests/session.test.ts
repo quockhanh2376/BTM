@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFileSync, readFileSync, mkdirSync, realpathSync, existsSync, chmodSync, lstatSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
 import { loadConfig, type Config, type Seat } from '../src/config.ts';
 import { openStore, effectiveSeats, type Store } from '../src/store/db.ts';
@@ -681,19 +682,43 @@ describe('Goal & Ticket Session Coordinator', () => {
       },
     });
 
+    // Tạo branch goal/G1-test và commit ticket GTM-0001
+    git(repo, 'checkout', '-b', 'goal/G1-test', 'main');
+    writeTicketFile(repo, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+    commitAll(repo, 'GTM-0001: ticket', { name: 'pm', email: 'pm@btm.local' });
+
+    const baseSha = headSha(repo);
+    store.upsertTicket(repo, {
+      id: 'GTM-0001',
+      goal: 'G1',
+      number: 1,
+      of: 1,
+      title: 'T1',
+      type: 'feat',
+      size: 'S',
+      scope: ['src/app.ts'],
+      acceptance: ['ok'],
+      done_when: 'done',
+      depends_on: [],
+      from_audit: false,
+    });
+    store.setTicketState(repo, 'GTM-0001', 'in_dev', 'dev', 'start', 0, baseSha);
+
+    // Tạo commit không có ticket ID giữa base và HEAD
+    writeFileSync(join(repo, 'extra.txt'), 'extra');
+    commitAll(repo, 'commit without ticket id', { name: 'core', email: 'core@btm.local' });
+
+    git(repo, 'checkout', 'main');
+
     const { runner } = createFakeRunner([
-      (_s, _a, _p, cwd) => {
-        writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
-      },
       (_s, agent, _p, cwd) => {
         writeFileSync(join(cwd, 'src', 'app.ts'), 'dev edit');
         writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
-        commitAll(cwd, 'WIP untracked commit', { name: agent, email: `${agent}@btm.local` });
       },
     ]);
     deps.runner = runner;
 
-    const outcome = await runSession(deps, ['Missing commit ID test'], { approved: true });
+    const outcome = await runSession(deps, ['Test'], { approved: true });
 
     expect(outcome.status).toBe('needs_owner');
     expect(outcome.notes.some((n) => n.includes('commit_missing_ticket_id'))).toBe(true);
@@ -1427,7 +1452,7 @@ done_when: done
 
   it('commitAll lỗi sau lượt → lượt đã có ended_at, session có status cuối', async () => {
     const repo = tmpRepo({ 'src/app.ts': '1' });
-    const dbPath = join(repo, 'store.db');
+    const dbPath = join(tmpdir(), `test-store-1428-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
     const customStore = openStore(dbPath);
     const { deps } = makeDeps(repo);
     deps.store.close();
@@ -1473,7 +1498,7 @@ done_when: done
 
   it('runner trả exitCode:null, timedOut:false → lượt "error", needs_owner, QC không gọi', async () => {
     const repo = tmpRepo({ 'src/app.ts': '1' });
-    const dbPath = join(repo, 'store.db');
+    const dbPath = join(tmpdir(), `test-store-1476-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
     const customStore = openStore(dbPath);
     const { deps } = makeDeps(repo);
     deps.store.close();
@@ -1572,7 +1597,7 @@ done_when: done
     storeTimeout.close();
   });
 
-  it('đầu phiên working tree bẩn → commitAll "checkpoint" trước khi checkout nhánh mới', async () => {
+  it('đầu phiên working tree bẩn → trả needs_owner note dirty_tree_at_start, không commit', async () => {
     const repo = tmpRepo({ 'src/app.ts': 'initial' });
     const { deps, store } = makeDeps(repo);
     writeFileSync(join(repo, 'src', 'app.ts'), 'dirty before session');
@@ -1581,21 +1606,17 @@ done_when: done
       (_s, _a, _p, cwd) => {
         writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
       },
-      (_s, agent, _p, cwd) => {
-        writeFileSync(join(cwd, 'src', 'app.ts'), 'fixed in session');
-        writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
-      },
-      () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
     ]);
 
     deps.runner = runner;
     const outcome = await runSession(deps, ['Goal 1'], { approved: true });
-    expect(outcome.notes).toEqual([]);
-    expect(outcome.status).toBe('done');
+    expect(outcome.status).toBe('needs_owner');
+    expect(outcome.notes.some((n) => n.includes('dirty_tree_at_start'))).toBe(true);
+    expect(outcome.notes.some((n) => n.includes('main'))).toBe(true);
 
     const baseBranch = deps.cfg.git.protected_branch || 'main';
     const mainLog = git(repo, 'log', baseBranch, '-n', '2', '--pretty=%s');
-    expect(mainLog).toContain('G1: checkpoint');
+    expect(mainLog).not.toContain('checkpoint');
     store.close();
   });
 
@@ -3214,6 +3235,328 @@ Yêu cầu đóng note nhưng commit lỗi
       const content = readFileSync(join(repo, 'team', 'tickets', 'GTM-0001.md'), 'utf8');
       expect(content).toContain('Original GTM-0001');
       expect(content).not.toContain('Illegally Modified');
+
+      store.close();
+    });
+  });
+
+  describe('P4-FIX-A: git turn safety', () => {
+    it('QC checkout main + sửa file + git commit → sau session rev-parse main == trước, HEAD = nhánh goal, verdict fail có lỗi agent_modified_protected_branch', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const mainShaBefore = git(repo, 'rev-parse', 'main').trim();
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        // QC switches to main, modifies file, commits
+        (_s, _a, _p, cwd) => {
+          git(cwd, 'checkout', 'main');
+          writeFileSync(join(cwd, 'src', 'hacked.ts'), 'export const hack = 1;\n');
+          git(cwd, 'add', '.');
+          git(cwd, '-c', 'user.name=qc', '-c', 'user.email=qc@btm.local', 'commit', '-m', 'qc hack on main');
+          return makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass');
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['QC switch branch test'], { approved: true });
+
+      // main KHÔNG đổi (so sha)
+      expect(git(repo, 'rev-parse', 'main').trim()).toBe(mainShaBefore);
+
+      // Quay về nhánh goal
+      expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('goal/G1-qc-switch-branch-test');
+
+      // QC verdict fail
+      const qcReportPath = join(repo, 'team', 'reports', 'GTM-0001-qc.json');
+      expect(existsSync(qcReportPath)).toBe(true);
+      const qcData = JSON.parse(readFileSync(qcReportPath, 'utf8'));
+      expect(qcData.verdict).toBe('fail');
+      expect(qcData.bugs).toContain('agent_modified_protected_branch');
+
+      store.close();
+    });
+
+    it('Dev checkout main + sửa file + git commit → main không đổi, needs_owner kèm agent_modified_protected_branch', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const mainShaBefore = git(repo, 'rev-parse', 'main').trim();
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev switches to main, modifies file, commits
+        (_s, agent, _p, cwd) => {
+          git(cwd, 'checkout', 'main');
+          writeFileSync(join(cwd, 'src', 'hacked.ts'), 'export const hack = 1;\n');
+          git(cwd, 'add', '.');
+          git(cwd, '-c', 'user.name=dev', '-c', 'user.email=dev@btm.local', 'commit', '-m', 'dev hack on main');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Dev switch branch test'], { approved: true });
+
+      // main không đổi
+      expect(git(repo, 'rev-parse', 'main').trim()).toBe(mainShaBefore);
+
+      // outcome needs_owner kèm agent_modified_protected_branch
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('agent_modified_protected_branch');
+
+      // Quay về nhánh goal
+      expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('goal/G1-dev-switch-branch-test');
+
+      store.close();
+    });
+
+    it('PM checkout main + sửa file + git commit → main không đổi, needs_owner kèm agent_modified_protected_branch', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const mainShaBefore = git(repo, 'rev-parse', 'main').trim();
+
+      const { runner } = createFakeRunner([
+        // PM switches to main, modifies file, commits
+        (_s, _a, _p, cwd) => {
+          git(cwd, 'checkout', 'main');
+          writeFileSync(join(cwd, 'src', 'hacked.ts'), 'export const hack = 1;\n');
+          git(cwd, 'add', '.');
+          git(cwd, '-c', 'user.name=pm', '-c', 'user.email=pm@btm.local', 'commit', '-m', 'pm hack on main');
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['PM switch branch test'], { approved: true });
+
+      // main không đổi
+      expect(git(repo, 'rev-parse', 'main').trim()).toBe(mainShaBefore);
+
+      // outcome needs_owner kèm agent_modified_protected_branch
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('agent_modified_protected_branch');
+
+      // Quay về nhánh goal
+      expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('goal/G1-pm-switch-branch-test');
+
+      store.close();
+    });
+
+    it('QC tạo nhánh mới → phát hiện', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        // QC creates new branch
+        (_s, _a, _p, cwd) => {
+          git(cwd, 'checkout', '-b', 'qc-rogue-branch');
+          return makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass');
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['QC new branch test'], { approved: true });
+
+      // Nhánh rogue không bị xoá
+      expect(git(repo, 'rev-parse', '--verify', 'qc-rogue-branch').trim()).toBeTruthy();
+
+      // Core quay về nhánh goal
+      expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('goal/G1-qc-new-branch-test');
+
+      // QC verdict fail
+      const qcReportPath = join(repo, 'team', 'reports', 'GTM-0001-qc.json');
+      expect(existsSync(qcReportPath)).toBe(true);
+      const qcData = JSON.parse(readFileSync(qcReportPath, 'utf8'));
+      expect(qcData.verdict).toBe('fail');
+      expect(qcData.bugs).toContain('agent_switched_branch');
+
+      store.close();
+    });
+
+    it('Dev checkout main + sửa file → main không đổi', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const mainShaBefore = git(repo, 'rev-parse', 'main').trim();
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev switches to main and modifies file
+        (_s, agent, _p, cwd) => {
+          git(cwd, 'checkout', 'main');
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 999;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Dev switch branch test'], { approved: true });
+
+      // main KHÔNG đổi (so sha)
+      expect(git(repo, 'rev-parse', 'main').trim()).toBe(mainShaBefore);
+
+      // Quay về nhánh goal
+      expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('goal/G1-dev-switch-branch-test');
+
+      // Nội dung trên main không đổi
+      git(repo, 'checkout', 'main');
+      expect(readFileSync(join(repo, 'src', 'app.ts'), 'utf8').replace(/\r\n/g, '\n')).toBe('export const a = 0;\n');
+
+      store.close();
+    });
+
+    it('PM tự commit file ngoài team/tickets → pm_out_of_scope', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      const { runner } = createFakeRunner([
+        // PM creates ticket and commits an illegal file outside team/tickets
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+          writeFileSync(join(cwd, 'src', 'hacked.ts'), 'export const hack = 1;\n');
+          git(cwd, 'add', '.');
+          git(cwd, '-c', 'user.name=pm', '-c', 'user.email=pm@btm.local', 'commit', '-m', 'PM illegal commit');
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['PM out of scope commit'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('pm_out_of_scope');
+
+      // File hacked.ts không còn tồn tại trên working tree
+      expect(existsSync(join(repo, 'src', 'hacked.ts'))).toBe(false);
+
+      store.close();
+    });
+
+    it('QC timeout có sửa file → không có commit WIP chứa sửa đổi QC', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        // QC modifies file and times out
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'corrupted by QC');
+          return { timedOut: true };
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['QC timeout test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('timeout');
+
+      // Không có commit WIP chứa sửa đổi QC
+      const commits = git(repo, 'log', '--oneline', 'main..HEAD').trim().split('\n');
+      expect(commits.some((c) => c.includes('WIP') && c.includes('timeout'))).toBe(false);
+
+      // File src/app.ts vẫn giữ nguyên code của Dev, không bị sửa đổi bởi QC
+      expect(readFileSync(join(repo, 'src', 'app.ts'), 'utf8').replace(/\r\n/g, '\n')).toBe('export const a = 1;\n');
+
+      store.close();
+    });
+
+    it('Dev abort → có commit <ID>: WIP aborted, resume lần sau gate KHÔNG báo commit_missing_ticket_id', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const abortCtl = new AbortController();
+
+      const runner1 = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev starts work and gets aborted
+        (_s, _a, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1; // partial');
+          abortCtl.abort();
+        },
+      ]);
+      deps.runner = runner1.runner;
+      deps.signal = abortCtl.signal;
+
+      const outcome1 = await runSession(deps, ['Dev abort test'], { approved: true });
+      expect(outcome1.status).toBe('stopped');
+
+      // Có commit GTM-0001: WIP aborted
+      const commits1 = git(repo, 'log', '--oneline', 'main..HEAD').trim().split('\n');
+      expect(commits1.some((c) => c.includes('GTM-0001: WIP aborted'))).toBe(true);
+
+      // Working tree sạch
+      expect(git(repo, 'status', '--porcelain').trim()).toBe('');
+
+      // Resume session lần 2
+      const deps2 = { ...deps, signal: undefined };
+      const runner2 = createFakeRunner([
+        // Dev resumes and completes
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        // QC passes
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+      ]);
+      deps2.runner = runner2.runner;
+
+      const outcome2 = await resumeSession(deps2, outcome1.sessionId!);
+      expect(outcome2.status).toBe('done');
+      expect(outcome2.tasks['GTM-0001']).toBe('passed');
+
+      store.close();
+    });
+
+    it('tree bẩn đầu phiên → needs_owner, không commit', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const mainShaBefore = git(repo, 'rev-parse', 'main').trim();
+
+      // Tạo file chưa commit làm bẩn working tree
+      writeFileSync(join(repo, 'uncommitted.txt'), 'dirty content');
+
+      const outcome = await runSession(deps, ['Dirty tree at start test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes.some((n) => n.includes('dirty_tree_at_start'))).toBe(true);
+      expect(outcome.notes.some((n) => n.includes('main'))).toBe(true);
+
+      // Không commit gì lên main (mainSha không đổi, không có checkpoint commit)
+      expect(git(repo, 'rev-parse', 'main').trim()).toBe(mainShaBefore);
+      const logMain = git(repo, 'log', '-n', '1', '--oneline');
+      expect(logMain).not.toContain('checkpoint');
 
       store.close();
     });

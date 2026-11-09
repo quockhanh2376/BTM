@@ -201,6 +201,134 @@ interface RecordedTickets {
   contents: Map<string, string>;
 }
 
+interface TurnGuardSnapshot {
+  goalBranch: string;
+  preHead: string;
+  protectedBranch: string;
+  protectedHead: string;
+}
+
+function snapshotTurn(repo: string, goalBranch: string, protectedBranch?: string): TurnGuardSnapshot {
+  const prot = protectedBranch || 'main';
+  let protectedHead = '';
+  try {
+    protectedHead = git(repo, 'rev-parse', prot).trim();
+  } catch {}
+  return {
+    goalBranch,
+    preHead: headSha(repo),
+    protectedBranch: prot,
+    protectedHead,
+  };
+}
+
+interface GuardTurnResult {
+  switchedBranch: boolean;
+  headChanged: boolean;
+  treeDirty: boolean;
+  modifiedProtectedBranch: boolean;
+}
+
+function guardAgentTurn(
+  repo: string,
+  snapshot: TurnGuardSnapshot,
+  seat: Seat,
+  options?: {
+    isErrorOrTimeoutOrAbort?: boolean;
+    taskId?: string;
+    author?: { name: string; email: string };
+    reason?: string;
+  }
+): GuardTurnResult {
+  // 1. Kiểm tra sha protected branch ≠ protectedHead:
+  // Agent vi phạm → git update-ref refs/heads/<protected> <protectedHead> (không đổi working tree)
+  // TRƯỚC khi checkout nhánh goal.
+  let modifiedProtectedBranch = false;
+  if (snapshot.protectedBranch && snapshot.protectedHead) {
+    try {
+      const currentProtectedSha = git(repo, 'rev-parse', snapshot.protectedBranch).trim();
+      if (currentProtectedSha !== snapshot.protectedHead) {
+        modifiedProtectedBranch = true;
+        const refName = snapshot.protectedBranch.startsWith('refs/')
+          ? snapshot.protectedBranch
+          : `refs/heads/${snapshot.protectedBranch}`;
+        try {
+          git(repo, 'update-ref', refName, snapshot.protectedHead);
+        } catch {}
+      }
+    } catch {}
+  }
+
+  // 2. Nhánh hiện tại ≠ nhánh goal → git checkout -f <nhánh goal>
+  // (không reset nhánh khác, không xoá nhánh agent tạo), lý do vi phạm agent_switched_branch.
+  // Tuyệt đối không chạy reset --hard khi chưa chắc đang ở nhánh goal.
+  const currentBranch = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+  const switchedBranch = currentBranch !== snapshot.goalBranch;
+  if (switchedBranch) {
+    git(repo, 'checkout', '-f', snapshot.goalBranch);
+  }
+
+  // Đảm bảo lại protected branch đã về đúng protectedHead sau khi checkout
+  if (modifiedProtectedBranch && snapshot.protectedBranch && snapshot.protectedHead) {
+    try {
+      const curSha = git(repo, 'rev-parse', snapshot.protectedBranch).trim();
+      if (curSha !== snapshot.protectedHead) {
+        const refName = snapshot.protectedBranch.startsWith('refs/')
+          ? snapshot.protectedBranch
+          : `refs/heads/${snapshot.protectedBranch}`;
+        git(repo, 'update-ref', refName, snapshot.protectedHead);
+      }
+    } catch {}
+  }
+
+  // 3. HEAD nhánh goal khác head trước lượt (agent tự commit)
+  const currentHead = headSha(repo);
+  const headChanged = currentHead !== snapshot.preHead;
+  const treeDirty = Boolean(git(repo, 'status', '--porcelain').trim());
+
+  if (seat === 'pm' || seat === 'dev') {
+    if (modifiedProtectedBranch) {
+      try {
+        git(repo, 'reset', '--hard', snapshot.preHead);
+        git(repo, 'clean', '-fd');
+      } catch {}
+    } else {
+      if (headChanged) {
+        git(repo, 'reset', '--soft', snapshot.preHead);
+      }
+      if (options?.isErrorOrTimeoutOrAbort) {
+        const dirtyNow = Boolean(git(repo, 'status', '--porcelain').trim());
+        if (dirtyNow && options.author && options.reason) {
+          try {
+            if (seat === 'dev' && options.taskId) {
+              commitAll(repo, `${options.taskId}: WIP ${options.reason}`, options.author);
+            } else if (seat === 'pm') {
+              const prefix = options.taskId ? `${options.taskId}: ` : '';
+              commitAll(repo, `${prefix}WIP ${options.reason}`, options.author);
+            }
+          } catch {}
+        }
+      }
+    }
+  } else if (seat === 'qc' || seat === 'audit') {
+    // 4. qc/audit: vi phạm qc_modified_repo / audit_modified_repo / agent_modified_protected_branch → reset --hard <head> + clean
+    // Áp dụng CẢ khi qc/audit timeout, exit≠0, abort (#3) – không bao giờ WIP-commit thay đổi của qc/audit.
+    if (headChanged || treeDirty || switchedBranch || modifiedProtectedBranch) {
+      try {
+        git(repo, 'reset', '--hard', snapshot.preHead);
+        git(repo, 'clean', '-fd');
+      } catch {}
+    }
+  }
+
+  return {
+    switchedBranch,
+    headChanged,
+    treeDirty,
+    modifiedProtectedBranch,
+  };
+}
+
 function recordExistingTickets(repo: string): RecordedTickets {
   const ticketsDir = join(repo, 'team', 'tickets');
   const files = new Set<string>();
@@ -294,9 +422,16 @@ async function processGoal(
   const baseBranch = d.cfg.git.protected_branch || 'main';
 
   // 1. Checkout goal/G<n>-<slug>
-  const dirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
+  const dirtyFiles = getWorkingTreeChanges(d.repo).filter((f) => !f.startsWith('team/inbox/'));
+  const dirty = dirtyFiles.length > 0;
   if (dirty) {
-    commitAll(d.repo, `G${goal.n}: checkpoint`, pmAuthor);
+    const currentBranch = git(d.repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+    return {
+      status: 'needs_owner',
+      sessionId,
+      tasks,
+      notes: [`dirty_tree_at_start: ${currentBranch}`, 'dirty_tree_at_start'],
+    };
   }
 
   let branchExists = false;
@@ -431,6 +566,7 @@ async function processGoal(
       notes: promptNotes,
       hasOpenspec,
     });
+    const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
     const recordedBeforePm = recordExistingTickets(d.repo);
     const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
 
@@ -441,24 +577,48 @@ async function processGoal(
       const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
       const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
       d.store.endTurn(pmTurnId, 'error', reason);
-      try {
-        commitAll(d.repo, `G${goal.n}: WIP ${reason}`, pmAuthor);
-      } catch {}
+      const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm', {
+        isErrorOrTimeoutOrAbort: true,
+        taskId: `G${goal.n}`,
+        author: pmAuthor,
+        reason,
+      });
+      if (pmGuard.modifiedProtectedBranch) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+      }
       if (isAbort) {
         return { status: 'stopped', sessionId, tasks, notes: [reason] };
       }
       return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
     }
 
-    if (pmOutput.timedOut || pmOutput.exitCode !== 0) {
-      const reason = pmOutput.timedOut ? 'timeout' : `exit_${pmOutput.exitCode}`;
-      d.store.endTurn(pmTurnId, pmOutput.timedOut ? 'timeout' : 'error', reason);
-      try {
-        commitAll(d.repo, `G${goal.n}: WIP ${reason}`, pmAuthor);
-      } catch {}
+    if (pmOutput.timedOut || pmOutput.exitCode !== 0 || d.signal?.aborted) {
+      const isAbort = Boolean(d.signal?.aborted);
+      const reason = isAbort ? 'aborted' : (pmOutput.timedOut ? 'timeout' : `exit_${pmOutput.exitCode}`);
+      d.store.endTurn(pmTurnId, isAbort || pmOutput.timedOut ? (isAbort ? 'error' : 'timeout') : 'error', reason);
+      const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm', {
+        isErrorOrTimeoutOrAbort: true,
+        taskId: `G${goal.n}`,
+        author: pmAuthor,
+        reason,
+      });
+      if (pmGuard.modifiedProtectedBranch) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+      }
+      if (isAbort) {
+        return { status: 'stopped', sessionId, tasks, notes: [reason] };
+      }
       return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
     }
+    const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm');
     d.store.endTurn(pmTurnId, 'ok');
+
+    if (pmGuard.modifiedProtectedBranch) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    if (pmGuard.switchedBranch) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_switched_branch'] };
+    }
 
     const postPmStatus = getWorkingTreeChanges(d.repo);
     const pmChanged = postPmStatus.filter((p) => !prePmStatus.has(p));
@@ -466,11 +626,15 @@ async function processGoal(
     if (pmOutOfScope.length > 0) {
       for (const f of pmOutOfScope) {
         try {
-          git(d.repo, 'checkout', 'HEAD', '--', f);
+          git(d.repo, 'reset', 'HEAD', '--', f);
         } catch {}
         try {
-          git(d.repo, 'clean', '-f', '--', f);
-        } catch {}
+          git(d.repo, 'checkout', 'HEAD', '--', f);
+        } catch {
+          try {
+            rmSync(join(d.repo, f), { force: true, recursive: true });
+          } catch {}
+        }
       }
       try {
         commitAll(d.repo, `G${goal.n}: PM tickets`, pmAuthor);
@@ -686,6 +850,7 @@ async function processGoal(
           isHandoff
         );
 
+        const devSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
         let devOutput;
         try {
           devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
@@ -696,21 +861,48 @@ async function processGoal(
           const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
           const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
           d.store.endTurn(devTurnId, 'error', reason);
+          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
+            isErrorOrTimeoutOrAbort: true,
+            taskId: ticket.id,
+            author: devAuthor,
+            reason,
+          });
+          if (devGuard.modifiedProtectedBranch) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+          }
           if (isAbort) {
             return { status: 'stopped', sessionId, tasks, notes: [reason] };
           }
-          try {
-            commitAll(d.repo, `${ticket.id}: WIP ${reason}`, devAuthor);
-          } catch {}
           return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+        }
+
+        if (d.signal?.aborted) {
+          const reason = 'aborted';
+          d.store.endTurn(devTurnId, 'error', reason);
+          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
+            isErrorOrTimeoutOrAbort: true,
+            taskId: ticket.id,
+            author: devAuthor,
+            reason,
+          });
+          if (devGuard.modifiedProtectedBranch) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+          }
+          return { status: 'stopped', sessionId, tasks, notes: [reason] };
         }
 
         if (devOutput.timedOut) {
           const reason = 'timeout';
           d.store.endTurn(devTurnId, 'timeout', reason);
-          try {
-            commitAll(d.repo, `${ticket.id}: WIP timeout`, devAuthor);
-          } catch {}
+          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
+            isErrorOrTimeoutOrAbort: true,
+            taskId: ticket.id,
+            author: devAuthor,
+            reason,
+          });
+          if (devGuard.modifiedProtectedBranch) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+          }
           return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
         }
 
@@ -722,10 +914,53 @@ async function processGoal(
         if (!hasAutoDenied && devOutput.exitCode !== 0) {
           const reason = `exit_${devOutput.exitCode}`;
           d.store.endTurn(devTurnId, 'error', reason);
-          try {
-            commitAll(d.repo, `${ticket.id}: WIP ${reason}`, devAuthor);
-          } catch {}
+          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
+            isErrorOrTimeoutOrAbort: true,
+            taskId: ticket.id,
+            author: devAuthor,
+            reason,
+          });
+          if (devGuard.modifiedProtectedBranch) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+          }
           return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+        }
+
+        const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev');
+        if (devGuard.modifiedProtectedBranch) {
+          d.store.endTurn(devTurnId, 'rejected', 'agent_modified_protected_branch');
+          return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+        }
+        if (devGuard.switchedBranch) {
+          d.store.endTurn(devTurnId, 'rejected', 'agent_switched_branch');
+          d.store.recordHandoffFailure(sessionId, ticket.id, 'agent_switched_branch');
+          fixNotes = ['agent_switched_branch'];
+          fixRounds++;
+          if (fixRounds > d.cfg.turn.max_fix_rounds) {
+            tasks[ticket.id] = 'failed';
+            d.store.setTicketState(d.repo, ticket.id, 'failed', devAgent, 'max fix rounds exceeded', fixRounds, base);
+            for (const rem of goalTickets) {
+              if (!tasks[rem.id] || tasks[rem.id] === 'pending') {
+                const remReady = checkReady(rem, (id) => d.store.getTicketState(d.repo, id)?.state ?? null);
+                if (remReady.length > 0) {
+                  const reason = `not_ready: ${remReady.join(', ')}`;
+                  d.store.setTicketState(d.repo, rem.id, 'blocked', 'core', reason);
+                  tasks[rem.id] = 'blocked';
+                }
+              }
+            }
+            return {
+              status: 'needs_owner',
+              sessionId,
+              tasks,
+              notes: [
+                `Max fix rounds (${d.cfg.turn.max_fix_rounds}) exceeded: agent_switched_branch`,
+              ],
+            };
+          }
+          d.store.setTicketState(d.repo, ticket.id, 'returned', devAgent, 'agent_switched_branch', fixRounds, base);
+          tasks[ticket.id] = 'returned';
+          continue;
         }
 
         if (devText.includes('BLOCKED')) {
@@ -841,7 +1076,7 @@ async function processGoal(
       const qcLogFile = join(d.logDir, `turn-${qcTurnId}.log`);
       d.store.setTurnLog(qcTurnId, qcLogFile);
       const qcPromptText = qcTicketPrompt(ticket, base, qcAgent);
-      const preQcHead = headSha(d.repo);
+      const qcSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
 
       let qcOutput;
       try {
@@ -853,21 +1088,23 @@ async function processGoal(
         const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
         d.store.endTurn(qcTurnId, 'error', reason);
+        const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
+        if (qcGuard.modifiedProtectedBranch) {
+          return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+        }
         if (isAbort) {
           return { status: 'stopped', sessionId, tasks, notes: [reason] };
         }
-        try {
-          commitAll(d.repo, `${ticket.id}: WIP ${reason}`, qcAuthor);
-        } catch {}
         return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
       }
 
       if (qcOutput.timedOut || qcOutput.exitCode !== 0) {
         const reason = qcOutput.timedOut ? 'timeout' : `exit_${qcOutput.exitCode}`;
         d.store.endTurn(qcTurnId, qcOutput.timedOut ? 'timeout' : 'error', reason);
-        try {
-          commitAll(d.repo, `${ticket.id}: WIP ${reason}`, qcAuthor);
-        } catch {}
+        const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
+        if (qcGuard.modifiedProtectedBranch) {
+          return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+        }
         return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
       }
 
@@ -879,25 +1116,18 @@ async function processGoal(
         number: ticket.number,
       });
 
-      const postQcHead = headSha(d.repo);
-      const headChanged = postQcHead !== preQcHead;
-      const workingTreeDirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
-
-      if (headChanged || workingTreeDirty) {
+      const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc');
+      if (qcGuard.switchedBranch || qcGuard.headChanged || qcGuard.treeDirty || qcGuard.modifiedProtectedBranch) {
+        const reasons: string[] = [];
+        if (qcGuard.modifiedProtectedBranch) reasons.push('agent_modified_protected_branch');
+        if (qcGuard.switchedBranch) reasons.push('agent_switched_branch');
+        if (qcGuard.headChanged || qcGuard.treeDirty) reasons.push('qc_modified_repo');
         qcResult = {
           verdict: 'fail',
-          bugs: ['qc_modified_repo'],
-          fix: ['qc_modified_repo'],
+          bugs: reasons,
+          fix: reasons,
           confirm: [],
         };
-        if (headChanged) {
-          git(d.repo, 'reset', '--hard', preQcHead);
-        }
-        if (workingTreeDirty) {
-          git(d.repo, 'reset', 'HEAD', '--', '.');
-          git(d.repo, 'checkout', '--', '.');
-          git(d.repo, 'clean', '-fd');
-        }
       }
 
       const reportsDir = join(d.repo, 'team', 'reports');
@@ -1027,7 +1257,7 @@ async function processGoal(
     goalTicketsAfter.map((t) => t.id),
     auditAgent
   );
-  const preAuditHead = headSha(d.repo);
+  const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
 
   let auditOutput;
   try {
@@ -1038,39 +1268,50 @@ async function processGoal(
     const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
     const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
     d.store.endTurn(auditTurnId, 'error', reason);
+    const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    if (auditGuard.modifiedProtectedBranch) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
     if (isAbort) {
       return { status: 'stopped', sessionId, tasks, notes: [reason] };
     }
     return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
   }
 
+  if (d.signal?.aborted) {
+    const reason = 'aborted';
+    d.store.endTurn(auditTurnId, 'error', reason);
+    const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    if (auditGuard.modifiedProtectedBranch) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    return { status: 'stopped', sessionId, tasks, notes: [reason] };
+  }
+
   if (auditOutput.timedOut || auditOutput.exitCode !== 0) {
     const reason = auditOutput.timedOut ? 'timeout' : `exit_${auditOutput.exitCode}`;
     d.store.endTurn(auditTurnId, auditOutput.timedOut ? 'timeout' : 'error', reason);
+    const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    if (auditGuard.modifiedProtectedBranch) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
     return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
   }
   d.store.endTurn(auditTurnId, 'ok');
 
-  const postAuditHead = headSha(d.repo);
-  const auditHeadChanged = postAuditHead !== preAuditHead;
-  const auditWorkingTreeDirty = Boolean(git(d.repo, 'status', '--porcelain').trim());
   let auditResult = parseAuditResult(auditOutput.lastMessage || auditOutput.output || '');
 
-  if (auditHeadChanged || auditWorkingTreeDirty) {
+  const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit');
+  if (auditGuard.switchedBranch || auditGuard.headChanged || auditGuard.treeDirty || auditGuard.modifiedProtectedBranch) {
+    const text = auditGuard.modifiedProtectedBranch
+      ? 'agent_modified_protected_branch'
+      : (auditGuard.switchedBranch ? 'agent_switched_branch' : 'audit_modified_repo');
     auditResult = {
       verdict: 'fail',
       findings: [
-        { ticket: '', severity: 'high', text: 'audit_modified_repo' },
+        { ticket: '', severity: 'high', text },
       ],
     };
-    if (auditHeadChanged) {
-      git(d.repo, 'reset', '--hard', preAuditHead);
-    }
-    if (auditWorkingTreeDirty) {
-      git(d.repo, 'reset', 'HEAD', '--', '.');
-      git(d.repo, 'checkout', '--', '.');
-      git(d.repo, 'clean', '-fd');
-    }
   }
 
   const reportsDir = join(d.repo, 'team', 'reports');
@@ -1109,7 +1350,11 @@ async function processGoal(
   }
 
   const sysFindings = auditResult.findings.filter(
-    (f) => f.text === 'audit_output_invalid' || f.text === 'audit_modified_repo'
+    (f) =>
+      f.text === 'audit_output_invalid' ||
+      f.text === 'audit_modified_repo' ||
+      f.text === 'agent_switched_branch' ||
+      f.text === 'agent_modified_protected_branch'
   );
   if (auditResult.findings.length > 0 && sysFindings.length === auditResult.findings.length) {
     const notes = Array.from(new Set(auditResult.findings.map((f) => f.text)));
@@ -1149,6 +1394,7 @@ async function processGoal(
     hasOpenspec: existsSync(join(d.repo, 'openspec')),
   });
 
+  const pmFixSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
   const recordedBeforeFix = recordExistingTickets(d.repo);
   const prePmFixStatus = new Set(getWorkingTreeChanges(d.repo));
 
@@ -1159,26 +1405,58 @@ async function processGoal(
     const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
     const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
     d.store.endTurn(pmFixTurnId, 'error', reason);
+    const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm', {
+      isErrorOrTimeoutOrAbort: true,
+      taskId: `G${goal.n}`,
+      author: pmAuthor,
+      reason,
+    });
+    if (pmFixGuard.modifiedProtectedBranch) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
     if (isAbort) {
       return { status: 'stopped', sessionId, tasks, notes: [reason] };
     }
     return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
   }
 
-  if (pmFixOutput.timedOut || pmFixOutput.exitCode !== 0) {
-    const reason = pmFixOutput.timedOut ? 'timeout' : `exit_${pmFixOutput.exitCode}`;
-    d.store.endTurn(pmFixTurnId, pmFixOutput.timedOut ? 'timeout' : 'error', reason);
+  if (pmFixOutput.timedOut || pmFixOutput.exitCode !== 0 || d.signal?.aborted) {
+    const isAbort = Boolean(d.signal?.aborted);
+    const reason = isAbort ? 'aborted' : (pmFixOutput.timedOut ? 'timeout' : `exit_${pmFixOutput.exitCode}`);
+    d.store.endTurn(pmFixTurnId, isAbort || pmFixOutput.timedOut ? (isAbort ? 'error' : 'timeout') : 'error', reason);
+    const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm', {
+      isErrorOrTimeoutOrAbort: true,
+      taskId: `G${goal.n}`,
+      author: pmAuthor,
+      reason,
+    });
+    if (pmFixGuard.modifiedProtectedBranch) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    if (isAbort) {
+      return { status: 'stopped', sessionId, tasks, notes: [reason] };
+    }
     return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
   }
+  const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm');
   d.store.endTurn(pmFixTurnId, 'ok');
+
+  if (pmFixGuard.modifiedProtectedBranch) {
+    return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+  }
+  if (pmFixGuard.switchedBranch) {
+    return { status: 'needs_owner', sessionId, tasks, notes: ['agent_switched_branch'] };
+  }
 
   const postPmFixStatus = getWorkingTreeChanges(d.repo);
   const pmFixChanged = postPmFixStatus.filter((p) => !prePmFixStatus.has(p));
   const pmFixOutOfScope = pmFixChanged.filter((p) => !p.startsWith('team/tickets/'));
   if (pmFixOutOfScope.length > 0) {
     for (const f of pmFixOutOfScope) {
-      try { git(d.repo, 'checkout', 'HEAD', '--', f); } catch {}
-      try { git(d.repo, 'clean', '-f', '--', f); } catch {}
+      try { git(d.repo, 'reset', 'HEAD', '--', f); } catch {}
+      try { git(d.repo, 'checkout', 'HEAD', '--', f); } catch {
+        try { rmSync(join(d.repo, f), { force: true, recursive: true }); } catch {}
+      }
     }
     return { status: 'needs_owner', sessionId, tasks, notes: ['pm_out_of_scope'] };
   }
