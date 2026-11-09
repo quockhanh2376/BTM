@@ -27,6 +27,7 @@ v1.0 ưu tiên: **an toàn, chạy tuần tự, dễ quan sát**. Tốc độ v�
 | PM | Elon | Claude Code (`claude -p`) | Đọc spec, đề xuất thay đổi (OpenSpec), tách task, viết prompt, đọc báo cáo, ghi nhật ký, cập nhật trí nhớ, commit khi đạt |
 | Dev | Jacky | Antigravity CLI (`agy -p`) | Hiện thực đúng thẻ task, thay đổi tối thiểu, commit, nộp báo cáo Dev |
 | QC | Jenny | Codex CLI (`codex exec`) | Review diff, chạy unit test / TDD / E2E, đối chiếu tiêu chí nghiệm thu, nộp kết quả QC |
+| Audit *(tuỳ chọn, tương lai)* | Kai | (chưa chọn công cụ) | Cyber Security Analyst: review bảo mật toàn goal sau QC, trước khi anh duyệt merge vào `main` — xem `docs/tickets.md` §5 |
 
 Luật từng ghế viết một lần trong `team/roles/{pm,dev,qc}.md`. File riêng của từng công cụ (`CLAUDE.md`, `AGENTS.md`, file rules của Antigravity) chỉ trỏ về đó.
 
@@ -84,6 +85,8 @@ Luật từng ghế viết một lần trong `team/roles/{pm,dev,qc}.md`. File r
 - Lệnh trực tiếp **xếp hàng sau lượt đang chạy**, không chạy chồng; PM vẫn ghi vào nhật ký.
 
 ## 7. Hợp đồng bàn giao
+
+> **Từ Kế hoạch 4:** thẻ task `T-xxx` được thay bằng **Goal `G<n>` + Ticket** (Ticket ID `<KEY>-<nnnn>`, ticket number `G1#3/9`). Chuẩn đầy đủ: `docs/tickets.md`; lý do: `docs/decisions/0001-goal-ticket-system.md`. Mô tả dưới đây là bản v1.0.
 
 Mẫu đặt trong `team/templates/`. Core kiểm tra bằng schema (zod).
 
@@ -193,6 +196,7 @@ Thanh phiên (project active, phiên, lượt đã dùng, ai đang giữ lượt
 - **v1.0**: mọi mục ở trên, tối đa 1 agent chạy cùng lúc.
 - **v1.1**: thống kê (lượt/task, tỷ lệ trả về, Energy), liên kết task ↔ spec, buổi phản biện có cấu trúc ở điểm đòn bẩy cao.
 - **v2.0**: Git worktree cho từng task, 2–3 agent chạy song song (task khai báo `scope`, trùng thì xếp hàng), giao task cho ghế đang "sẵn sàng", PM nhận test có giới hạn.
+- **Kế hoạch 4**: hệ thống Goal & Ticket (`docs/tickets.md`), ghế Audit (Kai) tuỳ chọn, nút Duyệt merge cho anh.
 - **v2.x**: PM gợi ý phân công, thư viện project tìm kiếm toàn văn.
 
 ## 16. Câu hỏi còn mở
