@@ -10,6 +10,7 @@ import { loadConfig, checkForbiddenEnv, type Config } from './config.ts';
 import { openStore } from './store/db.ts';
 import { initProject } from './project/init.ts';
 import { runSession, resumeSession, type SessionOutcome } from './core/session.ts';
+import { approveGoal } from './ticket/goal.ts';
 import { makeRunner, type Runner } from './runner/run.ts';
 import { createHost } from './server/host.ts';
 import { createServer } from './server/http.ts';
@@ -354,6 +355,8 @@ Usage:
   btm init <name>                               Initialize a new project and set active
   btm run --goal "<g>" [--goal …] [--approved]  Run a session on the active project
   btm status                                    Show active project and latest session status
+  btm goal list                                 List goals for active project
+  btm goal approve G<n>                         Approve and merge goal into main
   btm serve                                     Start dashboard HTTP server and host
 
 Options:
@@ -367,7 +370,7 @@ Options:
     return 0;
   }
 
-  if (['init', 'run', 'status', 'serve'].includes(command)) {
+  if (['init', 'run', 'status', 'serve', 'goal'].includes(command)) {
     let cfg;
     try {
       cfg = loadConfig(configPath);
@@ -726,6 +729,86 @@ Options:
       } finally {
         store.close();
       }
+    }
+
+    if (command === 'goal') {
+      const subCommand = positionals[1];
+      if (subCommand === 'list') {
+        const dbPath = join(cfg.host.data_dir, 'btm.db');
+        const store = openStore(dbPath);
+        try {
+          const activeProject = store.getActiveProject();
+          if (!activeProject) {
+            console.error('Error: No active project set. Run "btm init <name>" first.');
+            process.exitCode = 1;
+            return 1;
+          }
+          const goals = store.listGoals(activeProject);
+          for (const g of goals) {
+            const tickets = store.listTickets(activeProject, `G${g.n}`);
+            const total = tickets.length;
+            const passed = tickets.filter((t) => t.state === 'passed').length;
+            console.log(`G${g.n} · ${g.state} · ${passed}/${total} · ${g.branch}`);
+          }
+          process.exitCode = 0;
+          return 0;
+        } catch (err) {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exitCode = 1;
+          return 1;
+        } finally {
+          store.close();
+        }
+      }
+
+      if (subCommand === 'approve') {
+        const goalArg = positionals[2];
+        if (!goalArg) {
+          console.error('Error: Goal required. Usage: btm goal approve G<n>');
+          process.exitCode = 1;
+          return 1;
+        }
+
+        const match = goalArg.match(/^G?(\d+)$/i);
+        if (!match) {
+          console.error(`Error: Invalid goal "${goalArg}". Expected format G<n> (e.g. G1).`);
+          process.exitCode = 1;
+          return 1;
+        }
+        const goalNumber = parseInt(match[1], 10);
+
+        const dbPath = join(cfg.host.data_dir, 'btm.db');
+        const store = openStore(dbPath);
+        try {
+          const activeProject = store.getActiveProject();
+          if (!activeProject) {
+            console.error('Error: No active project set. Run "btm init <name>" first.');
+            process.exitCode = 1;
+            return 1;
+          }
+
+          const res = approveGoal(store, activeProject, cfg, goalNumber);
+          if (res.ok) {
+            console.log(`Goal G${goalNumber} approved and merged: ${res.sha}`);
+            process.exitCode = 0;
+            return 0;
+          } else {
+            console.error(`Error: Cannot approve goal G${goalNumber}: [${res.code}] ${res.message}`);
+            process.exitCode = 1;
+            return 1;
+          }
+        } catch (err) {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exitCode = 1;
+          return 1;
+        } finally {
+          store.close();
+        }
+      }
+
+      console.error(`Unknown goal subcommand: "${subCommand}". Usage: btm goal [list|approve G<n>]`);
+      process.exitCode = 1;
+      return 1;
     }
 
     if (command === 'serve') {

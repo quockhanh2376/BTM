@@ -11,3 +11,4 @@
 6. `npx tsc --noEmit` sạch; `npx vitest run` không tăng fail (18 Windows).
 
 **Báo cáo:** team/reports/P4-T8-qeen.md
+Ghi chú Cheki: Ubuntu 630/630 ×3 lần.

@@ -24,6 +24,10 @@ prompt="$(cat "$prompt_file")"
 # Hội thoại mới → gắn luật cố định ở đầu; hội thoại cũ đã có luật.
 if [ -s "$conv_file" ]; then conv_args=(--conversation "$(cat "$conv_file")"); else prompt="$(cat "team/prompts/rules-$who.md")
 $prompt"; fi
+# Mỗi lượt nhắc lại: lệnh ngoài danh sách bị chặn và agy dừng CẢ lượt (đã mất 3 lượt vì git diff <file>, git grep).
+prompt="NHẮC: terminal chỉ chạy được NGUYÊN VĂN: git status | git status --short | git diff | git diff --stat | git log --oneline -10 | npx vitest run | npx tsc --noEmit. Không thêm tham số, không git grep. Tìm/đọc file bằng công cụ tìm kiếm/đọc file của bạn.
+
+$prompt"
 
 out="team/runs/$(date +%Y%m%d-%H%M)-$who-$(basename "$prompt_file" .md).json"
 echo "$(date '+%F %T') · start $who · $prompt_file · $out" >> team/runs/runs.log

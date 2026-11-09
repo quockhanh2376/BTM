@@ -174,9 +174,9 @@ Luồng: goal `qc_done` + có ghế audit → agent audit ≠ mọi coder của 
 
 - Chỉ nhận khi goal `qc_done` (không có ghế audit) hoặc `audit_passed`; working tree sạch; không có phiên chạy (khoá `btm.lock`).
 - `approved` → `git checkout main` → `git merge --no-ff goal/... -m "G<n>: <tiêu đề>"` → `merged`. Conflict → `merge --abort`, quay về nhánh cũ, goal giữ trạng thái, `code: 'conflict'`.
-- [ ] **Step 1: Test:** goal `in_progress` → `not_ready`; goal `qc_done` → main có merge commit, goal `merged`; conflict giả (sửa cùng dòng trên main) → `conflict`, `git rev-parse main` không đổi. CLI `approve G9` không tồn tại → exit 1.
-- [ ] **Step 2–4:** FAIL → implement → PASS.
-- [ ] **Step 5:** Commit `feat: owner approves and merges goals (P4 Task 8)`.
+- [x] **Step 1: Test:** goal `in_progress` → `not_ready`; goal `qc_done` → main có merge commit, goal `merged`; conflict giả (sửa cùng dòng trên main) → `conflict`, `git rev-parse main` không đổi. CLI `approve G9` không tồn tại → exit 1.
+- [x] **Step 2–4:** FAIL → implement → PASS.
+- [x] **Step 5:** Commit `feat: owner approves and merges goals (P4 Task 8)`.
 
 ### Task 9: Dashboard – bảng theo goal, pipeline, lịch sử, nút Duyệt merge
 

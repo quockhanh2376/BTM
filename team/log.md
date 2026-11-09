@@ -49,3 +49,7 @@
 - 2026-11-09 17:02 · V · P4-T7 fix1 xong. Cheki: tsc sạch; Windows 594/612; VM Ubuntu 612/612 ×3 (lần đầu script VM test nhầm code cũ vì nhánh đang checkout – đã sửa script, chạy lại). Giao Q review
 - 2026-11-09 17:06 · Q · P4-T7 review lượt 1 không có kết quả: lệnh 'git diff src/server/snapshot.ts' bị chặn → agy dừng cả lượt. Chạy lại kèm nhắc lệnh
 - 2026-11-09 17:12 · Q · P4-T7 review (lượt 2) OK. Cheki: accepted, commit. Giao P4-T8 (duyệt & merge goal) cho V
+- 2026-11-09 17:14 · V · P4-T8 lượt 1 bị cắt sau 2 phút (lệnh 'git grep' bị chặn), không có thay đổi. Cheki: agy-run.sh luôn chèn dòng nhắc 7 lệnh vào đầu mọi prompt; gửi lại P4-T8
+- 2026-11-09 17:25 · Zon yêu cầu canh thanh Energy thẳng hàng. Cheki: fix/seat-energy-align (.seat-footer margin-top:auto), VM 544/544 ×2, PR #7 Cheki tự merge (e2fb242, luật nhánh nhỏ), deploy VM không cần restart (HTML đọc mỗi request); đo 3 thẻ cùng y=357. Gộp main vào plan4-tickets sau khi V xong P4-T8 (T9 sửa web/index.html)
+- 2026-11-09 17:34 · V · P4-T8 xong (OK): approveGoal + btm goal list\/approve, 18 test mới. Cheki: tsc sạch; Windows 612/630; VM 630/630 ×3. Giao Q review
+- 2026-11-09 17:41 · Q · P4-T8 review OK. Cheki: accepted, commit; merge main (PR #7) vào plan4-tickets; giao P4-T9 (dashboard theo goal) cho V
