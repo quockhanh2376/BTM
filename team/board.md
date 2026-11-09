@@ -20,6 +20,8 @@
 | P4-T6 | V | accepted | team/prompts/P4-T6-victor.md | team/reports/P4-T6-dev.md |
 | P4-T6 | Q | accepted | team/prompts/P4-T6-qeen.md | team/reports/P4-T6-qeen.md |
 | FIX-inbox-image | Cheki | done (PR #5 merged, VM deployed) | – | – |
-| P4-T7…T9 | V→Q | waiting | docs/superpowers/plans/2026-11-09-btm-v1-tickets.md | – |
+| P4-T7 | V | running | team/prompts/P4-T7-victor.md | team/reports/P4-T7-dev.md |
+| P4-T7 | Q | waiting (sau V) | team/prompts/P4-T7-qeen.md | team/reports/P4-T7-qeen.md |
+| P4-T8…T9 | V→Q | waiting | docs/superpowers/plans/2026-11-09-btm-v1-tickets.md | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).

@@ -42,3 +42,4 @@
 - 2026-11-09 16:07 · V · P4-T6 fix1 xong: session 14→72, qc 3→32 test; bỏ 5 test session_tasks/session-branch có lý do. Cheki: tsc sạch; Windows 567/585 (18); VM Ubuntu 585/585 ×3. Giao Q review (kèm soát test rỗng)
 - 2026-11-09 16:07 · Cheki · Đọc diff P4-T6: gate/cli/host/session đúng. Ghi nhận để siết sau: PM có thể sửa ticket CÓ SẴN của goal khác (giữ nguyên goal/ID) mà không bị chặn; gate chấp nhận báo cáo kết thúc bằng dòng OK
 - 2026-11-09 16:15 · Q · P4-T6 review OK. Cheki: accepted, commit; merge main (PR #5) vào plan4-tickets
+- 2026-11-09 16:15 · Cheki · Giao P4-T7 (ghế audit Kai tuỳ chọn + siết PM chỉ được tạo ticket mới) cho V
