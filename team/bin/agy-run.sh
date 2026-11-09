@@ -32,10 +32,12 @@ $prompt"
 out="team/runs/$(date +%Y%m%d-%H%M)-$who-$(basename "$prompt_file" .md).json"
 echo "$(date '+%F %T') · start $who · $prompt_file · $out" >> team/runs/runs.log
 set +e
+# stream-json: từng bước ghi ngay vào .stream.jsonl để xem trực tiếp (team/bin/watch.mjs); dòng "result" cuối = JSON cũ.
 agy -p "$prompt" --mode accept-edits --settings "$settings" \
-  --output-format json --print-timeout "${tmin}m" "${conv_args[@]}" > "$out" 2> "$out.err"
+  --output-format stream-json --print-timeout "${tmin}m" "${conv_args[@]}" > "$out.stream.jsonl" 2> "$out.err"
 rc=$?
 set -e
+node -e 'const fs=require("fs");const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n");let r=null;for(const l of L){try{const j=JSON.parse(l);if(j.event==="result")r=j.result}catch{}}fs.writeFileSync(process.argv[2],JSON.stringify(r??{status:"NO_RESULT"}))' "$out.stream.jsonl" "$out" 2>/dev/null || true
 # Lưu id hội thoại để lần sau V/Q nhớ ngữ cảnh.
 node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(j.conversation_id)require("fs").writeFileSync(process.argv[2],j.conversation_id)' "$out" "$conv_file" 2>/dev/null || true
 status=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.status+" denied="+JSON.stringify(j.denied_actions||[]))}catch{console.log("no-json")}' "$out")
