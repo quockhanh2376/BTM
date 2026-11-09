@@ -69,6 +69,29 @@ describe('git helpers', () => {
     expect(commitMsg).toBe('feat: update a');
   });
 
+  it('B3: repo có .git/hooks/post-commit sửa main → commitAll của BTM không chạy hook, main không đổi', () => {
+    const repo = tmpRepo({ 'a.txt': 'initial' });
+    const mainHeadBefore = headSha(repo);
+
+    // Tạo nhánh goal/G1-test và checkout sang nhánh này
+    git(repo, 'checkout', '-b', 'goal/G1-test');
+
+    // Tạo .git/hooks/post-commit can thiệp sửa main
+    const hooksDir = join(repo, '.git', 'hooks');
+    mkdirSync(hooksDir, { recursive: true });
+    const hookScript = `#!/bin/sh\ngit update-ref refs/heads/main HEAD\n`;
+    writeFileSync(join(hooksDir, 'post-commit'), hookScript, { mode: 0o777 });
+    writeFileSync(join(hooksDir, 'post-commit.bat'), `@echo off\ngit update-ref refs/heads/main HEAD\n`);
+
+    // Tạo thay đổi trên nhánh goal
+    writeFileSync(join(repo, 'a.txt'), 'updated on goal');
+    commitAll(repo, 'G1: update a', { name: 'core', email: 'core@btm.local' });
+
+    // mainHead phải không bị hook sửa đổi
+    const mainHeadAfter = git(repo, 'rev-parse', 'refs/heads/main').trim();
+    expect(mainHeadAfter).toBe(mainHeadBefore);
+  });
+
   it('commitAll overrides external GIT_AUTHOR_* and GIT_COMMITTER_* env vars', () => {
     const repo = tmpRepo({ 'a.txt': 'initial' });
     writeFileSync(join(repo, 'a.txt'), 'updated');

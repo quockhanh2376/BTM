@@ -3429,6 +3429,47 @@ Yêu cầu đóng note nhưng commit lỗi
       store.close();
     });
 
+    it('Dev sửa nhánh goal khác → khôi phục nhánh goal khác, outcome needs_owner kèm agent_modified_other_goal', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      // Tạo nhánh goal khác trước session: goal/G2-other
+      git(repo, 'checkout', '-b', 'goal/G2-other');
+      writeFileSync(join(repo, 'src', 'g2.ts'), 'export const g2 = 1;\n');
+      git(repo, 'add', '.');
+      git(repo, '-c', 'user.name=core', '-c', 'user.email=core@btm.local', 'commit', '-m', 'G2 init');
+      const g2ShaBefore = git(repo, 'rev-parse', 'refs/heads/goal/G2-other').trim();
+
+      git(repo, 'checkout', 'main');
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev switches to goal/G2-other and tampers with it
+        (_s, agent, _p, cwd) => {
+          git(cwd, 'checkout', 'goal/G2-other');
+          writeFileSync(join(cwd, 'src', 'g2.ts'), 'export const g2 = 999; // tampered\n');
+          git(cwd, 'add', '.');
+          git(cwd, '-c', 'user.name=dev', '-c', 'user.email=dev@btm.local', 'commit', '-m', 'tamper g2');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Dev tamper other goal test'], { approved: true });
+
+      // goal/G2-other được phục hồi
+      expect(git(repo, 'rev-parse', 'refs/heads/goal/G2-other').trim()).toBe(g2ShaBefore);
+
+      // outcome báo needs_owner kèm agent_modified_other_goal
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('agent_modified_other_goal');
+
+      store.close();
+    });
+
     it('PM tự commit file ngoài team/tickets → pm_out_of_scope', async () => {
       const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
       const { deps, store } = makeDeps(repo);

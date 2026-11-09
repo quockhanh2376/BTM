@@ -1,7 +1,30 @@
 import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+
+let emptyHooksDir: string | null = null;
+function getEmptyHooksDir(): string {
+  if (!emptyHooksDir) {
+    const dir = join(tmpdir(), 'btm-empty-hooks');
+    mkdirSync(dir, { recursive: true });
+    emptyHooksDir = dir;
+  }
+  return emptyHooksDir;
+}
+
+function safeGitArgs(args: string[]): string[] {
+  return [
+    '-c',
+    `core.hooksPath=${getEmptyHooksDir()}`,
+    '-c',
+    'core.fsmonitor=false',
+    ...args,
+  ];
+}
 
 export function git(repo: string, ...args: string[]): string {
-  const out = execFileSync('git', args, {
+  const out = execFileSync('git', safeGitArgs(args), {
     cwd: repo,
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
@@ -34,7 +57,7 @@ export function commitAll(
   };
   execFileSync(
     'git',
-    [
+    safeGitArgs([
       '-c',
       `user.name=${author.name}`,
       '-c',
@@ -43,7 +66,7 @@ export function commitAll(
       `--author=${authorString}`,
       '-m',
       message,
-    ],
+    ]),
     {
       cwd: repo,
       encoding: 'utf8',

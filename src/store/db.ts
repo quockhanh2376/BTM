@@ -6,6 +6,7 @@ import type { EnergyReading, EnergyWindow } from '../energy/quota.ts';
 import type { LoginHealth, LoginState } from '../energy/login.ts';
 import type { Ticket, TicketState, TicketType, TicketSize } from '../ticket/ticket.ts';
 import { goalBranch } from '../ticket/goal.ts';
+import { git } from '../git.ts';
 
 export type TurnResult = 'ok' | 'timeout' | 'error' | 'rejected';
 export type BoardState = 'pending' | 'in_dev' | 'awaiting_qc' | 'passed' | 'returned' | 'failed' | 'blocked';
@@ -18,6 +19,7 @@ export interface GoalRow {
   branch: string;
   created_at: string;
   updated_at: string;
+  reviewed_sha?: string | null;
 }
 
 export interface TicketRow {
@@ -134,7 +136,7 @@ export interface Store {
   createGoal(project: string, title: string): { n: number; branch: string };
   getGoal(project: string, n: number): GoalRow | null;
   listGoals(project: string): GoalRow[];
-  setGoalState(project: string, n: number, state: GoalState, by: string, reason?: string): void;
+  setGoalState(project: string, n: number, state: GoalState, by: string, reason?: string, reviewedSha?: string | null): void;
   upsertTicket(project: string, t: Ticket): void;
   getTicketState(project: string, id: string): { state: TicketState; fix_rounds: number; base_sha: string | null } | null;
   setTicketState(project: string, id: string, to: TicketState, by: string, reason: string, fixRounds?: number, baseSha?: string | null): void;
@@ -292,6 +294,7 @@ export function openStore(file: string): Store {
       branch TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      reviewed_sha TEXT,
       PRIMARY KEY (project, n)
     );
 
@@ -344,6 +347,12 @@ export function openStore(file: string): Store {
   const hasBaseSha = taskStateCols.some((c) => c.name.toLowerCase() === 'base_sha');
   if (!hasBaseSha) {
     db.exec('ALTER TABLE task_states ADD COLUMN base_sha TEXT');
+  }
+
+  const goalCols = db.pragma('table_info(goals)') as Array<{ name: string }>;
+  const hasReviewedSha = goalCols.some((c) => c.name.toLowerCase() === 'reviewed_sha');
+  if (!hasReviewedSha) {
+    db.exec('ALTER TABLE goals ADD COLUMN reviewed_sha TEXT');
   }
 
   const setActiveProjectStmt = db.prepare(`
@@ -575,13 +584,13 @@ export function openStore(file: string): Store {
   `);
 
   const getGoalStmt = db.prepare(`
-    SELECT n, title, state, branch, created_at, updated_at
+    SELECT n, title, state, branch, created_at, updated_at, reviewed_sha
     FROM goals
     WHERE project = ? AND n = ?
   `);
 
   const listGoalsStmt = db.prepare(`
-    SELECT n, title, state, branch, created_at, updated_at
+    SELECT n, title, state, branch, created_at, updated_at, reviewed_sha
     FROM goals
     WHERE project = ?
     ORDER BY n ASC
@@ -589,6 +598,10 @@ export function openStore(file: string): Store {
 
   const updateGoalStateStmt = db.prepare(`
     UPDATE goals SET state = ?, updated_at = ? WHERE project = ? AND n = ?
+  `);
+
+  const updateGoalStateWithShaStmt = db.prepare(`
+    UPDATE goals SET state = ?, updated_at = ?, reviewed_sha = ? WHERE project = ? AND n = ?
   `);
 
   const upsertTicketStmt = db.prepare(`
@@ -1121,9 +1134,29 @@ export function openStore(file: string): Store {
       return listGoalsStmt.all(project) as GoalRow[];
     },
 
-    setGoalState(project: string, n: number, state: GoalState, by: string, reason?: string): void {
+    setGoalState(
+      project: string,
+      n: number,
+      state: GoalState,
+      by: string,
+      reason?: string,
+      reviewedSha?: string | null
+    ): void {
       const now = new Date().toISOString();
-      updateGoalStateStmt.run(state, now, project, n);
+      let shaToStore = reviewedSha;
+      if (shaToStore === undefined && (state === 'qc_done' || state === 'audit_passed')) {
+        try {
+          const goal = getGoalStmt.get(project, n) as GoalRow | undefined;
+          if (goal?.branch) {
+            shaToStore = git(project, 'rev-parse', `refs/heads/${goal.branch}`).trim();
+          }
+        } catch {}
+      }
+      if (shaToStore !== undefined) {
+        updateGoalStateWithShaStmt.run(state, now, shaToStore, project, n);
+      } else {
+        updateGoalStateStmt.run(state, now, project, n);
+      }
     },
 
     upsertTicket(project: string, t: Ticket): void {

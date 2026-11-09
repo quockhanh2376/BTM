@@ -258,6 +258,57 @@ describe('approveGoal', () => {
     }
   });
 
+  it('B2: nhánh goal đã đổi sau khi QC/audit (refs/heads/<branch> !== reviewed_sha) → reject not_ready', () => {
+    const repo = tmpRepo({ 'README.md': '# Repo' });
+    const cfg = makeTestConfig(dataDir, { auditSeat: '' });
+    const created = store.createGoal(repo, 'Kiem tra reviewed_sha');
+
+    git(repo, 'checkout', '-b', created.branch);
+    writeFileSync(join(repo, 'code.txt'), 'version 1');
+    git(repo, 'add', 'code.txt');
+    execFileSync('git', [...AUTHOR, 'commit', '-m', 'GTM-0001: v1'], { cwd: repo });
+    const reviewedSha = headSha(repo);
+
+    // Goal set qc_done với reviewed_sha
+    store.setGoalState(repo, created.n, 'qc_done', 'jenny', 'qc pass', reviewedSha);
+
+    // Ai đó commit thêm lên nhánh goal sau khi qc_done
+    writeFileSync(join(repo, 'code.txt'), 'tampered after qc');
+    git(repo, 'add', 'code.txt');
+    execFileSync('git', [...AUTHOR, 'commit', '-m', 'tamper commit'], { cwd: repo });
+
+    const res = approveGoal(store, repo, cfg, created.n);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe('not_ready');
+      expect(res.message).toBe('nhánh goal đã đổi sau khi QC/audit');
+    }
+  });
+
+  it('B2: merge bằng sha (reviewed_sha) thay vì branch name', () => {
+    const repo = tmpRepo({ 'README.md': '# Repo' });
+    const cfg = makeTestConfig(dataDir, { auditSeat: '' });
+    const created = store.createGoal(repo, 'Merge bang sha');
+
+    git(repo, 'checkout', '-b', created.branch);
+    writeFileSync(join(repo, 'code.txt'), 'v1');
+    git(repo, 'add', 'code.txt');
+    execFileSync('git', [...AUTHOR, 'commit', '-m', 'GTM-0001: v1'], { cwd: repo });
+    const reviewedSha = headSha(repo);
+
+    store.setGoalState(repo, created.n, 'qc_done', 'jenny', 'qc pass', reviewedSha);
+
+    const res = approveGoal(store, repo, cfg, created.n);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      const g = store.getGoal(repo, created.n);
+      expect(g?.state).toBe('merged');
+      // Main merge commit parent thứ 2 phải chính là reviewedSha
+      const parents = git(repo, 'log', '-1', '--format=%P', 'main').trim().split(/\s+/);
+      expect(parents[1]).toBe(reviewedSha);
+    }
+  });
+
   it('khoá btm.lock đang bị giữ → busy, nhả khoá trong finally', () => {
     const repo = tmpRepo({ 'README.md': '# Repo' });
     const cfg = makeTestConfig(dataDir);

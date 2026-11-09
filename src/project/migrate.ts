@@ -47,6 +47,11 @@ export function migrateProject(
     // Checkout protected branch
     git(repo, 'checkout', protectedBranch);
     checkedOutProtected = true;
+    const protRef = protectedBranch.startsWith('refs/heads/') ? protectedBranch : `refs/heads/${protectedBranch}`;
+    const headRef = git(repo, 'symbolic-ref', 'HEAD').trim();
+    if (headRef !== protRef) {
+      throw new Error(`Checkout failed: HEAD is ${headRef}, expected ${protRef}`);
+    }
 
     // Check if project.yaml already exists on protected branch
     if (existsSync(projectYamlPath)) {

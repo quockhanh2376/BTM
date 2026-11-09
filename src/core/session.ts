@@ -345,9 +345,12 @@ async function processGoal(
     };
   }
 
+  const goalRef = goal.branch.startsWith('refs/heads/') ? goal.branch : `refs/heads/${goal.branch}`;
+  const baseRef = baseBranch.startsWith('refs/heads/') ? baseBranch : `refs/heads/${baseBranch}`;
+
   let branchExists = false;
   try {
-    git(d.repo, 'rev-parse', '--verify', goal.branch);
+    git(d.repo, 'rev-parse', '--verify', goalRef);
     branchExists = true;
   } catch {
     branchExists = false;
@@ -356,7 +359,11 @@ async function processGoal(
   if (branchExists) {
     git(d.repo, 'checkout', goal.branch);
   } else {
-    git(d.repo, 'checkout', '-b', goal.branch, baseBranch);
+    git(d.repo, 'checkout', '-b', goal.branch, baseRef);
+  }
+  const currentHeadSym = git(d.repo, 'symbolic-ref', 'HEAD').trim();
+  if (currentHeadSym !== goalRef) {
+    throw new Error(`Checkout failed: HEAD is ${currentHeadSym}, expected ${goalRef}`);
   }
 
   d.store.setGoalState(d.repo, goal.n, 'in_progress', 'core', 'session started');
@@ -495,6 +502,9 @@ async function processGoal(
       if (pmGuard.modifiedProtectedBranch) {
         return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
       }
+      if (pmGuard.modifiedOtherGoal) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+      }
       if (isAbort) {
         return { status: 'stopped', sessionId, tasks, notes: [reason] };
       }
@@ -512,6 +522,9 @@ async function processGoal(
       if (pmGuard.modifiedProtectedBranch) {
         return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
       }
+      if (pmGuard.modifiedOtherGoal) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+      }
       if (isAbort) {
         return { status: 'stopped', sessionId, tasks, notes: [reason] };
       }
@@ -523,6 +536,10 @@ async function processGoal(
     if (pmGuard.modifiedProtectedBranch) {
       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    if (pmGuard.modifiedOtherGoal) {
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
     }
     if (pmGuard.switchedBranch) {
       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
@@ -783,6 +800,9 @@ async function processGoal(
           if (devGuard.modifiedProtectedBranch) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
           }
+          if (devGuard.modifiedOtherGoal) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+          }
           if (isAbort) {
             return { status: 'stopped', sessionId, tasks, notes: [reason] };
           }
@@ -801,6 +821,9 @@ async function processGoal(
           if (devGuard.modifiedProtectedBranch) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
           }
+          if (devGuard.modifiedOtherGoal) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+          }
           return { status: 'stopped', sessionId, tasks, notes: [reason] };
         }
 
@@ -815,6 +838,9 @@ async function processGoal(
           });
           if (devGuard.modifiedProtectedBranch) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+          }
+          if (devGuard.modifiedOtherGoal) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
           }
           return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
         }
@@ -836,6 +862,9 @@ async function processGoal(
           if (devGuard.modifiedProtectedBranch) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
           }
+          if (devGuard.modifiedOtherGoal) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+          }
           return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
         }
 
@@ -843,6 +872,10 @@ async function processGoal(
         if (devGuard.modifiedProtectedBranch) {
           d.store.endTurn(devTurnId, 'rejected', 'agent_modified_protected_branch');
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+        }
+        if (devGuard.modifiedOtherGoal) {
+          d.store.endTurn(devTurnId, 'rejected', 'agent_modified_other_goal');
+          return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
         }
         if (devGuard.switchedBranch) {
           d.store.endTurn(devTurnId, 'rejected', 'agent_switched_branch');
@@ -1059,6 +1092,9 @@ async function processGoal(
         if (qcGuard.modifiedProtectedBranch) {
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
         }
+        if (qcGuard.modifiedOtherGoal) {
+          return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+        }
         if (isAbort) {
           return { status: 'stopped', sessionId, tasks, notes: [reason] };
         }
@@ -1072,6 +1108,9 @@ async function processGoal(
         if (qcGuard.modifiedProtectedBranch) {
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
         }
+        if (qcGuard.modifiedOtherGoal) {
+          return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+        }
         return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
       }
 
@@ -1084,9 +1123,16 @@ async function processGoal(
       });
 
       const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc');
-      if (qcGuard.switchedBranch || qcGuard.headChanged || qcGuard.treeDirty || qcGuard.modifiedProtectedBranch) {
+      if (
+        qcGuard.switchedBranch ||
+        qcGuard.headChanged ||
+        qcGuard.treeDirty ||
+        qcGuard.modifiedProtectedBranch ||
+        qcGuard.modifiedOtherGoal
+      ) {
         const reasons: string[] = [];
         if (qcGuard.modifiedProtectedBranch) reasons.push('agent_modified_protected_branch');
+        if (qcGuard.modifiedOtherGoal) reasons.push('agent_modified_other_goal');
         if (qcGuard.switchedBranch) reasons.push('agent_switched_branch');
         if (qcGuard.headChanged || qcGuard.treeDirty) reasons.push('qc_modified_repo');
         qcResult = {
@@ -1160,12 +1206,14 @@ async function processGoal(
     break;
   }
 
-  d.store.setGoalState(d.repo, goal.n, 'qc_done', 'core', 'all tickets passed');
-
   const auditAgent = effectiveSeats(d.cfg, d.store).audit || d.cfg.seats.audit;
   if (!auditAgent) {
     writeGoalSummaryAndCommit(d.repo, goal, goalTicketsAfter, d.store);
+    const reviewedSha = git(d.repo, 'rev-parse', `refs/heads/${goal.branch}`).trim();
+    d.store.setGoalState(d.repo, goal.n, 'qc_done', 'core', 'all tickets passed', reviewedSha);
     break;
+  } else {
+    d.store.setGoalState(d.repo, goal.n, 'qc_done', 'core', 'all tickets passed');
   }
 
   // Agent audit != mọi agent đã code ticket nào của goal
@@ -1249,6 +1297,9 @@ async function processGoal(
     if (auditGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
+    if (auditGuard.modifiedOtherGoal) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+    }
     if (isAbort) {
       return { status: 'stopped', sessionId, tasks, notes: [reason] };
     }
@@ -1262,6 +1313,9 @@ async function processGoal(
     if (auditGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
+    if (auditGuard.modifiedOtherGoal) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+    }
     return { status: 'stopped', sessionId, tasks, notes: [reason] };
   }
 
@@ -1272,6 +1326,9 @@ async function processGoal(
     if (auditGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
+    if (auditGuard.modifiedOtherGoal) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+    }
     return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
   }
   d.store.endTurn(auditTurnId, 'ok');
@@ -1279,10 +1336,18 @@ async function processGoal(
   let auditResult = parseAuditResult(auditOutput.lastMessage || auditOutput.output || '');
 
   const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit');
-  if (auditGuard.switchedBranch || auditGuard.headChanged || auditGuard.treeDirty || auditGuard.modifiedProtectedBranch) {
+  if (
+    auditGuard.switchedBranch ||
+    auditGuard.headChanged ||
+    auditGuard.treeDirty ||
+    auditGuard.modifiedProtectedBranch ||
+    auditGuard.modifiedOtherGoal
+  ) {
     const text = auditGuard.modifiedProtectedBranch
       ? 'agent_modified_protected_branch'
-      : (auditGuard.switchedBranch ? 'agent_switched_branch' : 'audit_modified_repo');
+      : (auditGuard.modifiedOtherGoal
+        ? 'agent_modified_other_goal'
+        : (auditGuard.switchedBranch ? 'agent_switched_branch' : 'audit_modified_repo'));
     auditResult = {
       verdict: 'fail',
       findings: [
@@ -1312,8 +1377,9 @@ async function processGoal(
   commitAll(d.repo, `G${goal.n}: audit ${auditResult.verdict}`, coreAuthor);
 
   if (auditResult.verdict === 'pass') {
-    d.store.setGoalState(d.repo, goal.n, 'audit_passed', auditAgent, 'audit passed');
     writeGoalSummaryAndCommit(d.repo, goal, loadTickets(d.repo, key, `G${goal.n}`), d.store);
+    const reviewedSha = git(d.repo, 'rev-parse', `refs/heads/${goal.branch}`).trim();
+    d.store.setGoalState(d.repo, goal.n, 'audit_passed', auditAgent, 'audit passed', reviewedSha);
     break;
   }
 
@@ -1331,7 +1397,8 @@ async function processGoal(
       f.text === 'audit_output_invalid' ||
       f.text === 'audit_modified_repo' ||
       f.text === 'agent_switched_branch' ||
-      f.text === 'agent_modified_protected_branch'
+      f.text === 'agent_modified_protected_branch' ||
+      f.text === 'agent_modified_other_goal'
   );
   if (auditResult.findings.length > 0 && sysFindings.length === auditResult.findings.length) {
     const notes = Array.from(new Set(auditResult.findings.map((f) => f.text)));
@@ -1389,6 +1456,9 @@ async function processGoal(
     if (pmFixGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
+    if (pmFixGuard.modifiedOtherGoal) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+    }
     if (isAbort) {
       return { status: 'stopped', sessionId, tasks, notes: [reason] };
     }
@@ -1406,6 +1476,9 @@ async function processGoal(
     if (pmFixGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
+    if (pmFixGuard.modifiedOtherGoal) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+    }
     if (isAbort) {
       return { status: 'stopped', sessionId, tasks, notes: [reason] };
     }
@@ -1417,6 +1490,10 @@ async function processGoal(
   if (pmFixGuard.modifiedProtectedBranch) {
     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+  }
+  if (pmFixGuard.modifiedOtherGoal) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+    return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
   }
   if (pmFixGuard.switchedBranch) {
     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);

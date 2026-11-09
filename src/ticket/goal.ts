@@ -119,12 +119,42 @@ export function approveGoal(
     const originalRef = currentBranch === 'HEAD' ? headSha(repo) : currentBranch;
     const previousState = goal.state;
     const protectedBranch = cfg.git?.protected_branch || 'main';
+    const protectedRef = protectedBranch.startsWith('refs/heads/')
+      ? protectedBranch
+      : `refs/heads/${protectedBranch}`;
+    const goalRef = goal.branch.startsWith('refs/heads/')
+      ? goal.branch
+      : `refs/heads/${goal.branch}`;
 
+    let branchSha = '';
+    try {
+      branchSha = git(repo, 'rev-parse', goalRef).trim();
+    } catch {
+      return {
+        ok: false,
+        code: 'not_ready',
+        message: `Goal branch "${goalRef}" not found`,
+      };
+    }
+
+    if (goal.reviewed_sha && branchSha !== goal.reviewed_sha) {
+      return {
+        ok: false,
+        code: 'not_ready',
+        message: 'nhánh goal đã đổi sau khi QC/audit',
+      };
+    }
+
+    const mergeTarget = goal.reviewed_sha || branchSha;
     store.setGoalState(repo, n, 'approved', by, 'owner approved');
 
     let mergeSha: string;
     try {
       git(repo, 'checkout', protectedBranch);
+      const headRef = git(repo, 'symbolic-ref', 'HEAD').trim();
+      if (headRef !== protectedRef) {
+        throw new Error(`Checkout failed: HEAD is ${headRef}, expected ${protectedRef}`);
+      }
       git(
         repo,
         '-c',
@@ -133,7 +163,7 @@ export function approveGoal(
         `user.email=${by}@btm.local`,
         'merge',
         '--no-ff',
-        goal.branch,
+        mergeTarget,
         '-m',
         `G${n}: ${goal.title}`
       );
