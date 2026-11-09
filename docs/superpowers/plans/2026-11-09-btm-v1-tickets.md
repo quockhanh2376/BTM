@@ -191,6 +191,22 @@ Luồng: goal `qc_done` + có ghế audit → agent audit ≠ mọi coder của 
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5:** Commit `feat: dashboard goals, pipeline, ticket history, approve merge (P4 Task 9)`.
 
+### Task 10: Chuyển đổi project cũ (`btm migrate`)
+
+**Files:** Create `src/project/migrate.ts`, `tests/migrate.test.ts`; Modify `src/cli.ts`.
+
+**Interfaces – Produces:** `migrateProject(repo: string, key: string, protectedBranch: string): { ok: true; already: boolean } ` (ném lỗi rõ ràng khi không làm được); CLI `btm migrate --key <KEY>` cho project active.
+
+Lý do: project tạo trước Plan 4 (vd `go-to-the-moon`) không có `team/project.yaml` → `btm run` lỗi ngay khi deploy Plan 4.
+- Đã có `team/project.yaml` đúng KEY → `already: true`, không đổi gì; KEY khác → lỗi.
+- KEY sai `/^[A-Z]{2,5}$/`, working tree bẩn, hoặc đang có phiên (khoá `btm.lock`) → lỗi, không đổi gì.
+- Ghi nhớ nhánh hiện tại → checkout `protectedBranch` → ghi `team/project.yaml`, tạo `team/tickets/.gitkeep`, `team/goals/.gitkeep` → commit `migrate: project key <KEY>` → checkout lại nhánh cũ.
+- **Không** đổi/xoá `team/tasks/` (giữ làm lịch sử), **không** merge nhánh `session/*` vào main, ticket mới bắt đầu từ `<KEY>-0001`.
+
+- [ ] **Step 1: Test:** project kiểu cũ (có team/tasks/T-001.md, đang ở nhánh session/3 có commit riêng) → main có commit migrate + project.yaml, nhánh hiện tại vẫn là session/3, session/3 không đổi, team/tasks còn nguyên; chạy lần 2 → already; KEY khác → lỗi; tree bẩn → lỗi, không commit; KEY sai → lỗi.
+- [ ] **Step 2–4:** FAIL → implement → PASS.
+- [ ] **Step 5:** Commit `feat: btm migrate for pre-ticket projects (P4 Task 10)`. **Step 6 (Cheki):** chạy trên bản sao go-to-the-moon trên VM trước, rồi mới chạy thật khi deploy Plan 4.
+
 ---
 
 ## Để sau (không làm trong kế hoạch này)

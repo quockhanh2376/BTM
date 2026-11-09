@@ -43,3 +43,5 @@
 - 2026-11-09 16:07 · Cheki · Đọc diff P4-T6: gate/cli/host/session đúng. Ghi nhận để siết sau: PM có thể sửa ticket CÓ SẴN của goal khác (giữ nguyên goal/ID) mà không bị chặn; gate chấp nhận báo cáo kết thúc bằng dòng OK
 - 2026-11-09 16:15 · Q · P4-T6 review OK. Cheki: accepted, commit; merge main (PR #5) vào plan4-tickets
 - 2026-11-09 16:15 · Cheki · Giao P4-T7 (ghế audit Kai tuỳ chọn + siết PM chỉ được tạo ticket mới) cho V
+- 2026-11-09 16:24 · Zon mở PR #6 plan4-tickets→main. Cheki: CHƯA nên merge (T7 đang làm, T8/T9 chưa; dashboard còn đọc team/tasks; project go-to-the-moon chưa có team/project.yaml → btm run sẽ lỗi nếu deploy). Cần thêm bước chuyển đổi project cũ vào Plan 4
+- 2026-11-09 16:25 · Zon đồng ý: PR #6 chuyển Draft (mô tả có checklist T1–T10); thêm Task 10 'btm migrate --key' vào Plan 4 (ghi team/project.yaml lên main của project cũ, không merge session/*, giữ team/tasks)
