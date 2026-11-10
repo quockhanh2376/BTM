@@ -17,8 +17,10 @@ export const HostSchema = z.object({
     port: z.number().int(),
   }).strict(),
   data_dir: z.string(),
-  worker_user: z.string().regex(/^[a-z_][a-z0-9_-]{0,31}$/).optional(),
+  // Cách ly: user Linux của agent = <worker_prefix><agentId> (vd btm-elon); workspace ở <work_root>/<user>/<project>.
+  worker_prefix: z.string().regex(/^[a-z_][a-z0-9_-]{0,15}$/).optional(),
   trusted_root: z.string().refine(isAbsolute, 'trusted_root must be an absolute path').optional(),
+  work_root: z.string().refine(isAbsolute, 'work_root must be an absolute path').optional(),
   ssh_hint: z.string().default('admzon@100.96.250.103'),
 }).strict();
 

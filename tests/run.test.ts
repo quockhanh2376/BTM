@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, chmodSync, mkdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
@@ -393,38 +393,61 @@ echo '{"verdict":"pass"}' > "$outFile"
 });
 
 describe('P4.5-T2: runner dưới worker', () => {
-  it('argv bọc sudo wrapper; killAll gọi cả khi lượt thành công lẫn khi runProc ném lỗi', async () => {
+  it('argv bọc sudo wrapper theo user của agent; killAll trước/sau; đọc kết quả qua worker; sync lỗi → sync_failed', async () => {
     const base = loadConfig('btm.config.yaml');
-    const cfg = { ...base, host: { ...base.host, worker_user: 'btm-worker' } };
+    const cfg = { ...base, host: { ...base.host, worker_prefix: 'btm-', work_root: '/srv/btm-work' } };
     const seen: string[][] = [];
-    const killed: number[] = [];
+    const killed: string[] = [];
     let fail = false;
-    const fakeProc = (async (argv: string[]) => {
+    const steps: string[] = [];
+    let importOk = true;
+    let syncOk = true;
+    const iso = {
+      sync: () => { steps.push('sync'); if (!syncOk) throw new Error('x'); },
+      importTurn: () => { steps.push('import'); return importOk ? { ok: true as const, changed: true } : { ok: false as const, reason: 'bundle_invalid' as const }; },
+      readOut: (_c: unknown, a: string) => `last:${a}`,
+    };
+    const proc = (async (argv: string[], o: { onKill?: () => void }) => {
+      steps.push('run');
       seen.push(argv);
+      expect(typeof o.onKill).toBe('function');
       if (fail) throw new Error('boom');
       return { exitCode: 0, timedOut: false, durationMs: 1, output: 'ok' };
     }) as any;
-    const steps: string[] = [];
-    let importOk = true;
-    const iso = {
-      sync: () => { steps.push('sync'); },
-      importTurn: () => { steps.push('import'); return importOk ? { ok: true as const, changed: true } : { ok: false as const, reason: 'bundle_invalid' as const }; },
-    };
-    const runner = makeRunner(cfg, undefined, (async (argv: string[]) => { steps.push('run'); return fakeProc(argv); }) as any, () => { killed.push(1); steps.push('kill'); }, iso);
+    const runner = makeRunner(cfg, undefined, proc, (_c, a) => { killed.push(a); steps.push('kill'); }, iso);
     const dir = mkdtempSync(join(tmpdir(), 'btm-w-'));
-    const ws = join(cfg.host.projects_root, require('node:path').basename(dir));
-    await runner('dev', 'jacky', 'x', dir, join(dir, 'a.log'));
-    expect(seen[0].slice(0, 7)).toEqual(['sudo', '-n', '-u', 'btm-worker', '/usr/local/bin/btm-worker-exec', require('node:path').resolve(ws), '--']);
-    expect(steps).toEqual(['sync', 'run', 'kill', 'import']);
-    expect(killed.length).toBe(1);
+    const path = require('node:path');
+    const ws = path.join('/srv/btm-work', 'btm-jacky', path.basename(dir));
+    const ok = await runner('dev', 'jacky', 'x', dir, join(dir, 'a.log'));
+    expect(seen[0].slice(0, 7)).toEqual(['sudo', '-n', '-u', 'btm-jacky', '/usr/local/bin/btm-worker-exec', path.resolve(ws), '--']);
+    expect(steps).toEqual(['kill', 'sync', 'run', 'kill', 'import']);
+    expect(killed).toEqual(['jacky', 'jacky']);
+    expect(ok.lastMessage).toBe('last:jacky');
     importOk = false;
     const bad = await runner('dev', 'jacky', 'x', dir, join(dir, 'c.log'));
     expect(bad.exitCode).toBe(1);
     expect(bad.output).toContain('bundle_invalid');
-    killed.length = 0; killed.push(1);
+    steps.length = 0;
+    syncOk = false;
+    const noSync = await runner('dev', 'jacky', 'x', dir, join(dir, 'd.log'));
+    expect(noSync.exitCode).toBe(1);
+    expect(noSync.output).toContain('sync_failed');
+    expect(steps).toEqual(['kill', 'sync', 'kill']);
+    syncOk = true;
+    killed.length = 0;
     fail = true;
     await expect(runner('dev', 'jacky', 'x', dir, join(dir, 'b.log'))).rejects.toThrow('boom');
     expect(killed.length).toBe(2);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it.skipIf(process.platform === 'win32')('runProcess hết giờ → gọi onKill (giết tiến trình của user khác)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'btm-k-'));
+    const onKill = vi.fn();
+    const r = await runProcess(['sleep', '5'], { cwd: dir, timeoutMs: 100, logFile: join(dir, 'k.log'), onKill });
+    expect(r.timedOut).toBe(true);
+    expect(onKill).toHaveBeenCalledOnce();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
 });

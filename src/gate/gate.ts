@@ -16,9 +16,11 @@ export interface GateOptions {
   timeoutMs?: number;
   require_report_schema?: boolean;
   cfg?: Config;
-  killAll?: (cfg: Config) => void;
+  /** Cách ly: lệnh gate chạy dưới user + trong workspace của agent Dev của ticket (code của chính Dev). */
+  agentId?: string;
+  killAll?: (cfg: Config, agentId: string) => void;
   /** Cách ly: đồng bộ workspace của worker về HEAD checkout tin cậy trước khi chạy lệnh (test thay được). */
-  sync?: (cfg: Config, checkout: string) => void;
+  sync?: (cfg: Config, agentId: string, checkout: string) => void;
 }
 
 function matchesScopeItem(file: string, item: string): boolean {
@@ -175,13 +177,16 @@ export function runGate(
     ['test', cmds?.test],
   ];
 
-  const gateCfg = optsOrTimeout && typeof optsOrTimeout === 'object' ? optsOrTimeout.cfg : undefined;
-  // Cách ly: lệnh gate (chạy code do Dev viết) chạy trong workspace của worker, không trong checkout tin cậy.
+  const gateOpts = optsOrTimeout && typeof optsOrTimeout === 'object' ? optsOrTimeout : undefined;
+  const gateCfg = gateOpts?.cfg;
+  const gateAgent = gateOpts?.agentId ?? '';
+  // Cách ly: lệnh gate (chạy code do Dev viết) chạy trong workspace của Dev, không trong checkout tin cậy.
   const isolatedGate = Boolean(gateCfg && isIsolated(gateCfg));
-  const cmdCwd = isolatedGate ? workspacePath(gateCfg!, repo) : repo;
-  if (isolatedGate && cmdList.some(([, c]) => c && c.trim() !== '')) {
+  const hasCmds = cmdList.some(([, c]) => c && c.trim() !== '');
+  if (isolatedGate && hasCmds) {
     try {
-      ((optsOrTimeout as GateOptions).sync ?? ((c, k) => syncWorkspace(c, k)))(gateCfg!, repo);
+      if (!gateAgent) throw new Error('gate agent missing');
+      (gateOpts!.sync ?? ((c, a, k) => syncWorkspace(c, a, k)))(gateCfg!, gateAgent, repo);
     } catch {
       reasons.push('gate_sync_failed');
       return { ok: false, reasons };
@@ -192,18 +197,18 @@ export function runGate(
     if (command && command.trim() !== '') {
       let res: ReturnType<typeof spawnSync>;
       try {
-        const argv = optsOrTimeout && typeof optsOrTimeout === 'object' && optsOrTimeout.cfg
-          ? wrapForWorker(optsOrTimeout.cfg, ['sh', '-c', command], cmdCwd)
+        const argv = isolatedGate
+          ? wrapForWorker(gateCfg!, gateAgent, ['sh', '-c', command], workspacePath(gateCfg!, gateAgent, repo))
           : ['sh', '-c', command];
         res = spawnSync(argv[0], argv.slice(1), {
           cwd: repo,
           stdio: 'ignore',
           timeout: timeoutMs && timeoutMs > 0 ? timeoutMs : undefined,
+          // SIGKILL: spawnSync không treo chờ sudo; tiến trình còn lại của worker do killAll dọn ngay sau.
+          killSignal: 'SIGKILL',
         });
       } finally {
-        if (optsOrTimeout && typeof optsOrTimeout === 'object' && optsOrTimeout.cfg) {
-          (optsOrTimeout.killAll ?? workerKillAll)(optsOrTimeout.cfg);
-        }
+        if (isolatedGate) (gateOpts!.killAll ?? workerKillAll)(gateCfg!, gateAgent);
       }
       if (res.error && (res.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
         reasons.push(`cmd_timeout:${name}`);

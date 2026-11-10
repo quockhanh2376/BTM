@@ -1057,3 +1057,21 @@ describe('Store SQLite', () => {
     });
   });
 });
+
+describe('P4.5: renameProject (btm isolate)', () => {
+  it('chuyển goal, session, active project và key setting theo đường dẫn mới', () => {
+    const store = openStore(':memory:');
+    store.setActiveProject('/srv/agent-projects/gtm');
+    store.createGoal('/srv/agent-projects/gtm', 'G');
+    store.createSession(['1'], '/srv/agent-projects/gtm');
+    store.setSetting('protected_sha:/srv/agent-projects/gtm', 'abc');
+    store.setSetting('protected_sha:/srv/btm-repos/gtm', 'stale');
+    store.renameProject('/srv/agent-projects/gtm', '/srv/btm-repos/gtm');
+    expect(store.getActiveProject()).toBe('/srv/btm-repos/gtm');
+    expect(store.listGoals('/srv/btm-repos/gtm')).toHaveLength(1);
+    expect(store.listGoals('/srv/agent-projects/gtm')).toHaveLength(0);
+    expect(store.getSetting('protected_sha:/srv/btm-repos/gtm')).toBe('abc');
+    expect(store.getSetting('protected_sha:/srv/agent-projects/gtm')).toBeNull();
+    store.close();
+  });
+});

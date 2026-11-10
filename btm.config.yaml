@@ -10,8 +10,9 @@ host:
     port: 8080
   data_dir: /var/lib/btm               # SQLite và log vận hành
   # Cách ly agent (Plan 4.5) – bật trên VM sau khi chạy deploy/isolation-setup.sh + `btm isolate`; Windows/dev để trống.
-  # worker_user: btm-worker            # user Linux chạy CLI agent + lệnh gate
+  # worker_prefix: btm-                # user Linux của agent = btm-<agent> (btm-elon, btm-jacky, btm-jenny)
   # trusted_root: /srv/btm-repos       # checkout tin cậy do BTM sở hữu (main thật)
+  # work_root: /srv/btm-work           # workspace riêng từng agent: <work_root>/btm-<agent>/<project>
 
 session:
   max_goals: 3                         # số mục tiêu tối đa mỗi phiên

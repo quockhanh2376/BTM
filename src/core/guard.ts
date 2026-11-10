@@ -32,7 +32,7 @@ export interface GuardTurnResult {
   needsOwner?: string;
 }
 
-function turnGuardKey(repo: string): string {
+export function turnGuardKey(repo: string): string {
   return `turn_guard:${repo}`;
 }
 

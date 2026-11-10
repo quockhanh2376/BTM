@@ -711,16 +711,21 @@ describe('runGate', () => {
 });
 
 describe('P4.5-T2: gate dưới worker', () => {
-  it('có worker_user → mỗi lệnh gate gọi killAll một lần', () => {
+  it('cách ly → lệnh gate chạy dưới user của Dev; killAll mỗi lệnh; đồng bộ 1 lần; thiếu agent → gate_sync_failed', () => {
     const repo = tmpRepo({ 'src/a.ts': 'export const a = 1;' });
     const base = headSha(repo);
     writeFileSync(join(repo, 'src', 'a.ts'), 'export const a = 2;');
     commitAll(repo, 'GTM-0001: x', { name: 'd', email: 'd@x' });
-    const killed: number[] = [];
+    const killed: string[] = [];
     const synced: string[] = [];
-    const cfg = { host: { worker_user: 'btm-worker', projects_root: '/srv/agent-projects' } } as any;
-    runGate(repo, makeCard(), base, { build: 'true', lint: '', test: 'true' } as any, { cfg, killAll: () => killed.push(1), sync: (_c, k) => synced.push(k) });
-    expect(killed.length).toBe(2);
-    expect(synced).toEqual([repo]); // đồng bộ workspace 1 lần trước các lệnh
+    const cfg = { host: { worker_prefix: 'btm-', projects_root: '/srv/agent-projects', work_root: '/srv/btm-work' } } as any;
+    runGate(repo, makeCard(), base, { build: 'true', lint: '', test: 'true' } as any, {
+      cfg, agentId: 'jacky', killAll: (_c, a) => killed.push(a), sync: (_c, a, k) => synced.push(`${a}:${k}`),
+    });
+    expect(killed).toEqual(['jacky', 'jacky']);
+    expect(synced).toEqual([`jacky:${repo}`]); // đồng bộ workspace 1 lần trước các lệnh
+    const res = runGate(repo, makeCard(), base, { build: 'true', lint: '', test: '' } as any, { cfg, killAll: () => {}, sync: () => {} });
+    expect(res.reasons).toContain('gate_sync_failed');
   });
+
 });

@@ -113,6 +113,8 @@ export interface Store {
   cancelQueued(): number;
   listQueue(limit: number): QueueItem[];
 
+  /** Đổi đường dẫn project ở mọi bảng + key setting `…:<path>` (btm isolate). */
+  renameProject(oldPath: string, newPath: string): void;
   getSetting(key: string): string | null;
   setSetting(key: string, value: string): void;
   setSessionTasks(sessionId: number, taskIds: string[]): void;
@@ -718,7 +720,26 @@ export function openStore(file: string): Store {
     insertTicketHistoryStmt.run(project, id, fromState, to, by, reason, now);
   });
 
+  const renameProject = db.transaction((oldPath: string, newPath: string) => {
+    for (const t of ['sessions', 'notes', 'goals', 'tickets', 'ticket_history', 'project_counters']) {
+      db.prepare(`UPDATE ${t} SET project = ? WHERE project = ?`).run(newPath, oldPath);
+    }
+    db.prepare('UPDATE active_project SET path = ? WHERE path = ?').run(newPath, oldPath);
+    const suffix = `:${oldPath}`;
+    const rows = db.prepare('SELECT key FROM settings').all() as { key: string }[];
+    for (const { key } of rows) {
+      if (!key.endsWith(suffix)) continue;
+      const newKey = key.slice(0, -oldPath.length) + newPath;
+      db.prepare('DELETE FROM settings WHERE key = ?').run(newKey);
+      db.prepare('UPDATE settings SET key = ? WHERE key = ?').run(newKey, key);
+    }
+  });
+
   const storeObj: Store = {
+    renameProject(oldPath: string, newPath: string): void {
+      renameProject(oldPath, newPath);
+    },
+
     setActiveProject(path: string): void {
       setActiveProjectStmt.run(path);
     },
