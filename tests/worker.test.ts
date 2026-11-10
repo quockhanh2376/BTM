@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HostSchema } from '../src/config.ts';
-import { workerKillAll, workerUser, wrapForWorker } from '../src/isolation/worker.ts';
+import { workerKillAll, workerReset, workerUser, wrapForWorker } from '../src/isolation/worker.ts';
 
 const baseConfig = {
   host: {
@@ -52,5 +52,16 @@ describe('workerKillAll – mã thoát', () => {
     const cfg = { host: { worker_prefix: 'btm-' } } as any;
     expect(() => workerKillAll(cfg, 'elon', () => { throw Object.assign(new Error('none'), { status: 1 }); })).not.toThrow();
     expect(() => workerKillAll(cfg, 'elon', () => { throw Object.assign(new Error('sudo broken'), { status: 2 }); })).toThrow('sudo broken');
+  });
+});
+
+describe('P5-T8: workerReset', () => {
+  it('gọi btm-worker-reset dưới user của agent; không cách ly → không làm gì', () => {
+    const exec = vi.fn();
+    workerReset({ host: { worker_prefix: 'btm-' } } as any, 'jenny', exec);
+    expect(exec.mock.calls[0]![1]).toEqual(['-n', '-u', 'btm-jenny', '/usr/local/bin/btm-worker-reset']);
+    exec.mockClear();
+    workerReset({ host: {} } as any, 'jenny', exec);
+    expect(exec).not.toHaveBeenCalled();
   });
 });

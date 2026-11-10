@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { buildArgv } from './argv.ts';
 import { agentEffort, agentModel } from '../agents/model.ts';
-import { workerKillAll, wrapForWorker } from '../isolation/worker.ts';
+import { workerKillAll, workerReset, wrapForWorker } from '../isolation/worker.ts';
 import { importTurn, isIsolated, readWorkerOut, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
 
 export interface ProcResult {
@@ -361,6 +361,8 @@ export type Runner = (
 ) => Promise<TurnOutput>;
 
 export interface Isolation {
+  /** Dọn cấu hình CLI agent tự cài (giữ đăng nhập) trước mỗi lượt. */
+  reset: (cfg: Config, agentId: string) => void;
   sync: (cfg: Config, agentId: string, checkout: string) => void;
   importTurn: (cfg: Config, agentId: string, checkout: string) => TurnImport;
   readOut: (cfg: Config, agentId: string) => string;
@@ -372,6 +374,7 @@ export function makeRunner(
   runProc: typeof runProcess = runProcess,
   killAll: (cfg: Config, agentId: string) => void = workerKillAll,
   isolation: Isolation = {
+    reset: (c, a) => workerReset(c, a),
     sync: (c, a, k) => syncWorkspace(c, a, k),
     importTurn: (c, a, k) => importTurn(c, a, k),
     readOut: (c, a) => readWorkerOut(c, a),
@@ -423,6 +426,7 @@ export function makeRunner(
       if (isolated) {
         killAll(cfg, agentId);
         try {
+          isolation.reset(cfg, agentId);
           isolation.sync(cfg, agentId, cwd);
         } catch {
           const output = '[btm] sync_failed';

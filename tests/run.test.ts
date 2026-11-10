@@ -403,6 +403,7 @@ describe('P4.5-T2: runner dưới worker', () => {
     let importOk = true;
     let syncOk = true;
     const iso = {
+      reset: () => { steps.push('reset'); },
       sync: () => { steps.push('sync'); if (!syncOk) throw new Error('x'); },
       importTurn: () => { steps.push('import'); return importOk ? { ok: true as const, changed: true } : { ok: false as const, reason: 'bundle_invalid' as const }; },
       readOut: (_c: unknown, a: string) => `last:${a}`,
@@ -420,7 +421,7 @@ describe('P4.5-T2: runner dưới worker', () => {
     const ws = path.join('/srv/btm-work', 'btm-jacky', path.basename(dir));
     const ok = await runner('dev', 'jacky', 'x', dir, join(dir, 'a.log'));
     expect(seen[0].slice(0, 7)).toEqual(['sudo', '-n', '-u', 'btm-jacky', '/usr/local/bin/btm-worker-exec', path.resolve(ws), '--']);
-    expect(steps).toEqual(['kill', 'sync', 'run', 'kill', 'import', 'kill']);
+    expect(steps).toEqual(['kill', 'reset', 'sync', 'run', 'kill', 'import', 'kill']);
     expect(killed).toEqual(['jacky', 'jacky', 'jacky']);
     expect(ok.lastMessage).toBe('last:jacky');
     importOk = false;
@@ -432,7 +433,7 @@ describe('P4.5-T2: runner dưới worker', () => {
     const noSync = await runner('dev', 'jacky', 'x', dir, join(dir, 'd.log'));
     expect(noSync.exitCode).toBe(1);
     expect(noSync.output).toContain('sync_failed');
-    expect(steps).toEqual(['kill', 'sync', 'kill']);
+    expect(steps).toEqual(['kill', 'reset', 'sync', 'kill']);
     syncOk = true;
     killed.length = 0;
     fail = true;

@@ -84,10 +84,22 @@ done
 exit 3   # vẫn còn tiến trình sau 10 lần → BTM báo lỗi
 EOF
 
-  # sudoers: agent chỉ được chạy đúng 2 wrapper dưới user thuộc nhóm btm-workers, không mật khẩu, không giữ env.
+  install_file /usr/local/bin/btm-worker-reset 755 <<'EOF'
+#!/bin/bash
+# Plan 5 Task 8: trước mỗi lượt, xoá cấu hình/hướng dẫn mà agent có thể tự cài vào home của mình (git, npm, CLI),
+# GIỮ file đăng nhập: ~/.claude/.credentials.json, ~/.claude.json, ~/.codex/auth.json,
+# ~/.gemini/antigravity-cli/antigravity-oauth-token, installation_id. rm không đi theo symlink.
+set -u
+case "$(id -un)" in btm-*) ;; *) echo "phải chạy dưới user btm-<agent>" >&2; exit 2;; esac
+cd "$HOME" || exit 2
+rm -rf -- .gitconfig .config/git .npmrc .yarnrc .yarnrc.yml .bash_aliases   .claude/CLAUDE.md .claude/settings.json .claude/settings.local.json .claude/commands .claude/agents   .claude/hooks .claude/output-styles .claude/skills .claude/plugins   .codex/config.toml .codex/AGENTS.md .codex/AGENTS.override.md .codex/prompts .codex/rules   .gemini/GEMINI.md .gemini/settings.json .gemini/antigravity-cli/settings.json .gemini/config/mcp_config.json
+exit 0
+EOF
+
+  # sudoers: agent chỉ được chạy đúng 3 wrapper dưới user thuộc nhóm btm-workers, không mật khẩu, không giữ env.
   local sud; sud="$(mktemp)"
   cat > "$sud" <<'EOF'
-agent ALL=(%btm-workers) NOPASSWD: /usr/local/bin/btm-worker-exec, /usr/local/bin/btm-worker-killall
+agent ALL=(%btm-workers) NOPASSWD: /usr/local/bin/btm-worker-exec, /usr/local/bin/btm-worker-killall, /usr/local/bin/btm-worker-reset
 EOF
   if [ "$DRY" = 1 ]; then echo "+ ghi /etc/sudoers.d/btm:"; sed 's/^/    /' "$sud"
   else visudo -cf "$sud" >/dev/null && install -o root -g root -m 440 "$sud" /etc/sudoers.d/btm; fi

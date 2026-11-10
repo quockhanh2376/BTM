@@ -30,3 +30,10 @@ export function workerKillAll(cfg: Config, agentId: string, exec: ExecFn = execF
     if ((err as { status?: number }).status !== 1) throw err;
   }
 }
+
+// Plan 5 Task 8: xoá cấu hình CLI/git/npm agent tự cài vào home (giữ đăng nhập) – trước mỗi lượt.
+export function workerReset(cfg: Config, agentId: string, exec: ExecFn = execFileSync): void {
+  const user = workerUser(cfg, agentId);
+  if (!user) return;
+  exec('sudo', ['-n', '-u', user, '/usr/local/bin/btm-worker-reset'], { stdio: 'ignore', timeout: 30_000, killSignal: 'SIGKILL' });
+}
