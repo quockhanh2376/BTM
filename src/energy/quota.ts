@@ -258,7 +258,15 @@ export function readCodexLimits(codexHome: string): { windows: EnergyWindow[]; a
   } catch {
     return null;
   }
+  return parseCodexLimitsText(content, new Date(latestFile.mtimeMs).toISOString());
+}
 
+// In ~400KB cuối của file sessions/*.jsonl mới nhất trong home Codex của user đang chạy (worker).
+const CODEX_TAIL_SCRIPT =
+  'f=$(find "$HOME/.codex/sessions" -name "*.jsonl" -type f -printf "%T@ %p\\n" 2>/dev/null | sort -n | tail -1 | cut -d" " -f2-); [ -n "$f" ] && tail -c 400000 "$f"';
+
+/** Tìm bản ghi rate_limits mới nhất trong nội dung jsonl của Codex (dùng chung cho đọc file và đọc qua worker). */
+export function parseCodexLimitsText(content: string, fallbackAt: string): { windows: EnergyWindow[]; at: string } | null {
   const lines = content.split(/\r?\n/);
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i].trim();
@@ -291,7 +299,7 @@ export function readCodexLimits(codexHome: string): { windows: EnergyWindow[]; a
         const secondaryRemaining = 100 - s.used_percent;
         const primaryResetsAt = new Date(p.resets_at * 1000).toISOString();
         const secondaryResetsAt = new Date(s.resets_at * 1000).toISOString();
-        const at = typeof obj.timestamp === 'string' ? obj.timestamp : new Date(latestFile.mtimeMs).toISOString();
+        const at = typeof obj.timestamp === 'string' ? obj.timestamp : fallbackAt;
 
         return {
           windows: [
@@ -325,6 +333,8 @@ export async function readEnergy(
     codexHome: string;
     now: () => Date;
     timeoutMs?: number;
+    /** Cách ly: home Codex thuộc btm-worker → nhờ worker in phần cuối file sessions mới nhất (qua run). */
+    codexViaRun?: boolean;
   }
 ): Promise<EnergyReading> {
   const readAt = deps.now().toISOString();
@@ -489,7 +499,13 @@ export async function readEnergy(
 
   if (tool === 'codex-cli') {
     try {
-      const limits = readCodexLimits(deps.codexHome);
+      let limits: { windows: EnergyWindow[]; at: string } | null;
+      if (deps.codexViaRun) {
+        const res = await deps.run(['sh', '-c', CODEX_TAIL_SCRIPT], { timeoutMs: deps.timeoutMs });
+        limits = res.exitCode === 0 ? parseCodexLimitsText(res.output, readAt) : null;
+      } else {
+        limits = readCodexLimits(deps.codexHome);
+      }
       if (!limits) {
         return {
           agent,

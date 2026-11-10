@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { wrapForWorker } from '../isolation/worker.ts';
 import type { Config } from '../config.ts';
 import type { Store } from '../store/db.ts';
 import type { ProcResult } from '../runner/run.ts';
@@ -35,16 +36,20 @@ export function createMonitor(d: MonitorDeps): {
   gate(agent: string): { ok: true } | { ok: false; reason: string };
 } {
   const env = d.env ?? process.env;
+  const worker = d.cfg.host.worker_user;
+  // Cách ly: CLI đăng nhập dưới btm-worker → đọc Energy/đăng nhập cũng chạy dưới worker (wrapper, cwd projects_root).
   const runner =
     d.run ??
     ((argv: string[]) =>
-      runProcess(argv, {
+      runProcess(wrapForWorker(d.cfg, argv, d.cfg.host.projects_root), {
         cwd: process.cwd(),
         timeoutMs: 60_000,
         logFile: '/dev/null',
         env,
       }));
-  const codexHome = d.codexHome ?? (env.CODEX_HOME || join(env.HOME || '/home/agent', '.codex'));
+  const codexHome =
+    d.codexHome ??
+    (worker ? `/home/${worker}/.codex` : env.CODEX_HOME || join(env.HOME || '/home/agent', '.codex'));
 
   const checkedAt = new Map<string, number>();
   const inFlight = new Map<string, Promise<void>>();
@@ -73,6 +78,7 @@ export function createMonitor(d: MonitorDeps): {
         run: runner,
         codexHome,
         now: d.now,
+        codexViaRun: Boolean(worker),
       });
       d.store.saveEnergy(energyReading);
 

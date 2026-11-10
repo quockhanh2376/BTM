@@ -981,6 +981,23 @@ describe('readEnergy', () => {
     });
   });
 
+  it('P4.5: codex-cli cách ly → đọc qua worker (run sh -c), parse output; lỗi → unknown', async () => {
+    const record = {
+      timestamp: '2026-11-08T14:40:00.000Z',
+      payload: { rate_limits: {
+        primary: { used_percent: 10, window_minutes: 300, resets_at: 1794159978 },
+        secondary: { used_percent: 20, window_minutes: 10080, resets_at: 1794385920 } } },
+    };
+    const calls: string[][] = [];
+    const run = async (argv: string[]) => { calls.push(argv); return { exitCode: 0, timedOut: false, durationMs: 1, output: 'garbage\n' + JSON.stringify(record) + '\n' }; };
+    const reading = await readEnergy('qeen', 'codex-cli', { run: run as any, codexHome: '/nonexistent', now, codexViaRun: true });
+    expect(calls[0].slice(0, 2)).toEqual(['sh', '-c']);
+    expect(reading.status).toBe('fresh');
+    expect(reading.windows[0]).toMatchObject({ name: '5h', remainingPercent: 90 });
+    const fail = async () => ({ exitCode: 1, timedOut: false, durationMs: 1, output: '' });
+    expect((await readEnergy('qeen', 'codex-cli', { run: fail as any, codexHome: '/x', now, codexViaRun: true })).status).toBe('unknown');
+  });
+
   it('codex-cli: trả về unknown khi không có dữ liệu sessions', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'btm-codex-nosess-'));
     const run = async () => ({ exitCode: 0, timedOut: false, durationMs: 0, output: '' });
