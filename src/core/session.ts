@@ -390,8 +390,38 @@ async function processGoal(
   const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
   const gateFn = d.gate ?? (d.monitor ? d.monitor.gate.bind(d.monitor) : undefined);
 
-  const pmAgent = effectiveSeats(d.cfg, d.store, d.repo).pm;
-  const pmAuthor = authorForAgent(pmAgent);
+  let pmAgent = effectiveSeats(d.cfg, d.store, d.repo).pm;
+  let pmAuthor = authorForAgent(pmAgent);
+
+  // Plan 5 Task 7: người chính hết Energy/đăng nhập → người dự phòng (seats_backup) còn Energy và không vi phạm
+  // luật cứng (exclude). Không còn ai → phiên dừng với all_agents_exhausted. Không có dự phòng → như cũ.
+  async function pickSeatAgent(
+    seat: Seat,
+    primary: string,
+    exclude: Set<string> = new Set()
+  ): Promise<{ agent: string } | { agent: null; notes: string[] }> {
+    const backups = (d.cfg.seats_backup?.[seat] ?? []).filter((a) => a !== primary);
+    const reasons: string[] = [];
+    for (const agent of [primary, ...backups]) {
+      if (exclude.has(agent)) {
+        reasons.push(`${agent}: luật cứng`);
+        continue;
+      }
+      if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+        try {
+          await refreshFn([agent]);
+        } catch {}
+      }
+      const check = gateFn ? gateFn(agent) : ({ ok: true } as const);
+      if (check.ok) {
+        if (agent !== primary) console.log(`seat_substitute:${seat}:${primary}->${agent}`);
+        return { agent };
+      }
+      reasons.push(check.reason);
+    }
+    if (backups.length === 0) return { agent: null, notes: reasons };
+    return { agent: null, notes: ['all_agents_exhausted', ...reasons] };
+  }
 
   const baseBranch = d.cfg.git.protected_branch || 'main';
 
@@ -510,17 +540,14 @@ async function processGoal(
 
   if (existingGoalTickets.length === 0) {
     // PM Turn
-    if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
-      try {
-        await refreshFn([pmAgent]);
-      } catch {}
-    }
-    if (gateFn) {
-      const gateCheck = gateFn(pmAgent);
-      if (!gateCheck.ok) {
-        d.store.recordHandoffFailure(sessionId, 'pm', gateCheck.reason);
-        return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+    {
+      const pick = await pickSeatAgent('pm', pmAgent);
+      if (pick.agent === null) {
+        d.store.recordHandoffFailure(sessionId, 'pm', pick.notes[0] ?? 'gate');
+        return { status: 'needs_owner', sessionId, tasks, notes: pick.notes };
       }
+      pmAgent = pick.agent;
+      pmAuthor = authorForAgent(pmAgent);
     }
 
     if (isOutOfTurns(d.store, sessionId, d.cfg, 'pm')) {
@@ -844,8 +871,8 @@ async function processGoal(
         };
       }
       const seats = effectiveSeats(d.cfg, d.store, d.repo);
-      const devAgent = Object.hasOwn(seats, 'dev') ? seats.dev : d.cfg.seats.dev;
-      const devAuthor = authorForAgent(devAgent);
+      let devAgent = Object.hasOwn(seats, 'dev') ? seats.dev : d.cfg.seats.dev;
+      let devAuthor = authorForAgent(devAgent);
 
       const pastDevTurns = d.store
         .listTurns(sessionId)
@@ -862,20 +889,16 @@ async function processGoal(
         if (!base) {
           base = headSha(d.repo);
         }
-        coders.add(devAgent);
-
-        if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
-          try {
-            await refreshFn([devAgent]);
-          } catch {}
-        }
-        if (gateFn) {
-          const gateCheck = gateFn(devAgent);
-          if (!gateCheck.ok) {
-            d.store.recordHandoffFailure(sessionId, ticket.id, gateCheck.reason);
-            return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+        {
+          const pick = await pickSeatAgent('dev', devAgent);
+          if (pick.agent === null) {
+            d.store.recordHandoffFailure(sessionId, ticket.id, pick.notes[0] ?? 'gate');
+            return { status: 'needs_owner', sessionId, tasks, notes: pick.notes };
           }
+          devAgent = pick.agent;
+          devAuthor = authorForAgent(devAgent);
         }
+        coders.add(devAgent);
 
         if (isOutOfTurns(d.store, sessionId, d.cfg, 'dev')) {
           return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns'] };
@@ -1251,7 +1274,7 @@ async function processGoal(
       tasks[ticket.id] = 'awaiting_qc';
 
       // Rule 8: coder_cannot_qc_same_task
-      const qcAgent = Object.hasOwn(seats, 'qc') ? seats.qc : d.cfg.seats.qc;
+      let qcAgent = Object.hasOwn(seats, 'qc') ? seats.qc : d.cfg.seats.qc;
       try {
         const hist = d.store.ticketHistory(d.repo, ticket.id);
         for (const h of hist) {
@@ -1260,7 +1283,9 @@ async function processGoal(
           }
         }
       } catch {}
-      if (d.cfg.rules.coder_cannot_qc_same_task && coders.has(qcAgent)) {
+      const qcRule = d.cfg.rules.coder_cannot_qc_same_task;
+      const qcHasSub = (d.cfg.seats_backup?.qc ?? []).some((a) => !coders.has(a));
+      if (qcRule && coders.has(qcAgent) && !qcHasSub) {
         d.store.recordHandoffFailure(sessionId, ticket.id, 'coder_cannot_qc_same_task');
         return {
           status: 'needs_owner',
@@ -1273,17 +1298,13 @@ async function processGoal(
         };
       }
 
-      if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
-        try {
-          await refreshFn([qcAgent]);
-        } catch {}
-      }
-      if (gateFn) {
-        const gateCheck = gateFn(qcAgent);
-        if (!gateCheck.ok) {
-          d.store.recordHandoffFailure(sessionId, ticket.id, gateCheck.reason);
-          return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+      {
+        const pick = await pickSeatAgent('qc', qcAgent, qcRule ? coders : new Set());
+        if (pick.agent === null) {
+          d.store.recordHandoffFailure(sessionId, ticket.id, pick.notes[0] ?? 'gate');
+          return { status: 'needs_owner', sessionId, tasks, notes: pick.notes };
         }
+        qcAgent = pick.agent;
       }
 
       if (isOutOfTurns(d.store, sessionId, d.cfg, 'qc')) {
@@ -1462,7 +1483,7 @@ async function processGoal(
     break;
   }
 
-  const auditAgent = effectiveSeats(d.cfg, d.store, d.repo).audit || d.cfg.seats.audit;
+  let auditAgent = effectiveSeats(d.cfg, d.store, d.repo).audit || d.cfg.seats.audit;
   if (!auditAgent) {
     writeGoalSummaryAndCommit(d.repo, goal, goalTicketsAfter, d.store);
     const reviewedSha = git(d.repo, 'rev-parse', `refs/heads/${goal.branch}`).trim();
@@ -1490,7 +1511,8 @@ async function processGoal(
       }
     } catch {}
   }
-  if (goalCoders.has(auditAgent)) {
+  const auditHasSub = (d.cfg.seats_backup?.audit ?? []).some((a) => !goalCoders.has(a));
+  if (goalCoders.has(auditAgent) && !auditHasSub) {
     d.store.recordHandoffFailure(sessionId, `G${goal.n}`, 'auditor_is_coder');
     return {
       status: 'needs_owner',
@@ -1503,17 +1525,13 @@ async function processGoal(
     };
   }
 
-  if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
-    try {
-      await refreshFn([auditAgent]);
-    } catch {}
-  }
-  if (gateFn) {
-    const gateCheck = gateFn(auditAgent);
-    if (!gateCheck.ok) {
-      d.store.recordHandoffFailure(sessionId, `G${goal.n}`, gateCheck.reason);
-      return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+  {
+    const pick = await pickSeatAgent('audit', auditAgent, goalCoders);
+    if (pick.agent === null) {
+      d.store.recordHandoffFailure(sessionId, `G${goal.n}`, pick.notes[0] ?? 'gate');
+      return { status: 'needs_owner', sessionId, tasks, notes: pick.notes };
     }
+    auditAgent = pick.agent;
   }
 
   if (isOutOfTurns(d.store, sessionId, d.cfg, 'audit')) {
@@ -1710,17 +1728,14 @@ async function processGoal(
   }
 
   // Audit failed! PM turn with auditFindings
-  if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
-    try {
-      await refreshFn([pmAgent]);
-    } catch {}
-  }
-  if (gateFn) {
-    const gateCheck = gateFn(pmAgent);
-    if (!gateCheck.ok) {
-      d.store.recordHandoffFailure(sessionId, 'pm', gateCheck.reason);
-      return { status: 'needs_owner', sessionId, tasks, notes: [gateCheck.reason] };
+  {
+    const pick = await pickSeatAgent('pm', pmAgent);
+    if (pick.agent === null) {
+      d.store.recordHandoffFailure(sessionId, 'pm', pick.notes[0] ?? 'gate');
+      return { status: 'needs_owner', sessionId, tasks, notes: pick.notes };
     }
+    pmAgent = pick.agent;
+    pmAuthor = authorForAgent(pmAgent);
   }
   if (isOutOfTurns(d.store, sessionId, d.cfg, 'pm')) {
     return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns for PM'] };

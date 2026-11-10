@@ -130,6 +130,13 @@ const BaseConfigSchema = z.object({
   turn: TurnSchema,
   seats: SeatsSchema,
   agents: z.record(z.string(), AgentConfigSchema),
+  /** Plan 5 Task 7: người ngồi thay khi người chính hết Energy/đăng nhập, theo thứ tự. */
+  seats_backup: z.object({
+    pm: z.array(z.string()).optional(),
+    dev: z.array(z.string()).optional(),
+    qc: z.array(z.string()).optional(),
+    audit: z.array(z.string()).optional(),
+  }).strict().optional(),
   rules: RulesSchema,
   energy: EnergySchema,
   login: LoginSchema,
@@ -140,6 +147,14 @@ const BaseConfigSchema = z.object({
 }).strict();
 
 export const ConfigSchema = BaseConfigSchema.superRefine((cfg, ctx) => {
+  for (const [seat, ids] of Object.entries(cfg.seats_backup ?? {}) as [Seat, string[] | undefined][]) {
+    for (const id of ids ?? []) {
+      const agent = Object.hasOwn(cfg.agents, id) ? cfg.agents[id] : undefined;
+      if (!agent || !agent.can_sit.includes(seat)) {
+        ctx.addIssue({ code: 'custom', message: `seats_backup.${seat}: agent '${id}' không có hoặc không được ngồi ghế này`, path: ['seats_backup', seat] });
+      }
+    }
+  }
   // Cách ly: agent id thành tên user Linux <worker_prefix><id>.
   if (cfg.host.worker_prefix) {
     for (const id of Object.keys(cfg.agents)) {

@@ -57,6 +57,8 @@ export interface SeatCard {
   model?: string | null;
   /** Ghế khác agent này đang kiêm cùng lúc. */
   also?: Seat[];
+  /** Lượt gần nhất của ghế do agent dự phòng ngồi thay (Plan 5 Task 7). */
+  substitute?: string | null;
 }
 
 export interface AccountCard {
@@ -508,6 +510,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       login: getSeatLogin(store, agent),
       candidates,
       ...seatExtras(cfg, store, effSeats, seat, agent),
+      substitute: lastTurn?.agent && lastTurn.agent !== agent ? lastTurn.agent : null,
     };
   });
 

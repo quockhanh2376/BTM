@@ -1414,3 +1414,10 @@ describe('P5-T5: dashboard model/effort, user riêng, cảnh báo đội hình',
     expect(html).toContain('container.contains(active)');
   });
 });
+
+describe('P5-T7: nhãn ngồi thay', () => {
+  it('thẻ ghế hiện agent dự phòng đã ngồi thay', () => {
+    const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+    expect(html).toContain("if (cardData.substitute) toolParts.push('lượt cuối: ' + cardData.substitute + ' ngồi thay');");
+  });
+});

@@ -3221,6 +3221,7 @@
           if (toolEl) {
             var toolParts = [cardData.tool || '—'];
             if (cardData.model) toolParts.push(cardData.model);
+            if (cardData.substitute) toolParts.push('lượt cuối: ' + cardData.substitute + ' ngồi thay');
             if (Array.isArray(cardData.also) && cardData.also.length > 0) {
               toolParts.push('kiêm ' + cardData.also.map(function (x) { return SEAT_LABELS[x] || x; }).join(', '));
             }
