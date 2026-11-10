@@ -101,7 +101,9 @@ describe('P4.5: syncWorkspace + importTurn (checkout tin cậy, workspace riêng
       const c = setup();
       syncWorkspace(c.cfg, 'elon', c.checkout, direct);
       const head = c.g(c.checkout, 'rev-parse', 'HEAD');
-      const target = mode === '120000' ? c.g(c.ws, 'hash-object', '-w', '--stdin') : head;
+      const target = mode === '120000'
+        ? execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: c.ws, input: 'a.txt', encoding: 'utf8' }).trim()
+        : head;
       c.g(c.ws, 'update-index', '--add', '--cacheinfo', `${mode},${target},link`);
       c.g(c.ws, 'commit', '-qm', 'GTM-0001: link');
       // working tree phải có entry, nếu không `add -A` của import sẽ ghi nhận xoá nó
