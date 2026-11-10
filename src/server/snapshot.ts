@@ -1,7 +1,9 @@
 import { existsSync, statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Config, Seat, Tool } from '../config.ts';
-import { effectiveSeats, type Store, type GoalState, type QueueItem } from '../store/db.ts';
+import type { Config, Effort, Seat, Tool } from '../config.ts';
+import { agentEffort, agentModel } from '../agents/model.ts';
+import { workerUser } from '../isolation/worker.ts';
+import { effectiveSeats, resolveSeats, type Store, type GoalState, type QueueItem } from '../store/db.ts';
 import { loadTickets, type Ticket, type TicketState, type TicketType, type TicketSize } from '../ticket/ticket.ts';
 import { readProjectKey } from '../ticket/goal.ts';
 import type { EnergyWindow } from '../energy/quota.ts';
@@ -51,6 +53,10 @@ export interface SeatCard {
     detail: string;
   };
   candidates: string[];
+  /** Model đang dùng (null = mặc định của CLI). */
+  model?: string | null;
+  /** Ghế khác agent này đang kiêm cùng lúc. */
+  also?: Seat[];
 }
 
 export interface AccountCard {
@@ -60,6 +66,10 @@ export interface AccountCard {
     state: LoginState;
     detail: string;
   };
+  model: string | null;
+  effort: Effort;
+  /** User Linux của agent khi bật cách ly (btm-<id>), null khi không. */
+  user: string | null;
 }
 
 export interface SnapshotNote {
@@ -95,6 +105,8 @@ export interface Snapshot {
   members: string[];
   notes: SnapshotNote[];
   accounts: AccountCard[];
+  /** Đổi ghế bị bỏ qua (agent lạ, không được ngồi ghế, YAML lỗi). */
+  seatWarnings: string[];
   sshHint?: string;
 }
 
@@ -178,21 +190,39 @@ function getAccounts(store: Store, cfg: Config): AccountCard[] {
   return Object.keys(cfg.agents).map((agent) => {
     const tool = cfg.agents[agent].tool;
     const login = getSeatLogin(store, agent);
+    let user: string | null = null;
+    try {
+      user = workerUser(cfg, agent);
+    } catch {
+      user = null;
+    }
     return {
       agent,
       tool,
       login,
+      model: agentModel(cfg, store, agent) ?? null,
+      effort: agentEffort(cfg, store, agent),
+      user,
     };
   });
 }
 
+// Ghế audit hiện khi có người ngồi hoặc có agent được phép ngồi (để đổi ghế trên dashboard).
+function seatKeysFor(cfg: Config, effSeats: Record<Seat, string>): Seat[] {
+  const keys: Seat[] = ['pm', 'dev', 'qc'];
+  const auditAgent = (effSeats.audit || cfg.seats.audit || '').trim();
+  if (auditAgent || Object.values(cfg.agents).some((a) => a.can_sit.includes('audit'))) keys.push('audit');
+  return keys;
+}
+
+function seatExtras(cfg: Config, store: Store, effSeats: Record<Seat, string>, seat: Seat, agent: string) {
+  const also = (['pm', 'dev', 'qc', 'audit'] as Seat[]).filter((s) => s !== seat && agent && effSeats[s] === agent);
+  return { model: agent ? agentModel(cfg, store, agent) ?? null : null, also };
+}
+
 function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
   const effSeats = effectiveSeats(cfg, store);
-  const seatKeys: Seat[] = ['pm', 'dev', 'qc'];
-  const auditAgent = (effSeats.audit || cfg.seats.audit || '').trim();
-  if (auditAgent) {
-    seatKeys.push('audit');
-  }
+  const seatKeys = seatKeysFor(cfg, effSeats);
   return seatKeys.map((seat) => {
     const agent = effSeats[seat] || cfg.seats[seat] || '';
     const tool = cfg.agents[agent]?.tool ?? 'claude-code';
@@ -212,6 +242,7 @@ function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
       energy: getSeatEnergy(store, agent),
       login: getSeatLogin(store, agent),
       candidates,
+      ...seatExtras(cfg, store, effSeats, seat, agent),
     };
   });
 }
@@ -383,6 +414,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       members,
       notes,
       accounts,
+      seatWarnings: resolveSeats(cfg, store).warnings,
       sshHint,
     };
   }
@@ -408,6 +440,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       members,
       notes,
       accounts,
+      seatWarnings: resolveSeats(cfg, store).warnings,
       sshHint,
     };
   }
@@ -426,6 +459,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       members,
       notes,
       accounts,
+      seatWarnings: resolveSeats(cfg, store).warnings,
       sshHint,
     };
   }
@@ -435,11 +469,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const holder: Seat | null = runningTurn ? runningTurn.seat : null;
 
   const effSeats = effectiveSeats(cfg, store);
-  const seatKeys: Seat[] = ['pm', 'dev', 'qc'];
-  const auditAgent = (effSeats.audit || cfg.seats.audit || '').trim();
-  if (auditAgent) {
-    seatKeys.push('audit');
-  }
+  const seatKeys = seatKeysFor(cfg, effSeats);
   const seats: SeatCard[] = seatKeys.map((seat) => {
     const agent = effSeats[seat] || cfg.seats[seat] || '';
     const tool = cfg.agents[agent]?.tool ?? 'claude-code';
@@ -477,6 +507,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       energy: getSeatEnergy(store, agent),
       login: getSeatLogin(store, agent),
       candidates,
+      ...seatExtras(cfg, store, effSeats, seat, agent),
     };
   });
 
@@ -545,6 +576,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     members,
     notes,
     accounts,
+    seatWarnings: resolveSeats(cfg, store).warnings,
     sshHint,
   };
 }

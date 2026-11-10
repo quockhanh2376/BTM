@@ -114,7 +114,7 @@ describe('Snapshot and Log Tail', () => {
       expect(snap.queue).toEqual([]);
 
       expect(snap.seats).toHaveLength(3);
-      expect(snap.seats[0]).toEqual({
+      expect(snap.seats[0]).toMatchObject({
         seat: 'pm',
         agent: cfg.seats.pm,
         tool: cfg.agents[cfg.seats.pm].tool,
@@ -128,7 +128,7 @@ describe('Snapshot and Log Tail', () => {
         login: { state: 'unknown', detail: 'Chưa rõ' },
         candidates: ['elon'],
       });
-      expect(snap.seats[1]).toEqual({
+      expect(snap.seats[1]).toMatchObject({
         seat: 'dev',
         agent: cfg.seats.dev,
         tool: cfg.agents[cfg.seats.dev].tool,
@@ -142,7 +142,7 @@ describe('Snapshot and Log Tail', () => {
         login: { state: 'unknown', detail: 'Chưa rõ' },
         candidates: ['jacky', 'jenny'],
       });
-      expect(snap.seats[2]).toEqual({
+      expect(snap.seats[2]).toMatchObject({
         seat: 'qc',
         agent: cfg.seats.qc,
         tool: cfg.agents[cfg.seats.qc].tool,
@@ -652,7 +652,7 @@ note: N-1
       expect(snap.accounts).toBeDefined();
       expect(snap.accounts.length).toBe(Object.keys(cfg.agents).length);
       const jackyAcc = snap.accounts.find((a) => a.agent === 'jacky');
-      expect(jackyAcc).toEqual({
+      expect(jackyAcc).toMatchObject({
         agent: 'jacky',
         tool: 'antigravity-cli',
         login: { state: 'ok', detail: 'Đã đăng nhập' },
@@ -660,5 +660,31 @@ note: N-1
 
       expect(snap.sshHint).toBe('admzon@100.96.250.103');
     });
+  });
+});
+
+describe('P5-T5: snapshot có model/effort/user, nhãn kiêm ghế, ghế audit đổi được', () => {
+  it('account có model/effort/user; seat có model + also; audit hiện khi có agent ngồi được', async () => {
+    const { buildSnapshot } = await import('../src/server/snapshot.ts');
+    const { openStore } = await import('../src/store/db.ts');
+    const { loadConfig } = await import('../src/config.ts');
+    const base = loadConfig('btm.config.yaml');
+    const cfg = {
+      ...base,
+      host: { ...base.host, worker_prefix: 'btm-' },
+      agents: { ...base.agents, elon: { ...base.agents.elon, can_sit: ['pm', 'qc', 'audit'] as any, model: 'opus' } },
+      seats: { ...base.seats, audit: 'elon' },
+    } as any;
+    const store = openStore(':memory:');
+    store.setSetting('agent_effort:jenny', 'high');
+    const snap = buildSnapshot(store, cfg) as any;
+    const elon = snap.accounts.find((a: any) => a.agent === 'elon');
+    expect(elon).toMatchObject({ model: 'opus', effort: 'medium', user: 'btm-elon' });
+    expect(snap.accounts.find((a: any) => a.agent === 'jenny').effort).toBe('high');
+    const pm = snap.seats.find((s: any) => s.seat === 'pm');
+    expect(pm).toMatchObject({ model: 'opus', also: ['audit'] });
+    expect(snap.seats.map((s: any) => s.seat)).toContain('audit');
+    expect(Array.isArray(snap.seatWarnings)).toBe(true);
+    store.close();
   });
 });
