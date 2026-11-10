@@ -70,10 +70,15 @@ EOF
 
   install_file /usr/local/bin/btm-worker-killall 755 <<'EOF'
 #!/bin/bash
-# Giết mọi tiến trình của user gọi (kill -1 bỏ qua chính nó); lặp để bắt cả tiến trình vừa fork.
+# Giết mọi tiến trình có real uid = user gọi, trừ chính script; lặp để bắt cả tiến trình vừa fork.
+# Không dùng kill -1: nó trúng cả tiến trình sudo đang chạy script (saved uid = user đích).
 case "$(id -un)" in btm-*) ;; *) echo "phải chạy dưới user btm-<agent>" >&2; exit 2;; esac
+uid="$(id -u)"
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  kill -KILL -- -1 2>/dev/null || exit 0
+  pids=()
+  for p in $(pgrep -U "$uid"); do [ "$p" != "$$" ] && pids+=("$p"); done
+  [ ${#pids[@]} -eq 0 ] && exit 0
+  kill -KILL "${pids[@]}" 2>/dev/null
   sleep 0.1
 done
 exit 3   # vẫn còn tiến trình sau 10 lần → BTM báo lỗi
