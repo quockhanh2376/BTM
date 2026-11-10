@@ -19,4 +19,4 @@ B1–B9 của review 2: đã sửa, trừ B3, B4, B9 còn hở (C1, C3, C5).
 - Agent có shell nên có thể `git push` thẳng lên remote main nếu máy có credential, hoặc để lại process `setsid` chạy sau lượt (runner chỉ kill process group). Guard local không chặn được: cần bỏ credential push khỏi user agent, và ghim sha main (C2) để ít nhất phát hiện được.
 - Không thấy lỗi giao diện mới; approve vẫn qua x-btm/Origin/JSON.
 
-Test: xem kết quả chạy trong báo cáo của Cheki.
+Test Windows (`npx vitest run`): 658/674. 16 fail = 15 lỗi đã biết (symlink, process group, quoting) + `web.test.ts` "os.tmpdir() nằm dưới <repo>/.tmp" (do môi trường TMPDIR khi gọi npx trực tiếp, test có từ main, không phải lỗi nhánh).

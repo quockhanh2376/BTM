@@ -92,3 +92,4 @@
 - 2026-11-10 09:50 · Q · FIX-E review OK. Cheki: local 659/674 (15 Win), VM 674/674 ×3. Commit. Bắt đầu review độc lập lần 3 toàn nhánh
 - 2026-11-10 09:55 · Commit 4798e93 (FIX-E), push. Review độc lập 3 chạy nền → team/reviews/P4-review-3.md. Giao V P4-UI1
 - 2026-11-10 10:30 · V · P4-UI1 OK. Cheki đo demo 2560px: thẻ ghế chỉ chiếm 3×306/2521px (auto-fill để trống cột) → sửa auto-fit, bỏ rule ≥2560 (bảng/nhật ký bị chia đều 50/50). Đo lại: thẻ 834px ×3, Energy thẳng đáy, bảng/nhật ký 1.5:1. Commit
+- 2026-11-10 10:40 · Review 3 (team/reviews/P4-review-3.md): 8 lỗi – C1 git config độc (gpg/filter chạy khi BTM commit), C2 gate chạy code Dev không guard (High); C3 C4 (Med); C5–C8 (Low). B3 B4 B9 sửa chưa hết. Cheki kiểm code: đúng. Chia FIX-F (C1 C2) → FIX-G (C3–C8). Giao FIX-F. Ngoài code: user agent không được có credential push GitHub (hiện key github-btm bị từ chối – giữ vậy)
