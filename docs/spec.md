@@ -29,6 +29,8 @@ v1.0 ưu tiên: **an toàn, chạy tuần tự, dễ quan sát**. Tốc độ v�
 | QC | Jenny | Codex CLI (`codex exec`) | Review diff, chạy unit test / TDD / E2E, đối chiếu tiêu chí nghiệm thu, nộp kết quả QC |
 | Audit *(tuỳ chọn, tương lai)* | Kai | (chưa chọn công cụ) | Cyber Security Analyst: review bảo mật toàn goal sau QC, trước khi anh duyệt merge vào `main` — xem `docs/tickets.md` §5 |
 
+Đội hình linh hoạt (Plan 5): ghế nào cũng gắn được với agent có ghế đó trong `can_sit`, một agent kiêm được nhiều ghế (trừ luật cứng: người code ≠ QC ticket đó, ≠ Audit goal đó). Mỗi agent có model + effort riêng (đổi trên dashboard), chạy dưới user Linux riêng `btm-<id>`. Đội hình theo project trong `team/project.yaml` `seats:` (đọc từ `main`). Hết Energy → người dự phòng `seats_backup`; hết cả → phiên dừng. Hướng dẫn: `docs/team-setup.md`.
+
 Luật từng ghế viết một lần trong `team/roles/{pm,dev,qc}.md`. File riêng của từng công cụ (`CLAUDE.md`, `AGENTS.md`, file rules của Antigravity) chỉ trỏ về đó.
 
 ## 4. Môi trường chạy
