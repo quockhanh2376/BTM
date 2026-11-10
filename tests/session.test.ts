@@ -4116,5 +4116,165 @@ Yêu cầu đóng note nhưng commit lỗi
 
       store.close();
     });
+
+    it('C5: resumeSession từ chối goal đã approved/merged (goal_already_merged, không đổi state) và bỏ qua goal đã merged trong phiên nhiều goal', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      const gApproved = store.createGoal(repo, 'Approved Goal');
+      const gMerged = store.createGoal(repo, 'Merged Goal');
+      store.setGoalState(repo, gApproved.n, 'approved', 'owner');
+      store.setGoalState(repo, gMerged.n, 'merged', 'owner');
+
+      deps.runner = vi.fn();
+      for (const g of [gApproved, gMerged]) {
+        const sId = store.createSession([String(g.n)], repo);
+        store.setSessionStatus(sId, 'needs_owner');
+        const beforeState = store.getGoal(repo, g.n)?.state;
+        const out = await resumeSession(deps, sId);
+        expect(out).toMatchObject({
+          status: 'needs_owner',
+          sessionId: sId,
+          notes: ['goal_already_merged'],
+        });
+        expect(store.getGoal(repo, g.n)?.state).toBe(beforeState);
+      }
+      expect(deps.runner).not.toHaveBeenCalled();
+
+      // Phiên nhiều goal: G2 đã merged, G3 còn needs_owner → resume bỏ qua G2 (giữ nguyên merged) và chạy G3
+      const g3 = store.createGoal(repo, 'Pending Goal 3');
+      const multiSessionId = store.createSession([String(gMerged.n), String(g3.n)], repo);
+      store.setSessionStatus(multiSessionId, 'needs_owner');
+
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: `G${g3.n}`, number: 1, of: 1 });
+        },
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 3;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: `G${g3.n}`, number: 1, of: 1 }, agent);
+        },
+        () => makeQcResponse({ id: 'GTM-0001', goal: `G${g3.n}`, number: 1 }, 'pass'),
+      ]);
+      deps.runner = runner;
+
+      const multiOut = await resumeSession(deps, multiSessionId);
+      expect(multiOut.status).toBe('done');
+      expect(store.getGoal(repo, gMerged.n)?.state).toBe('merged');
+      expect(store.getGoal(repo, g3.n)?.state).toBe('qc_done');
+
+      store.close();
+    });
+
+    it('C7: PM tạo ticket có depends_on không tồn tại hoặc số >= ticket đó → pm_ticket_bad_depends và dọn sạch', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+
+      // 1. depends_on trỏ tới ticket số lớn hơn (GTM-0001 depends_on GTM-0002)
+      const { runner: runnerForward } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, {
+            id: 'GTM-0001',
+            goal: 'G1',
+            number: 1,
+            of: 2,
+            depends_on: ['GTM-0002'],
+          });
+          writeTicketFile(cwd, {
+            id: 'GTM-0002',
+            goal: 'G1',
+            number: 2,
+            of: 2,
+            depends_on: [],
+          });
+        },
+      ]);
+      deps.runner = runnerForward;
+
+      const out1 = await runSession(deps, ['Bad depends forward'], { approved: true });
+      expect(out1.status).toBe('needs_owner');
+      expect(out1.notes).toContain('pm_ticket_bad_depends');
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0001.md'))).toBe(false);
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0002.md'))).toBe(false);
+      expect(store.getTicketState(repo, 'GTM-0001')).toBeNull();
+      expect(store.nextTicketSeq(repo)).toBe(1);
+
+      // 2. depends_on trỏ tới ID không tồn tại trong goal (GTM-9999)
+      const { runner: runnerMissing } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, {
+            id: 'GTM-0001',
+            goal: 'G2',
+            number: 1,
+            of: 1,
+            depends_on: ['GTM-9999'],
+          });
+        },
+      ]);
+      deps.runner = runnerMissing;
+
+      const out2 = await runSession(deps, ['Bad depends missing'], { approved: true });
+      expect(out2.status).toBe('needs_owner');
+      expect(out2.notes).toContain('pm_ticket_bad_depends');
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0001.md'))).toBe(false);
+      expect(store.nextTicketSeq(repo)).toBe(1);
+
+      store.close();
+    });
+
+    it('C8: lượt Dev tạo dist/x.js + coverage/ → xoá im lặng trước gate, ghi ignored_cleaned:<n>, gate vẫn chạy và ticket pass', async () => {
+      const repo = tmpRepo({
+        'src/app.ts': 'export const a = 0;\n',
+        '.gitignore': 'node_modules/\ndist/\ncoverage/\n.env\n',
+      });
+
+      const { deps, store } = makeDeps(repo);
+      // Lệnh gate xác nhận dist/x.js và coverage/ đã bị xoá TRƯỚC khi gate chạy, và tự sinh thêm coverage/gate.txt
+      deps.cfg.gate.commands.test =
+        'node -e "const fs=require(\'node:fs\'); if (fs.existsSync(\'dist/x.js\') || fs.existsSync(\'coverage/lcov.info\')) process.exit(1); fs.mkdirSync(\'coverage\', {recursive:true}); fs.writeFileSync(\'coverage/gate.txt\', \'ok\');"';
+
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, {
+            id: 'GTM-0001',
+            goal: 'G1',
+            number: 1,
+            of: 1,
+            scope: ['src/'],
+          });
+        },
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          mkdirSync(join(cwd, 'dist'), { recursive: true });
+          writeFileSync(join(cwd, 'dist', 'x.js'), 'console.log(1);\n');
+          mkdirSync(join(cwd, 'coverage'), { recursive: true });
+          writeFileSync(join(cwd, 'coverage', 'lcov.info'), 'TN:\n');
+          mkdirSync(join(cwd, 'node_modules', 'left-pad'), { recursive: true });
+          writeFileSync(join(cwd, 'node_modules', 'left-pad', 'index.js'), 'module.exports = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        (_s, _a, _p, cwd) => {
+          // Trước lượt QC, file coverage/gate.txt do gate sinh ra cũng đã bị xoá im lặng
+          expect(existsSync(join(cwd, 'coverage', 'gate.txt'))).toBe(false);
+          expect(existsSync(join(cwd, 'dist', 'x.js'))).toBe(false);
+          expect(existsSync(join(cwd, 'node_modules', 'left-pad', 'index.js'))).toBe(true);
+          return makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass');
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Dev build artifacts'], { approved: true });
+      expect(outcome.status).toBe('done');
+      expect(outcome.tasks['GTM-0001']).toBe('passed');
+      expect(existsSync(join(repo, 'dist', 'x.js'))).toBe(false);
+      expect(existsSync(join(repo, 'coverage', 'lcov.info'))).toBe(false);
+      expect(existsSync(join(repo, 'node_modules', 'left-pad', 'index.js'))).toBe(true);
+
+      const devTurn = store.listTurns(outcome.sessionId!).find((t) => t.seat === 'dev');
+      expect(devTurn?.error).toContain('ignored_cleaned:');
+
+      store.close();
+    });
+
   });
 });

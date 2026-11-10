@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Seat } from '../config.ts';
 import { git, headSha, commitAll } from '../git.ts';
 import type { Store } from '../store/db.ts';
@@ -15,6 +15,8 @@ export interface TurnGuardSnapshot {
   gitInfoAttributes?: string;
   protectedBranchMoved?: boolean;
   protectedBranchActualSha?: string;
+  ignoredFiles?: string[];
+  ignoredListFailed?: boolean;
 }
 
 export interface GuardTurnResult {
@@ -25,6 +27,8 @@ export interface GuardTurnResult {
   modifiedOtherGoal?: boolean;
   gitConfigTampered?: boolean;
   protectedBranchMoved?: boolean;
+  ignoredCleanedCount?: number;
+  ignoredListFailed?: boolean;
 }
 
 function turnGuardKey(repo: string): string {
@@ -43,6 +47,78 @@ function readFileOrEmpty(filePath: string): string {
   }
 }
 
+export function restoreTicketFilesFromBase(repo: string, baseRef: string): void {
+  try {
+    git(repo, 'reset', 'HEAD', '--', 'team/tickets');
+  } catch {}
+  try {
+    rmSync(join(repo, 'team', 'tickets'), { recursive: true, force: true });
+  } catch {}
+  try {
+    const out = git(repo, 'ls-tree', '-r', '--name-only', '-z', baseRef, '--', 'team/tickets');
+    if (out) {
+      for (const relPath of out.split('\0')) {
+        if (!relPath) continue;
+        const content = git(repo, 'show', `${baseRef}:${relPath}`);
+        const fullPath = join(repo, relPath);
+        mkdirSync(dirname(fullPath), { recursive: true });
+        writeFileSync(fullPath, content, 'utf8');
+      }
+    }
+  } catch {}
+}
+
+function listIgnoredFilesOutsideNodeModules(repo: string): { files: string[]; failed: boolean } {
+  try {
+    const out = git(
+      repo,
+      'ls-files',
+      '--others',
+      '--ignored',
+      '--exclude-standard',
+      // KHÔNG --directory: kèm pathspec loại trừ, git liệt kê cả thư mục cha (vd packages/) → xoá nhầm source.
+      '-z',
+      '--',
+      '.',
+      ':(exclude,glob)**/node_modules/**',
+      ':(exclude)node_modules'
+    );
+    const files = out
+      .split('\0')
+      .map((p) => p.replace(/\\/g, '/'))
+      .filter(Boolean)
+      .filter((p) => !p.split('/').includes('node_modules'))
+      .sort();
+    return { files, failed: false };
+  } catch {
+    return { files: [], failed: true };
+  }
+}
+
+// shortcut: không phát hiện agent sửa file trong node_modules; khi cần thì gate chạy trên bản checkout sạch + npm ci.
+export function cleanNewIgnoredFiles(
+  repo: string,
+  snapshot: TurnGuardSnapshot
+): { cleanedCount: number; listFailed: boolean } {
+  let cleanedCount = 0;
+  let listFailed = Boolean(snapshot.ignoredListFailed);
+
+  if (snapshot.ignoredFiles !== undefined) {
+    const preSet = new Set(snapshot.ignoredFiles);
+    const currentIgnored = listIgnoredFilesOutsideNodeModules(repo);
+    listFailed ||= currentIgnored.failed;
+    for (const relPath of currentIgnored.files) {
+      if (!preSet.has(relPath)) {
+        cleanedCount++;
+        try {
+          rmSync(join(repo, relPath), { recursive: true, force: true });
+        } catch {}
+      }
+    }
+  }
+  return { cleanedCount, listFailed };
+}
+
 export function snapshotTurn(
   repo: string,
   goalBranch: string,
@@ -52,6 +128,7 @@ export function snapshotTurn(
 ): TurnGuardSnapshot {
   const gitConfig = readFileOrEmpty(join(repo, '.git', 'config'));
   const gitInfoAttributes = readFileOrEmpty(join(repo, '.git', 'info', 'attributes'));
+  const ignoredListing = listIgnoredFilesOutsideNodeModules(repo);
 
   const prot = protectedBranch || 'main';
   const protRef = prot.startsWith('refs/heads/') ? prot : `refs/heads/${prot}`;
@@ -103,6 +180,9 @@ export function snapshotTurn(
     otherGoalBranches,
     gitConfig,
     gitInfoAttributes,
+    ...(ignoredListing.failed
+      ? { ignoredListFailed: true }
+      : { ignoredFiles: ignoredListing.files }),
     ...(protectedBranchMoved
       ? { protectedBranchMoved: true, protectedBranchActualSha: currentProtectedHead }
       : {}),
@@ -297,6 +377,9 @@ export function guardAgentTurn(
   const headChanged = currentHead !== snapshot.preHead;
   const treeDirty = Boolean(git(repo, 'status', '--porcelain').trim());
 
+  let ignoredCleanedCount = 0;
+  let ignoredListFailed = Boolean(snapshot.ignoredListFailed);
+
   if (seat === 'pm' || seat === 'dev') {
     if (modifiedProtectedBranch || modifiedOtherGoal || gitConfigTampered || protectedBranchMoved) {
       try {
@@ -308,6 +391,9 @@ export function guardAgentTurn(
         git(repo, 'reset', '--soft', snapshot.preHead);
       }
       if (options?.isErrorOrTimeoutOrAbort) {
+        if (seat === 'dev') {
+          restoreTicketFilesFromBase(repo, snapshot.preHead);
+        }
         const dirtyNow = Boolean(git(repo, 'status', '--porcelain').trim());
         if (dirtyNow && options.author && options.reason) {
           try {
@@ -321,6 +407,9 @@ export function guardAgentTurn(
         }
       }
     }
+    const cleaned = cleanNewIgnoredFiles(repo, snapshot);
+    ignoredCleanedCount = cleaned.cleanedCount;
+    ignoredListFailed = cleaned.listFailed;
   } else if (seat === 'qc' || seat === 'audit') {
     // 4. qc/audit: vi phạm qc_modified_repo / audit_modified_repo / agent_modified_protected_branch / agent_modified_other_goal → reset --hard <head> + clean
     if (
@@ -337,6 +426,9 @@ export function guardAgentTurn(
         git(repo, 'clean', '-fd');
       } catch {}
     }
+    const cleaned = cleanNewIgnoredFiles(repo, snapshot);
+    ignoredCleanedCount = cleaned.cleanedCount;
+    ignoredListFailed = cleaned.listFailed;
   }
 
   return {
@@ -347,5 +439,7 @@ export function guardAgentTurn(
     modifiedOtherGoal,
     gitConfigTampered,
     protectedBranchMoved,
+    ignoredCleanedCount,
+    ignoredListFailed,
   };
 }

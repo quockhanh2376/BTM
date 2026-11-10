@@ -174,6 +174,55 @@ export function approveGoal(
       };
     }
 
+    // C4: Goal có commit G<n>: cmd ngoài dải ticket → yêu cầu goal có audit (state === 'audit_passed')
+    try {
+      const logOut = git(repo, 'log', '--format=%H%x00%s', `${protectedRef}..${goal.reviewed_sha}`).trim();
+      if (logOut) {
+        const commits = logOut
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => {
+            const idx = line.indexOf('\0');
+            return idx >= 0
+              ? { sha: line.slice(0, idx).trim(), subject: line.slice(idx + 1).trim() }
+              : { sha: line.trim(), subject: '' };
+          });
+        const cmdRegex = new RegExp(`^G(?:${n}|\\d+):\\s*cmd\\b`);
+        const cmdCommits = commits.filter((c) => cmdRegex.test(c.subject));
+        if (cmdCommits.length > 0) {
+          const coveredShas = new Set<string>();
+          const tickets = store.listTickets(repo, `G${n}`);
+          for (const t of tickets) {
+            if (!t.base_sha) continue;
+            const latestTicketCommit = commits.find((c) => c.subject.startsWith(`${t.id}:`));
+            if (!latestTicketCommit) continue;
+            try {
+              const rangeOut = git(repo, 'log', '--format=%H', `${t.base_sha}..${latestTicketCommit.sha}`).trim();
+              if (rangeOut) {
+                for (const sha of rangeOut.split(/\r?\n/)) {
+                  if (sha.trim()) coveredShas.add(sha.trim());
+                }
+              }
+            } catch {}
+          }
+          const hasUnreviewedCmd = cmdCommits.some((c) => !coveredShas.has(c.sha));
+          if (hasUnreviewedCmd && goal.state !== 'audit_passed') {
+            return {
+              ok: false,
+              code: 'not_ready',
+              message: 'có commit lệnh trực tiếp chưa review',
+            };
+          }
+        }
+      }
+    } catch {
+      return {
+        ok: false,
+        code: 'not_ready',
+        message: 'không thể kiểm tra commit lệnh trực tiếp',
+      };
+    }
+
     const mergeTarget = goal.reviewed_sha;
     store.setGoalState(repo, n, 'approved', by, 'owner approved');
 

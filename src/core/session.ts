@@ -125,6 +125,39 @@ function authorForAgent(agentId: string): { name: string; email: string } {
   };
 }
 
+function parseTicketIdNumber(id: string, key: string): number {
+  const parts = id.split('-');
+  return parts.length === 2 && parts[0] === key ? parseInt(parts[1], 10) : NaN;
+}
+
+function hasInvalidDependsOn(
+  ticketsToValidate: Ticket[],
+  allTicketsInGoal: Ticket[],
+  goalStr: string,
+  key: string
+): boolean {
+  const byId = new Map<string, Ticket>();
+  for (const t of allTicketsInGoal) {
+    if (t.goal === goalStr) {
+      byId.set(t.id, t);
+    }
+  }
+  for (const t of ticketsToValidate) {
+    const tIdNum = parseTicketIdNumber(t.id, key);
+    for (const depId of t.depends_on) {
+      const dep = byId.get(depId);
+      if (!dep || dep.goal !== goalStr) {
+        return true;
+      }
+      const depIdNum = parseTicketIdNumber(dep.id, key);
+      if (isNaN(depIdNum) || isNaN(tIdNum) || depIdNum >= tIdNum || dep.number >= t.number) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function writeGoalSummaryAndCommit(
   repo: string,
   goal: { n: number; title: string },
@@ -651,6 +684,15 @@ async function processGoal(
           notes: ['pm_ticket_id_not_sequential'],
         };
       }
+      if (hasInvalidDependsOn(tickets, tickets, `G${goal.n}`, key)) {
+        cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: ['pm_ticket_bad_depends'],
+        };
+      }
     } catch (err: any) {
       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
       return {
@@ -1035,7 +1077,14 @@ async function processGoal(
           return { status: 'needs_owner', sessionId, tasks, notes: ['Dev reported BLOCKED'] };
         }
 
-        d.store.endTurn(devTurnId, 'ok');
+        const devCleanedCount = devGuard.ignoredCleanedCount ?? 0;
+        d.store.endTurn(
+          devTurnId,
+          'ok',
+          devGuard.ignoredListFailed
+            ? 'ignored_list_failed'
+            : (devCleanedCount > 0 ? `ignored_cleaned:${devCleanedCount}` : undefined)
+        );
         try {
           commitAll(d.repo, `${ticket.id}: dev implementation`, devAuthor);
         } catch (err) {
@@ -1062,6 +1111,12 @@ async function processGoal(
           require_report_schema: d.cfg.gate.require_report_schema,
         });
         const gateGuard = guardStoredAgentTurn(d.store, d.repo, gateSnapshot, 'qc');
+        const totalCleanedAfterGate = devCleanedCount + (gateGuard.ignoredCleanedCount ?? 0);
+        if (gateGuard.ignoredListFailed) {
+          d.store.endTurn(devTurnId, 'ok', 'ignored_list_failed');
+        } else if (totalCleanedAfterGate > devCleanedCount) {
+          d.store.endTurn(devTurnId, 'ok', `ignored_cleaned:${totalCleanedAfterGate}`);
+        }
         if (gateGuard.gitConfigTampered) {
           d.store.endTurn(devTurnId, 'rejected', 'git_config_tampered');
           d.store.recordHandoffFailure(sessionId, ticket.id, 'git_config_tampered');
@@ -1092,7 +1147,6 @@ async function processGoal(
           d.store.recordHandoffFailure(sessionId, ticket.id, 'qc_modified_repo');
           return { status: 'needs_owner', sessionId, tasks, notes: ['qc_modified_repo'] };
         }
-
         if (!gateResult.ok || hasAutoDenied) {
           const failureReasons: string[] = [];
           if (hasAutoDenied) failureReasons.push('command_denied');
@@ -1307,6 +1361,11 @@ async function processGoal(
       });
 
       const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc');
+      if (qcGuard.ignoredListFailed) {
+        d.store.endTurn(qcTurnId, 'ok', 'ignored_list_failed');
+      } else if ((qcGuard.ignoredCleanedCount ?? 0) > 0) {
+        d.store.endTurn(qcTurnId, 'ok', `ignored_cleaned:${qcGuard.ignoredCleanedCount}`);
+      }
       if (qcGuard.gitConfigTampered) {
         d.store.endTurn(qcTurnId, 'rejected', 'git_config_tampered');
         return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
@@ -1558,6 +1617,11 @@ async function processGoal(
   let auditResult = parseAuditResult(auditOutput.lastMessage || auditOutput.output || '');
 
   const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit');
+  if (auditGuard.ignoredListFailed) {
+    d.store.endTurn(auditTurnId, 'ok', 'ignored_list_failed');
+  } else if ((auditGuard.ignoredCleanedCount ?? 0) > 0) {
+    d.store.endTurn(auditTurnId, 'ok', `ignored_cleaned:${auditGuard.ignoredCleanedCount}`);
+  }
   if (auditGuard.gitConfigTampered) {
     d.store.endTurn(auditTurnId, 'rejected', 'git_config_tampered');
     return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
@@ -1821,6 +1885,16 @@ async function processGoal(
       sessionId,
       tasks,
       notes: ['pm_ticket_id_not_sequential'],
+    };
+  }
+  const allGoalTicketsForGoal = allGoalTicketsNow.filter((t) => t.goal === `G${goal.n}`);
+  if (hasInvalidDependsOn(newTickets, allGoalTicketsForGoal, `G${goal.n}`, key)) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+    return {
+      status: 'needs_owner',
+      sessionId,
+      tasks,
+      notes: ['pm_ticket_bad_depends'],
     };
   }
 
@@ -2127,7 +2201,28 @@ export async function resumeSession(
           notes: [`Goal G${n} not found in project`],
         };
       }
+      if (g.state === 'approved' || g.state === 'merged') {
+        try {
+          const gTickets = loadTickets(d.repo, key, `G${g.n}`);
+          processedTickets.push(...gTickets);
+          for (const t of gTickets) {
+            const st = d.store.getTicketState(d.repo, t.id);
+            if (st) allTasks[t.id] = st.state;
+          }
+        } catch {}
+        continue;
+      }
       resolvedGoals.push(g);
+    }
+
+    if (resolvedGoals.length === 0) {
+      sessionStatus = 'needs_owner';
+      return {
+        status: 'needs_owner',
+        sessionId,
+        tasks: allTasks,
+        notes: ['goal_already_merged'],
+      };
     }
 
     for (const goal of resolvedGoals) {

@@ -11,6 +11,7 @@ import {
   snapshotTurn,
   guardStoredAgentTurn,
   recoverInterruptedTurn,
+  restoreTicketFilesFromBase,
 } from '../core/guard.ts';
 import { acquireLock } from '../cli.ts';
 import { inboxPath } from './inbox.ts';
@@ -124,7 +125,17 @@ export function createHost(d: HostDeps): HostApi & {
   }
 
   async function processQueue(): Promise<void> {
-    if (isBusy || isStopping) {
+    if (isBusy || isStopping || isExternalLockHeld()) {
+      return;
+    }
+
+    const item = d.store.nextQueued();
+    if (!item && checkedInterruptedTurn) {
+      return;
+    }
+
+    const release = acquireLock(d.dataDir);
+    if (!release) {
       return;
     }
 
@@ -136,13 +147,8 @@ export function createHost(d: HostDeps): HostApi & {
       }
     }
 
-    const item = d.store.nextQueued();
     if (!item) {
-      return;
-    }
-
-    const release = acquireLock(d.dataDir);
-    if (!release) {
+      release();
       return;
     }
 
@@ -208,10 +214,12 @@ export function createHost(d: HostDeps): HostApi & {
           item.to === 'dev' &&
           d.store
             .listTickets(activeProject, `G${goalN}`)
-            .some((ticket) =>
-              ticket.state === 'in_dev' ||
-              ticket.state === 'returned' ||
-              ticket.state === 'awaiting_qc'
+            .some(
+              (ticket) =>
+                ticket.state === 'in_dev' ||
+                ticket.state === 'returned' ||
+                ticket.state === 'awaiting_qc' ||
+                (ticket.state !== 'passed' && ticket.state !== 'cancelled' && Boolean(ticket.base_sha))
             )
         ) {
           d.store.endTurn(turnId, 'error', 'direct_cmd_ticket_in_progress');
@@ -339,6 +347,7 @@ export function createHost(d: HostDeps): HostApi & {
                 d.store.setQueueStatus(item.id, 'done');
                 turnResult = 'error';
               } else {
+                restoreTicketFilesFromBase(activeProject, snapshot.preHead);
                 let commitError: string | null = null;
                 const commitMsg = `G${goalN}: cmd ${item.id}: ${item.text.slice(0, 60)}`;
                 try {
@@ -355,7 +364,13 @@ export function createHost(d: HostDeps): HostApi & {
                   d.store.setQueueStatus(item.id, 'done');
                   turnResult = 'error';
                 } else {
-                  d.store.endTurn(turnId, 'ok');
+                  const devNote =
+                    guardRes.ignoredListFailed
+                      ? 'ignored_list_failed'
+                      : (guardRes.ignoredCleanedCount ?? 0) > 0
+                      ? `ignored_cleaned:${guardRes.ignoredCleanedCount}`
+                      : undefined;
+                  d.store.endTurn(turnId, 'ok', devNote);
                   d.store.setQueueStatus(item.id, 'done');
                   turnResult = 'done';
                 }
@@ -436,7 +451,13 @@ export function createHost(d: HostDeps): HostApi & {
                 d.store.recordHandoffFailure(sessionId, taskId, 'qc_modified_repo');
                 turnResult = 'error';
               } else {
-                d.store.endTurn(turnId, 'ok');
+                const qcNote =
+                  guardRes.ignoredListFailed
+                    ? 'ignored_list_failed'
+                    : (guardRes.ignoredCleanedCount ?? 0) > 0
+                    ? `ignored_cleaned:${guardRes.ignoredCleanedCount}`
+                    : undefined;
+                d.store.endTurn(turnId, 'ok', qcNote);
                 turnResult = 'done';
               }
             }

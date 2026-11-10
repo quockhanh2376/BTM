@@ -1,0 +1,365 @@
+2026-11-10T06:42:02.113988Z ERROR codex_models_manager::cache: failed to load models cache: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:42:16.424906Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:42:20.602855Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:42:23.314292Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:42:25.809492Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:42:37.919274Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:42:40.312570Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:42:48.205500Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:42:51.283105Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:43:04.522359Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:43:10.920241Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:43:25.712191Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:43:32.082461Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:43:39.750615Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:43:53.178385Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:43:59.185309Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:44:15.475314Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:44:27.949784Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:44:38.979904Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:46:42.318761Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in D:\BotTaskManager\tests\guard.test.ts:
+  it('C8: file ignored mới ngoài node_modules bị xoá im lặng (ignoredCleanedCount, không vi phạm); node_modules mới hợp lệ; node_modules/.bin chỉ vi phạm ignoredFilePlanted khi package.json + lockfile không đổi', () => {
+    const repo = tmpRepo({
+      'sample.txt': 'initial\n',
+      'package.json': '{"name":"app","dependencies":{}}\n',
+      'package-lock.json': '{"lockfileVersion":3}\n',
+      '.gitignore': 'node_modules/\n.env\n*.log\ndist/\ncoverage/\n',
+    });
+    git(repo, 'checkout', '-b', 'goal/G1-feat');
+
+    // 1. File ignored mới ngoài node_modules + node_modules mới hoàn toàn kèm đổi package.json & lockfile -> hợp lệ, xoá im lặng dist/.env
+    writeFileSync(join(repo, 'existing.log'), 'keep me\n', 'utf8');
+    const snapDev = snapshotTurn(repo, 'goal/G1-feat', 'main', undefined, 'dev');
+
+    mkdirSync(join(repo, 'dist'), { recursive: true });
+    writeFileSync(join(repo, 'dist', 'x.js'), 'console.log(1);\n', 'utf8');
+    writeFileSync(join(repo, '.env'), 'LOCAL=1\n', 'utf8');
+    writeFileSync(join(repo, 'package.json'), '{"name":"app","dependencies":{"pkg":"1.0.0"}}\n', 'utf8');
+    writeFileSync(join(repo, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"pkg":"1.0.0"}}\n', 'utf8');
+    mkdirSync(join(repo, 'node_modules', 'pkg'), { recursive: true });
+    writeFileSync(join(repo, 'node_modules', 'pkg', 'index.js'), 'module.exports = 1;\n', 'utf8');
+    mkdirSync(join(repo, 'node_modules', '.bin'), { recursive: true });
+    writeFileSync(join(repo, 'node_modules', '.bin', 'vitest'), '#!/bin/sh\necho real\n', 'utf8');
+
+    const devRes = guardAgentTurn(repo, snapDev, 'dev');
+    expect(devRes.ignoredFilePlanted).toBe(false);
+    expect((devRes as any).ignoredCleanedCount).toBe(2);
+    expect(existsSync(join(repo, 'dist', 'x.js'))).toBe(false);
+    expect(existsSync(join(repo, '.env'))).toBe(false);
+    expect(existsSync(join(repo, 'existing.log'))).toBe(true);
+    expect(existsSync(join(repo, 'node_modules', 'pkg', 'index.js'))).toBe(true);
+    expect(existsSync(join(repo, 'node_modules', '.bin', 'vitest'))).toBe(true);
+
+    // 2. Lượt QC sửa node_modules/.bin/vitest khi package.json + lockfile không đổi -> vi phạm ignoredFilePlanted
+    const snapQc = snapshotTurn(repo, 'goal/G1-feat', 'main', undefined, 'qc');
+    writeFileSync(join(repo, 'node_modules', '.bin', 'fake-runner'), '#!/bin/sh\nexit 0\n', 'utf8');
+    writeFileSync(join(repo, 'node_modules', '.bin', 'vitest'), '#!/bin/sh\necho hijacked\n', 'utf8');
+    writeFileSync(join(repo, 'node_modules', 'pkg', 'cache.js'), 'cached\n', 'utf8');
+
+    const qcRes = guardAgentTurn(repo, snapQc, 'qc');
+    expect(qcRes.ignoredFilePlanted).toBe(true);
+    expect(existsSync(join(repo, 'node_modules', '.bin', 'fake-runner'))).toBe(false);
+    expect(existsSync(join(repo, 'node_modules', '.bin', 'vitest'))).toBe(false);
+    expect(existsSync(join(repo, 'node_modules', 'pkg', 'index.js'))).toBe(true);
+    expect(existsSync(join(repo, 'node_modules', 'pkg', 'cache.js'))).toBe(true);
+  });
+
+  it('C8: npm install lần đầu (trước lượt chưa có node_modules, package.json không đổi) → hợp lệ, giữ .bin', () => {
+    const repo = tmpRepo({
+      'package.json': '{"name":"app","dependencies":{"pkg":"1.0.0"}}\n',
+      '.gitignore': 'node_modules/\n',
+    });
+    git(repo, 'checkout', '-b', 'goal/G1-feat');
+    const snap = snapshotTurn(repo, 'goal/G1-feat', 'main', undefined, 'qc');
+    mkdirSync(join(repo, 'node_modules', '.bin'), { recursive: true });
+    writeFileSync(join(repo, 'node_modules', '.bin', 'vitest'), '#!/bin/sh\necho real\n', 'utf8');
+    const res = guardAgentTurn(repo, snap, 'qc');
+  });
+2026-11-10T06:46:42.357972Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:46:51.355394Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:46:59.105336Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:47:09.277691Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:47:29.596634Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:47:47.982205Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:47:51.996870Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 1.6 seconds
+Output:
+[31mfailed to load config from D:\BotTaskManager\vitest.config.ts[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Build failed with 1 error:
+
+[plugin externalize-deps]
+Error: spawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at Object.execFile (node:child_process:352:17)
+    at exec (node:child_process:239:25)
+    at optimizeSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2483:2)
+    at windowsSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2469:3)
+    at getRealPath (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29619:36)
+    at tryResolveRealFileOrType (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29613:9)
+    at tryCleanFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29362:21)
+    at tryFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29355:14)
+    at aggregateBindingErrorsIntoJsError (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:50:18)
+    at unwrapBindingResult (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:20:128)
+    at #build (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/rolldown-DWd2aEL4.mjs:146:34)
+    at async bundleConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:38097:12)
+    at async bundleAndLoadConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37993:18)
+    at async loadConfigFromFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37954:42)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37555:22)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/index.Di8au7q4.js:9300:25)
+    at async createVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:13938:17)
+    at async prepareVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:14625:14) {
+  errors: [Getter/Setter]
+}
+
+
+
+
+2026-11-10T06:47:52.035835Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:48:49.021388Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in D:\BotTaskManager\src\core\guard.ts:
+function listIgnoredFilesOutsideNodeModules(repo: string): string[] {
+  try {
+    const topEntries = readdirSync(repo).filter((name) => name !== '.git' && name !== 'node_modules');
+    if (topEntries.length === 0) return [];
+    const out = git(repo, 'ls-files', '--others', '-i', '--exclude-standard', '-z', '--', ...topEntries);
+    if (!out) return [];
+    return out
+      .split('\0')
+      .map((p) => p.replace(/\\/g, '/'))
+      .filter(Boolean)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function snapshotNodeModulesBin(repo: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const binDir = join(repo, 'node_modules', '.bin');
+  if (!existsSync(binDir)) return result;
+
+  function walk(dir: string, prefix: string) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      const rel = prefix ? `${prefix}/${ent.name}` : ent.name;
+      const fullPath = join(dir, ent.name);
+      try {
+        const st = lstatSync(fullPath);
+        if (st.isSymbolicLink()) {
+          result[rel] = `symlink:${readlinkSync(fullPath)}`;
+        } else if (st.isDirectory()) {
+          walk(fullPath, rel);
+        } else if (st.isFile()) {
+          const hash = createHash('sha256').update(readFileSync(fullPath)).digest('hex');
+          result[rel] = `file:${hash}`;
+        }
+      } catch {}
+    }
+  }
+  walk(binDir, '');
+  return result;
+}
+
+const PKG_MANIFEST_FILES = ['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'];
+
+function snapshotPkgManifests(repo: string): Record<string, string> {
+  const res: Record<string, string> = {};
+  for (const f of PKG_MANIFEST_FILES) {
+    const p = join(repo, f);
+    if (existsSync(p)) {
+      try {
+        res[f] = createHash('sha256').update(readFileSync(p)).digest('hex');
+      } catch {
+        res[f] = '';
+      }
+    } else {
+      res[f] = '';
+    }
+  }
+  return res;
+}
+
+function didPkgManifestsChange(repo: string, snapshot: TurnGuardSnapshot): boolean {
+  if (!snapshot.pkgManifestHashes) return false;
+  const cur = snapshotPkgManifests(repo);
+  for (const f of PKG_MANIFEST_FILES) {
+    if ((snapshot.pkgManifestHashes[f] ?? '') !== (cur[f] ?? '')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function cleanPlantedIgnoredFiles(
+  repo: string,
+  snapshot: TurnGuardSnapshot,
+  seat?: Seat
+): { planted: boolean; cleanedCount: number } {
+  let planted = false;
+  let cleanedCount = 0;
+
+  if (snapshot.ignoredFiles !== undefined) {
+    const preSet = new Set(snapshot.ignoredFiles);
+    const currentIgnored = listIgnoredFilesOutsideNodeModules(repo);
+    for (const relPath of currentIgnored) {
+      if (!preSet.has(relPath)) {
+        cleanedCount++;
+2026-11-10T06:49:27.060366Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in D:\BotTaskManager\src\core\guard.ts:
+function snapshotNodeModulesBin(repo: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const binDir = join(repo, 'node_modules', '.bin');
+  if (!existsSync(binDir)) return result;
+
+  function walk(dir: string, prefix: string) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      const rel = prefix ? `${prefix}/${ent.name}` : ent.name;
+      const fullPath = join(dir, ent.name);
+      try {
+        const st = lstatSync(fullPath);
+        if (st.isSymbolicLink()) {
+          result[rel] = `symlink:${readlinkSync(fullPath)}`;
+        } else if (st.isDirectory()) {
+          walk(fullPath, rel);
+        } else if (st.isFile()) {
+          const hash = createHash('sha256').update(readFileSync(fullPath)).digest('hex');
+          result[rel] = `file:${hash}`;
+        }
+      } catch {}
+    }
+  }
+  walk(binDir, '');
+  return result;
+}
+
+const PKG_MANIFEST_FILES = ['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'];
+
+function snapshotPkgManifests(repo: string): Record<string, string> {
+  const res: Record<string, string> = {};
+  for (const f of PKG_MANIFEST_FILES) {
+    const p = join(repo, f);
+    if (existsSync(p)) {
+      try {
+        res[f] = createHash('sha256').update(readFileSync(p)).digest('hex');
+      } catch {
+        res[f] = '';
+      }
+    } else {
+      res[f] = '';
+    }
+  }
+  return res;
+}
+
+function didPkgManifestsChange(repo: string, snapshot: TurnGuardSnapshot): boolean {
+  if (!snapshot.pkgManifestHashes) return false;
+  const cur = snapshotPkgManifests(repo);
+  for (const f of PKG_MANIFEST_FILES) {
+    if ((snapshot.pkgManifestHashes[f] ?? '') !== (cur[f] ?? '')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+2026-11-10T06:51:13.651297Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:51:33.109215Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:51:40.971273Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:51:53.224918Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:52:01.265256Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:52:10.533026Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:52:18.657272Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:52:28.397999Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:52:48.350654Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:52:57.147506Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:53:07.115851Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:53:53.543723Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:53:58.017888Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 1.6 seconds
+Output:
+[31mfailed to load config from D:\BotTaskManager\vitest.config.ts[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Build failed with 1 error:
+
+[plugin externalize-deps]
+Error: spawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at Object.execFile (node:child_process:352:17)
+    at exec (node:child_process:239:25)
+    at optimizeSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2483:2)
+    at windowsSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2469:3)
+    at getRealPath (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29619:36)
+    at tryResolveRealFileOrType (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29613:9)
+    at tryCleanFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29362:21)
+    at tryFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29355:14)
+    at aggregateBindingErrorsIntoJsError (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:50:18)
+    at unwrapBindingResult (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:20:128)
+    at #build (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/rolldown-DWd2aEL4.mjs:146:34)
+    at async bundleConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:38097:12)
+    at async bundleAndLoadConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37993:18)
+    at async loadConfigFromFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37954:42)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37555:22)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/index.Di8au7q4.js:9300:25)
+    at async createVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:13938:17)
+    at async prepareVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:14625:14) {
+  errors: [Getter/Setter]
+}
+
+
+
+
+2026-11-10T06:53:58.056769Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:54:01.525510Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:55:00.500581Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 1.7 seconds
+Output:
+[31mfailed to load config from D:\BotTaskManager\vitest.config.ts[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Build failed with 1 error:
+
+[plugin externalize-deps]
+Error: spawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at Object.execFile (node:child_process:352:17)
+    at exec (node:child_process:239:25)
+    at optimizeSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2483:2)
+    at windowsSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2469:3)
+    at getRealPath (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29619:36)
+    at tryResolveRealFileOrType (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29613:9)
+    at tryCleanFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29362:21)
+    at tryFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29355:14)
+    at aggregateBindingErrorsIntoJsError (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:50:18)
+    at unwrapBindingResult (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:20:128)
+    at #build (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/rolldown-DWd2aEL4.mjs:146:34)
+    at async bundleConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:38097:12)
+    at async bundleAndLoadConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37993:18)
+    at async loadConfigFromFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37954:42)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37555:22)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/index.Di8au7q4.js:9300:25)
+    at async createVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:13938:17)
+    at async prepareVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:14625:14) {
+  errors: [Getter/Setter]
+}
+
+
+
+
+2026-11-10T06:55:47.419036Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:55:48.974975Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T06:55:57.284220Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5

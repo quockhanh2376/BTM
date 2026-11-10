@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { tmpRepo } from './helpers.ts';
 import { git, headSha } from '../src/git.ts';
+import * as gitModule from '../src/git.ts';
 import { openStore, type Store } from '../src/store/db.ts';
 import { approveGoal } from '../src/ticket/goal.ts';
 import { acquireLock, main } from '../src/cli.ts';
@@ -529,6 +530,77 @@ describe('approveGoal', () => {
     expect(resOk.ok).toBe(true);
     if (resOk.ok) {
       expect(store.getSetting(`protected_sha:${repo}`)).toBe(resOk.sha);
+    }
+  });
+
+  it('C4: goal có commit G<n>: cmd ngoài dải ticket → approveGoal từ chối not_ready ("có commit lệnh trực tiếp chưa review") khi không có audit; cho phép khi đã audit_passed', () => {
+    const repo = tmpRepo({ 'file.txt': 'init\n' });
+    const cfgNoAudit = makeTestConfig(dataDir, { auditSeat: '' });
+    const created = store.createGoal(repo, 'Goal co direct cmd');
+
+    git(repo, 'checkout', '-b', created.branch);
+    // Commit lệnh trực tiếp trước khi ticket bắt đầu (ngoài dải ticket)
+    writeFileSync(join(repo, 'cmd-change.txt'), 'unreviewed direct cmd');
+    git(repo, 'add', 'cmd-change.txt');
+    execFileSync('git', [...AUTHOR, 'commit', '-m', `G${created.n}: cmd 1: quick tweak`], { cwd: repo });
+
+    const ticketBaseSha = headSha(repo);
+    store.upsertTicket(repo, {
+      id: 'GTM-0001',
+      goal: `G${created.n}`,
+      number: 1,
+      of: 1,
+      title: 'Ticket 1',
+      type: 'feat',
+      size: 'S',
+      scope: ['file.txt'],
+      acceptance: ['ok'],
+      done_when: 'ok',
+      depends_on: [],
+      from_audit: false,
+    });
+    writeFileSync(join(repo, 'file.txt'), 'ticket work\n');
+    git(repo, 'add', 'file.txt');
+    execFileSync('git', [...AUTHOR, 'commit', '-m', 'GTM-0001: dev implementation'], { cwd: repo });
+    store.setTicketState(repo, 'GTM-0001', 'passed', 'jenny', 'qc passed', 0, ticketBaseSha);
+
+    const reviewedSha = headSha(repo);
+    store.setGoalState(repo, created.n, 'qc_done', 'core', 'all tickets passed', reviewedSha);
+
+    const resNoAudit = approveGoal(store, repo, cfgNoAudit, created.n);
+    expect(resNoAudit).toEqual({
+      ok: false,
+      code: 'not_ready',
+      message: 'có commit lệnh trực tiếp chưa review',
+    });
+
+    // Khi goal đã qua audit (audit_passed) → cho phép approveGoal
+    const cfgWithAudit = makeTestConfig(dataDir, { auditSeat: 'kai' });
+    store.setGoalState(repo, created.n, 'audit_passed', 'kai', 'audit passed', reviewedSha);
+    const resAudited = approveGoal(store, repo, cfgWithAudit, created.n);
+    expect(resAudited.ok).toBe(true);
+  });
+
+  it('C4: lỗi git log khi kiểm tra commit lệnh trực tiếp → approveGoal fail-closed với not_ready', () => {
+    const repo = tmpRepo({ 'file.txt': 'init\n' });
+    const cfg = makeTestConfig(dataDir, { auditSeat: '' });
+    const created = store.createGoal(repo, 'Goal git log failure');
+    git(repo, 'checkout', '-b', created.branch);
+    const reviewedSha = headSha(repo);
+    store.setGoalState(repo, created.n, 'qc_done', 'core', 'ready', reviewedSha);
+
+    const realGit = gitModule.git;
+    const gitSpy = vi.spyOn(gitModule, 'git').mockImplementation((cwd, ...args) => {
+      if (args[0] === 'log') throw new Error('git log failed');
+      return realGit(cwd, ...args);
+    });
+    try {
+      const res = approveGoal(store, repo, cfg, created.n);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.code).toBe('not_ready');
+      expect(store.getGoal(repo, created.n)?.state).toBe('qc_done');
+    } finally {
+      gitSpy.mockRestore();
     }
   });
 });

@@ -248,4 +248,29 @@ describe('P4-FIX-D: Guard agent turn hardening', () => {
       else process.env.GIT_CONFIG_GLOBAL = prevGitConfigGlobal;
     }
   });
+
+  it.skipIf(process.platform === 'win32')('C8: tên pathspec đặc biệt không chặn dọn ignored; node_modules lồng nhau luôn được giữ', () => {
+    const repo = tmpRepo({
+      'sample.txt': 'initial\n',
+      ':(bad)': 'ordinary untracked file\n',
+      '.gitignore': 'node_modules/\n.env\ndist/\n',
+    });
+    git(repo, 'checkout', '-b', 'goal/G1-feat');
+
+    const snap = snapshotTurn(repo, 'goal/G1-feat', 'main', undefined, 'dev');
+
+    mkdirSync(join(repo, 'dist'), { recursive: true });
+    writeFileSync(join(repo, 'dist', 'x.js'), 'console.log(1);\n', 'utf8');
+    writeFileSync(join(repo, '.env'), 'LOCAL=1\n', 'utf8');
+    mkdirSync(join(repo, 'packages', 'x', 'node_modules'), { recursive: true });
+    writeFileSync(join(repo, 'packages', 'x', 'node_modules', 'a.js'), 'keep\n', 'utf8');
+
+    const devRes = guardAgentTurn(repo, snap, 'dev');
+    expect(devRes.ignoredCleanedCount).toBe(2);
+    expect(existsSync(join(repo, 'dist', 'x.js'))).toBe(false);
+    expect(existsSync(join(repo, '.env'))).toBe(false);
+    expect(existsSync(join(repo, ':(bad)'))).toBe(true);
+    expect(existsSync(join(repo, 'packages', 'x', 'node_modules', 'a.js'))).toBe(true);
+  });
+
 });
