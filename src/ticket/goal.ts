@@ -6,6 +6,7 @@ import { effectiveSeats } from '../store/db.ts';
 import type { Config } from '../config.ts';
 import { git, headSha } from '../git.ts';
 import { acquireLock } from '../cli.ts';
+import { protectedShaKey } from '../core/guard.ts';
 
 export function slugify(title: string): string {
   if (!title) {
@@ -134,6 +135,26 @@ export function approveGoal(
       ? goal.branch
       : `refs/heads/${goal.branch}`;
 
+    const pinKey = protectedShaKey(repo);
+    const pinnedSha = store.getSetting(pinKey)?.trim() || '';
+    let currentProtectedSha = '';
+    try {
+      currentProtectedSha = git(repo, 'rev-parse', protectedRef).trim();
+    } catch {}
+
+    // Main đổi ngoài BTM (anh tự merge/pull): không tự kéo về – có thể xoá việc của anh. Anh chạy `btm main accept`.
+    if (pinnedSha && currentProtectedSha !== pinnedSha) {
+      return {
+        ok: false,
+        code: 'not_ready',
+        message: 'protected_branch_moved',
+      };
+    }
+
+    if (!pinnedSha && currentProtectedSha) {
+      store.setSetting(pinKey, currentProtectedSha);
+    }
+
     let branchSha = '';
     try {
       branchSha = git(repo, 'rev-parse', goalRef).trim();
@@ -176,6 +197,7 @@ export function approveGoal(
         `G${n}: ${goal.title}`
       );
       mergeSha = headSha(repo);
+      store.setSetting(pinKey, mergeSha);
     } catch (err: any) {
       try {
         git(repo, 'merge', '--abort');

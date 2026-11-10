@@ -4018,5 +4018,103 @@ Yêu cầu đóng note nhưng commit lỗi
 
       store.close();
     });
+
+    it('FIX-F C1: lượt agent thêm gpg.program/clean filter vào .git/config và .git/info/attributes → sau guard config như cũ, script KHÔNG chạy khi BTM commit, có vi phạm git_config_tampered', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const configPath = join(repo, '.git', 'config');
+      const attrPath = join(repo, '.git', 'info', 'attributes');
+      const originalConfig = readFileSync(configPath, 'utf8');
+      const markerFile = join(repo, 'evil-ran.txt');
+      const evilScript = join(repo, 'evil-gpg.js');
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev cài gpg.program + clean filter độc
+        (_s, agent, _p, cwd) => {
+          writeFileSync(
+            evilScript,
+            `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(markerFile.replace(/\\/g, '/'))}, 'ran'); process.stdout.write(fs.readFileSync(0, 'utf8'));\n`,
+            'utf8'
+          );
+          const cmd = `node "${evilScript.replace(/\\/g, '/')}"`;
+          writeFileSync(
+            configPath,
+            `${originalConfig}\n[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = ${cmd}\n[filter "x"]\n\tclean = ${cmd}\n`,
+            'utf8'
+          );
+          mkdirSync(join(cwd, '.git', 'info'), { recursive: true });
+          writeFileSync(attrPath, '* filter=x\n', 'utf8');
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Git config tamper test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('git_config_tampered');
+      expect(readFileSync(configPath, 'utf8')).toBe(originalConfig);
+      expect(existsSync(attrPath) ? readFileSync(attrPath, 'utf8') : '').toBe('');
+      expect(existsSync(markerFile)).toBe(false);
+
+      store.close();
+    });
+
+    it('FIX-F C2: lệnh gate chạy node -e gọi git update-ref refs/heads/main <sha khác> → sau lượt main về sha ghim, phiên needs_owner có lý do; lượt sau KHÔNG coi main bẩn là gốc', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const mainShaPinned = git(repo, 'rev-parse', 'refs/heads/main').trim();
+
+      // Lệnh gate cố tình đổi refs/heads/main sang HEAD của nhánh goal
+      deps.cfg.gate.commands.test =
+        'node -e "require(\'node:child_process\').execFileSync(\'git\', [\'update-ref\', \'refs/heads/main\', \'HEAD\'])"';
+
+      const { runner } = createFakeRunner([
+        // PM
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        // Dev
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Gate tamper main test'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('protected_branch_moved');
+      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainShaPinned);
+      expect(store.getSetting(`protected_sha:${repo}`)).toBe(mainShaPinned);
+
+      // Giả sử ngoài BTM có commit/merge dịch refs/heads/main sang sha mới trước khi resume:
+      // snapshotTurn lúc bắt đầu lượt KHÔNG tự update-ref main, không chạy lượt, dừng needs_owner kèm sha ghim → sha hiện tại
+      const dirtySha = headSha(repo);
+      expect(dirtySha).not.toBe(mainShaPinned);
+      git(repo, 'update-ref', 'refs/heads/main', dirtySha);
+
+      let resumeTurnRan = false;
+      deps.runner = async () => {
+        resumeTurnRan = true;
+        return { exitCode: 0, timedOut: false, output: '', lastMessage: '', durationMs: 1 };
+      };
+
+      const resumeOutcome = await resumeSession(deps, outcome.sessionId!);
+      expect(resumeOutcome.status).toBe('needs_owner');
+      expect(resumeOutcome.notes).toContain('protected_branch_moved');
+      expect(resumeOutcome.notes.join(' ')).toContain(`${mainShaPinned} → ${dirtySha}`);
+      expect(resumeTurnRan).toBe(false);
+      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(dirtySha);
+      expect(store.getSetting(`protected_sha:${repo}`)).toBe(mainShaPinned);
+
+      store.close();
+    });
   });
 });

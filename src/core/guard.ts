@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Seat } from '../config.ts';
 import { git, headSha, commitAll } from '../git.ts';
 import type { Store } from '../store/db.ts';
@@ -9,6 +11,10 @@ export interface TurnGuardSnapshot {
   protectedHead: string;
   otherGoalBranches?: Record<string, string>;
   seat?: Seat;
+  gitConfig?: string;
+  gitInfoAttributes?: string;
+  protectedBranchMoved?: boolean;
+  protectedBranchActualSha?: string;
 }
 
 export interface GuardTurnResult {
@@ -17,25 +23,59 @@ export interface GuardTurnResult {
   treeDirty: boolean;
   modifiedProtectedBranch: boolean;
   modifiedOtherGoal?: boolean;
+  gitConfigTampered?: boolean;
+  protectedBranchMoved?: boolean;
 }
 
 function turnGuardKey(repo: string): string {
   return `turn_guard:${repo}`;
 }
 
+export function protectedShaKey(repo: string): string {
+  return `protected_sha:${repo}`;
+}
+
+function readFileOrEmpty(filePath: string): string {
+  try {
+    return existsSync(filePath) ? readFileSync(filePath, 'utf8') : '';
+  } catch {
+    return '';
+  }
+}
+
 export function snapshotTurn(
   repo: string,
   goalBranch: string,
   protectedBranch?: string,
-  store?: Pick<Store, 'setSetting'>,
+  store?: Pick<Store, 'setSetting'> & Partial<Pick<Store, 'getSetting'>>,
   seat?: Seat
 ): TurnGuardSnapshot {
+  const gitConfig = readFileOrEmpty(join(repo, '.git', 'config'));
+  const gitInfoAttributes = readFileOrEmpty(join(repo, '.git', 'info', 'attributes'));
+
   const prot = protectedBranch || 'main';
   const protRef = prot.startsWith('refs/heads/') ? prot : `refs/heads/${prot}`;
-  let protectedHead = '';
+  let currentProtectedHead = '';
   try {
-    protectedHead = git(repo, 'rev-parse', protRef).trim();
+    currentProtectedHead = git(repo, 'rev-parse', protRef).trim();
   } catch {}
+
+  let protectedHead = currentProtectedHead;
+  let protectedBranchMoved = false;
+
+  if (store && typeof store.getSetting === 'function') {
+    const pinKey = protectedShaKey(repo);
+    const pinnedSha = store.getSetting(pinKey)?.trim() || '';
+    if (pinnedSha) {
+      protectedHead = pinnedSha;
+      if (currentProtectedHead !== pinnedSha) {
+        protectedBranchMoved = true;
+      }
+    } else if (currentProtectedHead) {
+      store.setSetting(pinKey, currentProtectedHead);
+      protectedHead = currentProtectedHead;
+    }
+  }
 
   const otherGoalBranches: Record<string, string> = {};
   const currentGoalRef = goalBranch.startsWith('refs/heads/') ? goalBranch : `refs/heads/${goalBranch}`;
@@ -61,11 +101,16 @@ export function snapshotTurn(
     protectedBranch: prot,
     protectedHead,
     otherGoalBranches,
+    gitConfig,
+    gitInfoAttributes,
+    ...(protectedBranchMoved
+      ? { protectedBranchMoved: true, protectedBranchActualSha: currentProtectedHead }
+      : {}),
   };
   if (seat) {
     snapshot.seat = seat;
   }
-  if (store && seat) {
+  if (store && seat && !protectedBranchMoved) {
     store.setSetting(turnGuardKey(repo), JSON.stringify(snapshot));
   }
   return snapshot;
@@ -114,11 +159,47 @@ export function guardAgentTurn(
     reason?: string;
   }
 ): GuardTurnResult {
+  // 0. C1: Khôi phục .git/config và .git/info/attributes TRƯỚC mọi lệnh git khác.
+  let gitConfigTampered = false;
+  if (snapshot.gitConfig !== undefined || snapshot.gitInfoAttributes !== undefined) {
+    const gitConfigPath = join(repo, '.git', 'config');
+    const gitAttributesPath = join(repo, '.git', 'info', 'attributes');
+    const expectedConfig = snapshot.gitConfig ?? '';
+    const expectedAttributes = snapshot.gitInfoAttributes ?? '';
+    const currentConfig = readFileOrEmpty(gitConfigPath);
+    const currentAttributes = readFileOrEmpty(gitAttributesPath);
+
+    if (currentConfig !== expectedConfig) {
+      gitConfigTampered = true;
+      if (expectedConfig === '') {
+        try {
+          rmSync(gitConfigPath, { force: true });
+        } catch {}
+      } else {
+        mkdirSync(join(repo, '.git'), { recursive: true });
+        writeFileSync(gitConfigPath, expectedConfig, 'utf8');
+      }
+    }
+
+    if (currentAttributes !== expectedAttributes) {
+      gitConfigTampered = true;
+      if (expectedAttributes === '') {
+        try {
+          rmSync(gitAttributesPath, { force: true });
+        } catch {}
+      } else {
+        mkdirSync(join(repo, '.git', 'info'), { recursive: true });
+        writeFileSync(gitAttributesPath, expectedAttributes, 'utf8');
+      }
+    }
+  }
+
   // 1. Kiểm tra sha protected branch ≠ protectedHead:
   // Agent vi phạm → git update-ref refs/heads/<protected> <protectedHead> (không đổi working tree)
   // TRƯỚC khi checkout nhánh goal.
   // B7: main bị xoá trong lượt → tạo lại bằng update-ref, vi phạm agent_modified_protected_branch.
   let modifiedProtectedBranch = false;
+  let protectedBranchMoved = Boolean(snapshot.protectedBranchMoved);
   if (snapshot.protectedBranch && snapshot.protectedHead) {
     const protRef = snapshot.protectedBranch.startsWith('refs/heads/')
       ? snapshot.protectedBranch
@@ -127,10 +208,12 @@ export function guardAgentTurn(
       const currentProtectedSha = git(repo, 'rev-parse', protRef).trim();
       if (currentProtectedSha !== snapshot.protectedHead) {
         modifiedProtectedBranch = true;
+        protectedBranchMoved = true;
         git(repo, 'update-ref', protRef, snapshot.protectedHead);
       }
     } catch {
       modifiedProtectedBranch = true;
+      protectedBranchMoved = true;
       git(repo, 'update-ref', protRef, snapshot.protectedHead);
     }
   }
@@ -215,7 +298,7 @@ export function guardAgentTurn(
   const treeDirty = Boolean(git(repo, 'status', '--porcelain').trim());
 
   if (seat === 'pm' || seat === 'dev') {
-    if (modifiedProtectedBranch || modifiedOtherGoal) {
+    if (modifiedProtectedBranch || modifiedOtherGoal || gitConfigTampered || protectedBranchMoved) {
       try {
         git(repo, 'reset', '--hard', snapshot.preHead);
         git(repo, 'clean', '-fd');
@@ -240,7 +323,15 @@ export function guardAgentTurn(
     }
   } else if (seat === 'qc' || seat === 'audit') {
     // 4. qc/audit: vi phạm qc_modified_repo / audit_modified_repo / agent_modified_protected_branch / agent_modified_other_goal → reset --hard <head> + clean
-    if (headChanged || treeDirty || switchedBranch || modifiedProtectedBranch || modifiedOtherGoal) {
+    if (
+      headChanged ||
+      treeDirty ||
+      switchedBranch ||
+      modifiedProtectedBranch ||
+      modifiedOtherGoal ||
+      gitConfigTampered ||
+      protectedBranchMoved
+    ) {
       try {
         git(repo, 'reset', '--hard', snapshot.preHead);
         git(repo, 'clean', '-fd');
@@ -254,5 +345,7 @@ export function guardAgentTurn(
     treeDirty,
     modifiedProtectedBranch,
     modifiedOtherGoal,
+    gitConfigTampered,
+    protectedBranchMoved,
   };
 }

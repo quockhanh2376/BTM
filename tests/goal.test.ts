@@ -495,6 +495,42 @@ describe('approveGoal', () => {
     expect(res.ok).toBe(true);
     expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(created.branch);
   });
+
+  it('FIX-F C2: approveGoal so với protected_sha:<repo> đã ghim, lệch → từ chối protected_branch_moved, KHÔNG tự kéo main (anh chạy btm main accept); khi merge thành công thì cập nhật sha ghim mới', () => {
+    const repo = tmpRepo({ 'file.txt': 'init\n' });
+    const cfg = makeTestConfig(dataDir);
+    const mainSha0 = git(repo, 'rev-parse', 'refs/heads/main').trim();
+    store.setSetting(`protected_sha:${repo}`, mainSha0);
+
+    const created = store.createGoal(repo, 'Goal check pinned sha');
+    git(repo, 'checkout', '-b', created.branch);
+    writeFileSync(join(repo, 'g-file.txt'), 'goal file');
+    git(repo, 'add', 'g-file.txt');
+    execFileSync('git', [...AUTHOR, 'commit', '-m', 'GTM-0001: feature'], { cwd: repo });
+    const reviewedSha = headSha(repo);
+    store.setGoalState(repo, created.n, 'qc_done', 'jenny', 'qc pass', reviewedSha);
+
+    // Kẻ xấu dịch refs/heads/main sang commit khác trước khi approveGoal
+    git(repo, 'update-ref', 'refs/heads/main', reviewedSha);
+    expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(reviewedSha);
+
+    const resTampered = approveGoal(store, repo, cfg, created.n);
+    expect(resTampered).toEqual({
+      ok: false,
+      code: 'not_ready',
+      message: 'protected_branch_moved',
+    });
+    // main giữ nguyên (không tự reset – có thể là việc của anh); anh đưa main về / ghim lại thủ công
+    expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(reviewedSha);
+    git(repo, 'update-ref', 'refs/heads/main', mainSha0);
+
+    // Giờ main đã về đúng sha ghim → approveGoal thành công và cập nhật protected_sha:<repo>
+    const resOk = approveGoal(store, repo, cfg, created.n);
+    expect(resOk.ok).toBe(true);
+    if (resOk.ok) {
+      expect(store.getSetting(`protected_sha:${repo}`)).toBe(resOk.sha);
+    }
+  });
 });
 
 describe('CLI btm goal', () => {

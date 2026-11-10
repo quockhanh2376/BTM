@@ -11,6 +11,8 @@ import { openStore } from './store/db.ts';
 import { initProject } from './project/init.ts';
 import { migrateProject } from './project/migrate.ts';
 import { runSession, resumeSession, type SessionOutcome } from './core/session.ts';
+import { protectedShaKey } from './core/guard.ts';
+import { git } from './git.ts';
 import { approveGoal } from './ticket/goal.ts';
 import { makeRunner, type Runner } from './runner/run.ts';
 import { createHost } from './server/host.ts';
@@ -359,6 +361,7 @@ Usage:
   btm status                                    Show active project and latest session status
   btm goal list                                 List goals for active project
   btm goal approve G<n>                         Approve and merge goal into main
+  btm main accept                               Accept and re-pin current main branch SHA
   btm serve                                     Start dashboard HTTP server and host
 
 Options:
@@ -373,7 +376,7 @@ Options:
     return 0;
   }
 
-  if (['init', 'run', 'status', 'serve', 'goal', 'migrate'].includes(command)) {
+  if (['init', 'run', 'status', 'serve', 'goal', 'migrate', 'main'].includes(command)) {
     let cfg;
     try {
       cfg = loadConfig(configPath);
@@ -865,6 +868,43 @@ Options:
       } finally {
         releaseLock?.();
       }
+    }
+
+    if (command === 'main') {
+      const subCommand = positionals[1];
+      if (subCommand === 'accept') {
+        const dbPath = join(cfg.host.data_dir, 'btm.db');
+        const store = openStore(dbPath);
+        try {
+          const activeProject = store.getActiveProject();
+          if (!activeProject) {
+            console.error('Error: No active project set. Run "btm init <name>" first.');
+            process.exitCode = 1;
+            return 1;
+          }
+          const protectedBranch = cfg.git?.protected_branch || 'main';
+          const protectedRef = protectedBranch.startsWith('refs/heads/')
+            ? protectedBranch
+            : `refs/heads/${protectedBranch}`;
+          const newSha = git(activeProject, 'rev-parse', protectedRef).trim();
+          const pinKey = protectedShaKey(activeProject);
+          const oldSha = store.getSetting(pinKey)?.trim() || '(none)';
+          store.setSetting(pinKey, newSha);
+          console.log(`pin ${oldSha} → ${newSha}`);
+          process.exitCode = 0;
+          return 0;
+        } catch (err) {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exitCode = 1;
+          return 1;
+        } finally {
+          store.close();
+        }
+      }
+
+      console.error(`Unknown main subcommand: "${subCommand}". Usage: btm main accept`);
+      process.exitCode = 1;
+      return 1;
     }
 
     if (command === 'serve') {

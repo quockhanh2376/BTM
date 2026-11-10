@@ -226,6 +226,11 @@ describe('CLI btm migrate', () => {
     expect(existsSync(join(projectDir, 'team', 'project.yaml'))).toBe(true);
     expect(readFileSync(join(projectDir, 'team', 'project.yaml'), 'utf8')).toBe('key: GTM\n');
 
+    const storeCheck = openStore(dbPath);
+    const mainShaAfterMigrate = git(projectDir, 'rev-parse', 'refs/heads/main').trim();
+    expect(storeCheck.getSetting(`protected_sha:${projectDir}`)).toBe(mainShaAfterMigrate);
+    storeCheck.close();
+
     // Chạy lần 2 báo already migrated
     const exitCode2 = await main(['migrate', '--key', 'GTM', '--config', configPath]);
     expect(exitCode2).toBe(0);
@@ -277,5 +282,35 @@ describe('CLI btm migrate', () => {
 
     const errOutput = consoleErrorSpy.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(errOutput).toContain('No active project set');
+  });
+
+  it('btm main accept ghim lại sha main hiện tại của project active và in "pin <cũ> → <mới>"', async () => {
+    const projectDir = tmpRepo({ 'README.md': '# Project' });
+    const dbPath = join(dataDir, 'btm.db');
+    const store = openStore(dbPath);
+    store.setActiveProject(projectDir);
+    store.close();
+
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const migCode = await main(['migrate', '--key', 'GTM', '--config', configPath]);
+    expect(migCode).toBe(0);
+
+    const oldSha = git(projectDir, 'rev-parse', 'refs/heads/main').trim();
+    writeFileSync(join(projectDir, 'README.md'), '# Project updated by owner\n', 'utf8');
+    git(projectDir, 'add', 'README.md');
+    execFileSync('git', [...AUTHOR, 'commit', '-m', 'owner manual commit on main'], { cwd: projectDir });
+    const newSha = git(projectDir, 'rev-parse', 'refs/heads/main').trim();
+    expect(newSha).not.toBe(oldSha);
+
+    consoleLogSpy.mockClear();
+    const acceptCode = await main(['main', 'accept', '--config', configPath]);
+    expect(acceptCode).toBe(0);
+
+    const logOutput = consoleLogSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(logOutput).toContain(`pin ${oldSha} → ${newSha}`);
+
+    const storeAfter = openStore(dbPath);
+    expect(storeAfter.getSetting(`protected_sha:${projectDir}`)).toBe(newSha);
+    storeAfter.close();
   });
 });

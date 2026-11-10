@@ -179,6 +179,12 @@ export function effectiveSeats(
   return seats;
 }
 
+const openStores = new Set<Store>();
+
+export function getOpenStores(): ReadonlySet<Store> {
+  return openStores;
+}
+
 export function openStore(file: string): Store {
   if (file !== ':memory:') {
     const dir = dirname(file);
@@ -712,7 +718,7 @@ export function openStore(file: string): Store {
     insertTicketHistoryStmt.run(project, id, fromState, to, by, reason, now);
   });
 
-  return {
+  const storeObj: Store = {
     setActiveProject(path: string): void {
       setActiveProjectStmt.run(path);
     },
@@ -1221,7 +1227,11 @@ export function openStore(file: string): Store {
     },
 
     close(): void {
+      openStores.delete(storeObj);
       db.close();
     },
   };
+
+  openStores.add(storeObj);
+  return storeObj;
 }

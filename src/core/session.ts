@@ -19,6 +19,7 @@ import {
   guardAgentTurn,
   guardStoredAgentTurn,
   recoverInterruptedTurn,
+  protectedShaKey,
 } from './guard.ts';
 
 export {
@@ -385,7 +386,8 @@ async function processGoal(
   if (branchExists) {
     git(d.repo, 'checkout', goal.branch);
   } else {
-    git(d.repo, 'checkout', '-b', goal.branch, baseRef);
+    const pinnedBaseSha = d.store.getSetting(protectedShaKey(d.repo))?.trim() || '';
+    git(d.repo, 'checkout', '-b', goal.branch, pinnedBaseSha || baseRef);
   }
   const currentHeadSym = git(d.repo, 'symbolic-ref', 'HEAD').trim();
   if (currentHeadSym !== goalRef) {
@@ -511,6 +513,18 @@ async function processGoal(
       hasOpenspec,
     });
     const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
+    if (pmSnapshot.protectedBranchMoved) {
+      d.store.endTurn(pmTurnId, 'rejected', 'protected_branch_moved');
+      return {
+        status: 'needs_owner',
+        sessionId,
+        tasks,
+        notes: [
+          `protected_branch_moved: ${pmSnapshot.protectedHead} → ${pmSnapshot.protectedBranchActualSha ?? ''}`,
+          'protected_branch_moved',
+        ],
+      };
+    }
     const recordedBeforePm = recordExistingTickets(d.repo);
     const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
 
@@ -525,8 +539,14 @@ async function processGoal(
         isErrorOrTimeoutOrAbort: true,
       });
       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+      if (pmGuard.gitConfigTampered) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+      }
       if (pmGuard.modifiedProtectedBranch) {
         return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+      }
+      if (pmGuard.protectedBranchMoved) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
       }
       if (pmGuard.modifiedOtherGoal) {
         return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -545,8 +565,14 @@ async function processGoal(
         isErrorOrTimeoutOrAbort: true,
       });
       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+      if (pmGuard.gitConfigTampered) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+      }
       if (pmGuard.modifiedProtectedBranch) {
         return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+      }
+      if (pmGuard.protectedBranchMoved) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
       }
       if (pmGuard.modifiedOtherGoal) {
         return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -559,9 +585,17 @@ async function processGoal(
     const pmGuard = guardStoredAgentTurn(d.store, d.repo, pmSnapshot, 'pm');
     d.store.endTurn(pmTurnId, 'ok');
 
+    if (pmGuard.gitConfigTampered) {
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+      return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+    }
     if (pmGuard.modifiedProtectedBranch) {
       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    if (pmGuard.protectedBranchMoved) {
+      cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+      return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
     }
     if (pmGuard.modifiedOtherGoal) {
       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
@@ -818,6 +852,18 @@ async function processGoal(
         );
 
         const devSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'dev');
+        if (devSnapshot.protectedBranchMoved) {
+          d.store.endTurn(devTurnId, 'rejected', 'protected_branch_moved');
+          return {
+            status: 'needs_owner',
+            sessionId,
+            tasks,
+            notes: [
+              `protected_branch_moved: ${devSnapshot.protectedHead} → ${devSnapshot.protectedBranchActualSha ?? ''}`,
+              'protected_branch_moved',
+            ],
+          };
+        }
         let devOutput;
         try {
           devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
@@ -834,8 +880,14 @@ async function processGoal(
             author: devAuthor,
             reason,
           });
+          if (devGuard.gitConfigTampered) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+          }
           if (devGuard.modifiedProtectedBranch) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+          }
+          if (devGuard.protectedBranchMoved) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
           }
           if (devGuard.modifiedOtherGoal) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -855,8 +907,14 @@ async function processGoal(
             author: devAuthor,
             reason,
           });
+          if (devGuard.gitConfigTampered) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+          }
           if (devGuard.modifiedProtectedBranch) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+          }
+          if (devGuard.protectedBranchMoved) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
           }
           if (devGuard.modifiedOtherGoal) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -873,8 +931,14 @@ async function processGoal(
             author: devAuthor,
             reason,
           });
+          if (devGuard.gitConfigTampered) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+          }
           if (devGuard.modifiedProtectedBranch) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+          }
+          if (devGuard.protectedBranchMoved) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
           }
           if (devGuard.modifiedOtherGoal) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -896,8 +960,14 @@ async function processGoal(
             author: devAuthor,
             reason,
           });
+          if (devGuard.gitConfigTampered) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+          }
           if (devGuard.modifiedProtectedBranch) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+          }
+          if (devGuard.protectedBranchMoved) {
+            return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
           }
           if (devGuard.modifiedOtherGoal) {
             return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -906,9 +976,17 @@ async function processGoal(
         }
 
         const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev');
+        if (devGuard.gitConfigTampered) {
+          d.store.endTurn(devTurnId, 'rejected', 'git_config_tampered');
+          return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+        }
         if (devGuard.modifiedProtectedBranch) {
           d.store.endTurn(devTurnId, 'rejected', 'agent_modified_protected_branch');
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+        }
+        if (devGuard.protectedBranchMoved) {
+          d.store.endTurn(devTurnId, 'rejected', 'protected_branch_moved');
+          return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
         }
         if (devGuard.modifiedOtherGoal) {
           d.store.endTurn(devTurnId, 'rejected', 'agent_modified_other_goal');
@@ -966,10 +1044,54 @@ async function processGoal(
         }
 
         const timeoutMs = (d.cfg.turn.timeout_minutes.dev ?? 0) * 60 * 1000;
+        const gateSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'qc');
+        if (gateSnapshot.protectedBranchMoved) {
+          d.store.endTurn(devTurnId, 'rejected', 'protected_branch_moved');
+          return {
+            status: 'needs_owner',
+            sessionId,
+            tasks,
+            notes: [
+              `protected_branch_moved: ${gateSnapshot.protectedHead} → ${gateSnapshot.protectedBranchActualSha ?? ''}`,
+              'protected_branch_moved',
+            ],
+          };
+        }
         const gateResult = runGate(d.repo, ticket, base, d.cfg.gate.commands, {
           timeoutMs,
           require_report_schema: d.cfg.gate.require_report_schema,
         });
+        const gateGuard = guardStoredAgentTurn(d.store, d.repo, gateSnapshot, 'qc');
+        if (gateGuard.gitConfigTampered) {
+          d.store.endTurn(devTurnId, 'rejected', 'git_config_tampered');
+          d.store.recordHandoffFailure(sessionId, ticket.id, 'git_config_tampered');
+          return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+        }
+        if (gateGuard.protectedBranchMoved || gateGuard.modifiedProtectedBranch) {
+          d.store.endTurn(devTurnId, 'rejected', 'protected_branch_moved');
+          d.store.recordHandoffFailure(sessionId, ticket.id, 'protected_branch_moved');
+          return {
+            status: 'needs_owner',
+            sessionId,
+            tasks,
+            notes: ['protected_branch_moved', 'agent_modified_protected_branch'],
+          };
+        }
+        if (gateGuard.modifiedOtherGoal) {
+          d.store.endTurn(devTurnId, 'rejected', 'agent_modified_other_goal');
+          d.store.recordHandoffFailure(sessionId, ticket.id, 'agent_modified_other_goal');
+          return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+        }
+        if (gateGuard.switchedBranch) {
+          d.store.endTurn(devTurnId, 'rejected', 'agent_switched_branch');
+          d.store.recordHandoffFailure(sessionId, ticket.id, 'agent_switched_branch');
+          return { status: 'needs_owner', sessionId, tasks, notes: ['agent_switched_branch'] };
+        }
+        if (gateGuard.headChanged) {
+          d.store.endTurn(devTurnId, 'rejected', 'qc_modified_repo');
+          d.store.recordHandoffFailure(sessionId, ticket.id, 'qc_modified_repo');
+          return { status: 'needs_owner', sessionId, tasks, notes: ['qc_modified_repo'] };
+        }
 
         if (!gateResult.ok || hasAutoDenied) {
           const failureReasons: string[] = [];
@@ -1115,6 +1237,18 @@ async function processGoal(
       d.store.setTurnLog(qcTurnId, qcLogFile);
       const qcPromptText = qcTicketPrompt(ticket, base, qcAgent);
       const qcSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'qc');
+      if (qcSnapshot.protectedBranchMoved) {
+        d.store.endTurn(qcTurnId, 'rejected', 'protected_branch_moved');
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: [
+            `protected_branch_moved: ${qcSnapshot.protectedHead} → ${qcSnapshot.protectedBranchActualSha ?? ''}`,
+            'protected_branch_moved',
+          ],
+        };
+      }
 
       let qcOutput;
       try {
@@ -1127,8 +1261,14 @@ async function processGoal(
         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
         d.store.endTurn(qcTurnId, 'error', reason);
         const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
+        if (qcGuard.gitConfigTampered) {
+          return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+        }
         if (qcGuard.modifiedProtectedBranch) {
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+        }
+        if (qcGuard.protectedBranchMoved) {
+          return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
         }
         if (qcGuard.modifiedOtherGoal) {
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -1143,8 +1283,14 @@ async function processGoal(
         const reason = qcOutput.timedOut ? 'timeout' : `exit_${qcOutput.exitCode}`;
         d.store.endTurn(qcTurnId, qcOutput.timedOut ? 'timeout' : 'error', reason);
         const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
+        if (qcGuard.gitConfigTampered) {
+          return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+        }
         if (qcGuard.modifiedProtectedBranch) {
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+        }
+        if (qcGuard.protectedBranchMoved) {
+          return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
         }
         if (qcGuard.modifiedOtherGoal) {
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -1161,6 +1307,14 @@ async function processGoal(
       });
 
       const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc');
+      if (qcGuard.gitConfigTampered) {
+        d.store.endTurn(qcTurnId, 'rejected', 'git_config_tampered');
+        return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+      }
+      if (qcGuard.protectedBranchMoved && !qcGuard.modifiedProtectedBranch) {
+        d.store.endTurn(qcTurnId, 'rejected', 'protected_branch_moved');
+        return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
+      }
       if (
         qcGuard.switchedBranch ||
         qcGuard.headChanged ||
@@ -1321,6 +1475,18 @@ async function processGoal(
     auditAgent
   );
   const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'audit');
+  if (auditSnapshot.protectedBranchMoved) {
+    d.store.endTurn(auditTurnId, 'rejected', 'protected_branch_moved');
+    return {
+      status: 'needs_owner',
+      sessionId,
+      tasks,
+      notes: [
+        `protected_branch_moved: ${auditSnapshot.protectedHead} → ${auditSnapshot.protectedBranchActualSha ?? ''}`,
+        'protected_branch_moved',
+      ],
+    };
+  }
 
   let auditOutput;
   try {
@@ -1332,8 +1498,14 @@ async function processGoal(
     const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
     d.store.endTurn(auditTurnId, 'error', reason);
     const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    if (auditGuard.gitConfigTampered) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+    }
     if (auditGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    if (auditGuard.protectedBranchMoved) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
     }
     if (auditGuard.modifiedOtherGoal) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -1348,8 +1520,14 @@ async function processGoal(
     const reason = 'aborted';
     d.store.endTurn(auditTurnId, 'error', reason);
     const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    if (auditGuard.gitConfigTampered) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+    }
     if (auditGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    if (auditGuard.protectedBranchMoved) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
     }
     if (auditGuard.modifiedOtherGoal) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -1361,8 +1539,14 @@ async function processGoal(
     const reason = auditOutput.timedOut ? 'timeout' : `exit_${auditOutput.exitCode}`;
     d.store.endTurn(auditTurnId, auditOutput.timedOut ? 'timeout' : 'error', reason);
     const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    if (auditGuard.gitConfigTampered) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+    }
     if (auditGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    if (auditGuard.protectedBranchMoved) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
     }
     if (auditGuard.modifiedOtherGoal) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -1374,6 +1558,14 @@ async function processGoal(
   let auditResult = parseAuditResult(auditOutput.lastMessage || auditOutput.output || '');
 
   const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit');
+  if (auditGuard.gitConfigTampered) {
+    d.store.endTurn(auditTurnId, 'rejected', 'git_config_tampered');
+    return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+  }
+  if (auditGuard.protectedBranchMoved && !auditGuard.modifiedProtectedBranch) {
+    d.store.endTurn(auditTurnId, 'rejected', 'protected_branch_moved');
+    return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
+  }
   if (
     auditGuard.switchedBranch ||
     auditGuard.headChanged ||
@@ -1477,6 +1669,18 @@ async function processGoal(
   });
 
   const pmFixSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
+  if (pmFixSnapshot.protectedBranchMoved) {
+    d.store.endTurn(pmFixTurnId, 'rejected', 'protected_branch_moved');
+    return {
+      status: 'needs_owner',
+      sessionId,
+      tasks,
+      notes: [
+        `protected_branch_moved: ${pmFixSnapshot.protectedHead} → ${pmFixSnapshot.protectedBranchActualSha ?? ''}`,
+        'protected_branch_moved',
+      ],
+    };
+  }
   const recordedBeforeFix = recordExistingTickets(d.repo);
   const prePmFixStatus = new Set(getWorkingTreeChanges(d.repo));
 
@@ -1491,8 +1695,14 @@ async function processGoal(
       isErrorOrTimeoutOrAbort: true,
     });
     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+    if (pmFixGuard.gitConfigTampered) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+    }
     if (pmFixGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    if (pmFixGuard.protectedBranchMoved) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
     }
     if (pmFixGuard.modifiedOtherGoal) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -1511,8 +1721,14 @@ async function processGoal(
       isErrorOrTimeoutOrAbort: true,
     });
     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+    if (pmFixGuard.gitConfigTampered) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+    }
     if (pmFixGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+    }
+    if (pmFixGuard.protectedBranchMoved) {
+      return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
     }
     if (pmFixGuard.modifiedOtherGoal) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
@@ -1525,9 +1741,17 @@ async function processGoal(
   const pmFixGuard = guardStoredAgentTurn(d.store, d.repo, pmFixSnapshot, 'pm');
   d.store.endTurn(pmFixTurnId, 'ok');
 
+  if (pmFixGuard.gitConfigTampered) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+    return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+  }
   if (pmFixGuard.modifiedProtectedBranch) {
     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+  }
+  if (pmFixGuard.protectedBranchMoved) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+    return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
   }
   if (pmFixGuard.modifiedOtherGoal) {
     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);

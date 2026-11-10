@@ -1,36 +1,42 @@
 import { execFileSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { mkdirSync } from 'node:fs';
+// Agent chạy cùng user với BTM: không dùng thư mục/file trong tmp (agent ghi được). /dev/null không tồn tại hook,
+// và Git for Windows hiểu /dev/null là NUL.
+const NO_FILE = '/dev/null';
 
-let emptyHooksDir: string | null = null;
-function getEmptyHooksDir(): string {
-  if (!emptyHooksDir) {
-    const dir = join(tmpdir(), 'btm-empty-hooks');
-    mkdirSync(dir, { recursive: true });
-    emptyHooksDir = dir;
-  }
-  return emptyHooksDir;
+function safeGitEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ...extra,
+    GIT_CONFIG_GLOBAL: NO_FILE,
+    GIT_CONFIG_NOSYSTEM: '1',
+  };
 }
 
 function safeGitArgs(args: string[]): string[] {
   return [
     '-c',
-    `core.hooksPath=${getEmptyHooksDir()}`,
+    `core.hooksPath=${NO_FILE}`,
     '-c',
     'core.fsmonitor=false',
+    '-c',
+    'commit.gpgSign=false',
+    '-c',
+    'tag.gpgSign=false',
     ...args,
   ];
 }
 
-export function git(repo: string, ...args: string[]): string {
-  const out = execFileSync('git', safeGitArgs(args), {
+export function gitBuffer(repo: string, ...args: string[]): Buffer {
+  return execFileSync('git', safeGitArgs(args), {
     cwd: repo,
-    encoding: 'utf8',
-    maxBuffer: 10 * 1024 * 1024,
+    maxBuffer: 20 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: safeGitEnv(),
   });
-  return out;
+}
+
+export function git(repo: string, ...args: string[]): string {
+  return gitBuffer(repo, ...args).toString('utf8');
 }
 
 export function headSha(repo: string): string {
@@ -48,13 +54,12 @@ export function commitAll(
     return null;
   }
   const authorString = `${author.name} <${author.email}>`;
-  const env = {
-    ...process.env,
+  const env = safeGitEnv({
     GIT_AUTHOR_NAME: author.name,
     GIT_AUTHOR_EMAIL: author.email,
     GIT_COMMITTER_NAME: author.name,
     GIT_COMMITTER_EMAIL: author.email,
-  };
+  });
   execFileSync(
     'git',
     safeGitArgs([
