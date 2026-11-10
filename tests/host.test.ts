@@ -1740,9 +1740,30 @@ done_when: ok
       const host = createHost({ cfg, store, runner: vi.fn(), logDir, dataDir, env: {} });
       await host.tick();
 
-      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).not.toBe(mainBefore); // D4: không tự kéo main về khi phục hồi
       expect(store.getSetting(`turn_guard:${repoDir}`)).toBe('');
       expect(logSpy).toHaveBeenCalledWith('recovered_interrupted_turn');
+    });
+
+    it('D3: main đổi ngoài BTM (lệch sha ghim) → lệnh dev trực tiếp bị huỷ, không chạy agent, không kéo main về', async () => {
+      const mainBefore = git(repoDir, 'rev-parse', 'refs/heads/main').trim();
+      store.setSetting(`protected_sha:${repoDir}`, mainBefore);
+      git(repoDir, 'checkout', '-b', 'goal/G2-d3');
+      writeFileSync(join(repoDir, 'owner.txt'), 'owner merge\n');
+      git(repoDir, 'add', 'owner.txt');
+      git(repoDir, '-c', 'user.name=zon', '-c', 'user.email=zon@btm.local', 'commit', '-m', 'owner work');
+      const ownerSha = headSha(repoDir);
+      git(repoDir, 'update-ref', 'refs/heads/main', ownerSha);
+
+      const mockRunner: Runner = vi.fn();
+      const host = createHost({ cfg, store, runner: mockRunner, logDir, dataDir, env: {} });
+      const res = await host.command('dev', 'sửa nhỏ');
+      expect(res.ok).toBe(true);
+      await host.tick();
+
+      expect(mockRunner).not.toHaveBeenCalled();
+      expect(store.listQueue(10).find((q) => q.id === res.id)?.status).toBe('cancelled');
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).toBe(ownerSha);
     });
 
     it('đang ở nhánh goal → chạy, commit đúng prefix G<n>: cmd <id>: …', async () => {
@@ -1992,7 +2013,7 @@ done_when: ok
       externalRelease!();
       await host.tick();
 
-      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).not.toBe(mainBefore); // D4: không tự kéo main về khi phục hồi
       expect(store.getSetting(`turn_guard:${repoDir}`)).toBe('');
       expect(logSpy).toHaveBeenCalledWith('recovered_interrupted_turn');
       logSpy.mockRestore();

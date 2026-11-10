@@ -3395,9 +3395,12 @@ Yêu cầu đóng note nhưng commit lỗi
         sessionId: null,
         notes: ['recovered_interrupted_turn'],
       });
-      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
+      // D4: main đổi lúc phục hồi → không tự kéo về (có thể là anh merge tay); sha ghim giữ nguyên nên phiên sau vẫn bị chặn
+      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(goalHead);
+      expect(store.getSetting(`protected_sha:${repo}`)).toBe(mainBefore);
       expect(store.getSetting(`turn_guard:${repo}`)).toBe('');
       expect(store.getGoal(repo, goal.n)?.state).toBe('open');
+      git(repo, 'update-ref', 'refs/heads/main', mainBefore); // anh đưa main về
 
       const sessionId = store.createSession([String(goal.n)], repo);
       store.setSessionStatus(sessionId, 'needs_owner');
@@ -3410,7 +3413,8 @@ Yêu cầu đóng note nhưng commit lỗi
         sessionId,
         notes: ['recovered_interrupted_turn'],
       });
-      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
+      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(goalHead);
+      expect(store.getSetting(`protected_sha:${repo}`)).toBe(mainBefore);
       expect(store.getSetting(`turn_guard:${repo}`)).toBe('');
       expect(store.getSession(sessionId)?.status).toBe('needs_owner');
       expect(deps.runner).not.toHaveBeenCalled();

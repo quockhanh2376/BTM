@@ -29,6 +29,7 @@ export interface GuardTurnResult {
   protectedBranchMoved?: boolean;
   ignoredCleanedCount?: number;
   ignoredListFailed?: boolean;
+  needsOwner?: string;
 }
 
 function turnGuardKey(repo: string): string {
@@ -95,6 +96,15 @@ function listIgnoredFilesOutsideNodeModules(repo: string): { files: string[]; fa
   }
 }
 
+function isIgnoredDir(repo: string, dir: string): boolean {
+  try {
+    git(repo, 'check-ignore', '-q', '--', `${dir}/`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // shortcut: không phát hiện agent sửa file trong node_modules; khi cần thì gate chạy trên bản checkout sạch + npm ci.
 export function cleanNewIgnoredFiles(
   repo: string,
@@ -105,15 +115,21 @@ export function cleanNewIgnoredFiles(
 
   if (snapshot.ignoredFiles !== undefined) {
     const preSet = new Set(snapshot.ignoredFiles);
+    // Thư mục ignored đã có từ trước (vd .venv/) → giữ mọi file mới bên trong (xoá lẻ sẽ hỏng venv).
+    const preIgnoredDirs = new Set<string>();
+    for (const p of snapshot.ignoredFiles) {
+      const top = p.split('/')[0];
+      if (p.includes('/') && !preIgnoredDirs.has(top) && isIgnoredDir(repo, top)) preIgnoredDirs.add(top);
+    }
     const currentIgnored = listIgnoredFilesOutsideNodeModules(repo);
     listFailed ||= currentIgnored.failed;
+    // Chỉ xoá đúng từng FILE ignored mới – không bao giờ xoá thư mục (vd src/foo.log mới không được kéo theo src/).
     for (const relPath of currentIgnored.files) {
-      if (!preSet.has(relPath)) {
-        cleanedCount++;
-        try {
-          rmSync(join(repo, relPath), { recursive: true, force: true });
-        } catch {}
-      }
+      if (preSet.has(relPath) || preIgnoredDirs.has(relPath.split('/')[0])) continue;
+      cleanedCount++;
+      try {
+        rmSync(join(repo, relPath), { force: true });
+      } catch {}
     }
   }
   return { cleanedCount, listFailed };
@@ -225,6 +241,31 @@ export function recoverInterruptedTurn(
     store.setSetting(turnGuardKey(repo), '');
     throw new Error('Invalid persisted turn guard snapshot');
   }
+  if (snapshot.protectedBranch && snapshot.protectedHead) {
+    const protectedRef = snapshot.protectedBranch.startsWith('refs/heads/')
+      ? snapshot.protectedBranch
+      : `refs/heads/${snapshot.protectedBranch}`;
+    let currentProtectedHead = '';
+    try {
+      currentProtectedHead = git(repo, 'rev-parse', protectedRef).trim();
+    } catch {}
+    if (currentProtectedHead !== snapshot.protectedHead) {
+      if (snapshot.gitConfig !== undefined) {
+        writeFileSync(join(repo, '.git', 'config'), snapshot.gitConfig, 'utf8');
+      }
+      const goalBranch = snapshot.goalBranch.replace(/^refs\/heads\//, '');
+      git(repo, 'checkout', '-f', goalBranch);
+      store.setSetting(turnGuardKey(repo), '');
+      return {
+        switchedBranch: true,
+        headChanged: false,
+        treeDirty: false,
+        modifiedProtectedBranch: false,
+        protectedBranchMoved: true,
+        needsOwner: 'recovered_interrupted_turn',
+      };
+    }
+  }
   return guardStoredAgentTurn(store, repo, snapshot, seat);
 }
 
@@ -249,6 +290,8 @@ export function guardAgentTurn(
     const currentConfig = readFileOrEmpty(gitConfigPath);
     const currentAttributes = readFileOrEmpty(gitAttributesPath);
 
+    const withoutHooksPath = (config: string) =>
+      config.replace(/^\s*hooksPath\s*=.*(?:\r?\n|$)/gim, '');
     if (currentConfig !== expectedConfig) {
       gitConfigTampered = true;
       if (expectedConfig === '') {
@@ -258,6 +301,9 @@ export function guardAgentTurn(
       } else {
         mkdirSync(join(repo, '.git'), { recursive: true });
         writeFileSync(gitConfigPath, expectedConfig, 'utf8');
+      }
+      if (withoutHooksPath(currentConfig) === withoutHooksPath(expectedConfig)) {
+        gitConfigTampered = false;
       }
     }
 

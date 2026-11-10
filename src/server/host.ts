@@ -142,8 +142,15 @@ export function createHost(d: HostDeps): HostApi & {
     if (!checkedInterruptedTurn) {
       checkedInterruptedTurn = true;
       const activeProject = d.store.getActiveProject();
-      if (activeProject && recoverInterruptedTurn(d.store, activeProject)) {
-        console.log('recovered_interrupted_turn');
+      try {
+        const recovery = activeProject ? recoverInterruptedTurn(d.store, activeProject) : null;
+        if (recovery) {
+          console.log(recovery.needsOwner ?? 'recovered_interrupted_turn');
+        }
+      } catch (err: any) {
+        console.log(`recover_interrupted_turn_failed: ${err?.message || String(err)}`);
+        release();
+        return;
       }
     }
 
@@ -264,6 +271,13 @@ export function createHost(d: HostDeps): HostApi & {
             d.store,
             item.to
           );
+          if (snapshot.protectedBranchMoved) {
+            d.store.endTurn(turnId, 'error', 'protected_branch_moved');
+            d.store.recordHandoffFailure(sessionId, taskId, 'protected_branch_moved');
+            d.store.setSessionStatus(sessionId, 'error');
+            d.store.setQueueStatus(item.id, 'cancelled');
+            return;
+          }
           const author = { name: agent, email: `${agent}@btm.local` };
 
           if (item.to === 'dev') {

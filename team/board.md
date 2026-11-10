@@ -39,7 +39,7 @@
 | P4-UI1 | V | XONG (Cheki sửa auto-fill→auto-fit: thẻ ghế bị dồn 1/3 màn 2560) – nút "Dừng", dashboard full màn 2K/4K | team/prompts/P4-UI1-victor.md | team/reports/P4-UI1-dev.md |
 | P4-FIX-F | V | XONG – Q OK, VM 683/683 ×3 | team/prompts/P4-FIXF-victor.md | team/reports/P4-FIXF-dev.md |
 | P4-FIX-G | V + Codex + Cheki | XONG – VM 692/692 ×3 | team/prompts/P4-FIXG-victor.md | team/reports/P4-FIXG-dev.md |
-| P4-FIX-H | Codex (ghế V) | ĐANG LÀM – review 4 D3 D4 D6–D9 | team/prompts/P4-FIXH-dev.md | team/reports/P4-FIXH-dev.md |
+| P4-FIX-H | Codex + Cheki | XONG – VM 697/697 | team/prompts/P4-FIXH-dev.md | team/reports/P4-FIXH-dev.md |
 | P5 (đội hình linh hoạt) | V→Q | waiting (sau khi Plan 4 merge) | docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).

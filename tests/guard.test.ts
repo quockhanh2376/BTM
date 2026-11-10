@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { tmpRepo } from './helpers.ts';
 import { git, headSha, commitAll } from '../src/git.ts';
-import { snapshotTurn, guardAgentTurn } from '../src/core/guard.ts';
+import { snapshotTurn, guardAgentTurn, recoverInterruptedTurn } from '../src/core/guard.ts';
 import { openStore } from '../src/store/db.ts';
 
 const TEST_AUTHOR = ['-c', 'user.name=dev', '-c', 'user.email=dev@btm.local'];
@@ -273,4 +273,70 @@ describe('P4-FIX-D: Guard agent turn hardening', () => {
     expect(existsSync(join(repo, 'packages', 'x', 'node_modules', 'a.js'))).toBe(true);
   });
 
+});
+
+describe('P4-FIX-H: review 4', () => {
+  const memStore = () => {
+    const m = new Map<string, string>();
+    return { getSetting: (k: string) => m.get(k) ?? null, setSetting: (k: string, v: string) => void m.set(k, v) } as any;
+  };
+
+  it('D9: chỉ xoá đúng file ignored mới; không xoá thư mục chứa source; giữ file mới trong thư mục ignored có sẵn (.venv)', () => {
+    const repo = tmpRepo({ 'src/app.ts': 'export {};\n', '.gitignore': '*.log\n.venv/\ndist/\n' });
+    git(repo, 'checkout', '-b', 'goal/G1-feat');
+    mkdirSync(join(repo, '.venv'), { recursive: true });
+    writeFileSync(join(repo, '.venv', 'a.py'), 'a\n');
+    const snap = snapshotTurn(repo, 'goal/G1-feat', 'main', undefined, 'dev');
+
+    writeFileSync(join(repo, '.venv', 'b.py'), 'b\n');
+    writeFileSync(join(repo, 'src', 'foo.log'), 'log\n');
+    mkdirSync(join(repo, 'dist'), { recursive: true });
+    writeFileSync(join(repo, 'dist', 'x.js'), 'x\n');
+
+    const res = guardAgentTurn(repo, snap, 'dev');
+    expect(existsSync(join(repo, 'src', 'app.ts'))).toBe(true);
+    expect(existsSync(join(repo, 'src', 'foo.log'))).toBe(false);
+    expect(existsSync(join(repo, 'dist', 'x.js'))).toBe(false);
+    expect(existsSync(join(repo, '.venv', 'b.py'))).toBe(true);
+    expect(res.ignoredCleanedCount).toBe(2);
+  });
+
+  it('D7: lượt chỉ thêm core.hooksPath (husky prepare) → khôi phục config nhưng không tính git_config_tampered', () => {
+    const repo = tmpRepo({ 'a.txt': 'a\n' });
+    git(repo, 'checkout', '-b', 'goal/G1-feat');
+    const before = readFileSync(join(repo, '.git', 'config'), 'utf8');
+    const snap = snapshotTurn(repo, 'goal/G1-feat', 'main', undefined, 'dev');
+    execFileSync('git', ['config', 'core.hooksPath', '.husky/_'], { cwd: repo });
+    const res = guardAgentTurn(repo, snap, 'dev');
+    expect(res.gitConfigTampered).toBe(false);
+    expect(readFileSync(join(repo, '.git', 'config'), 'utf8')).toBe(before);
+  });
+
+  it('D7: thêm filter (không phải hooksPath) vẫn là git_config_tampered', () => {
+    const repo = tmpRepo({ 'a.txt': 'a\n' });
+    git(repo, 'checkout', '-b', 'goal/G1-feat');
+    const snap = snapshotTurn(repo, 'goal/G1-feat', 'main', undefined, 'dev');
+    execFileSync('git', ['config', 'filter.x.clean', 'sh evil.sh'], { cwd: repo });
+    expect(guardAgentTurn(repo, snap, 'dev').gitConfigTampered).toBe(true);
+  });
+
+  it('D4: phục hồi lượt bị ngắt khi main đã đổi (anh merge tay) → không kéo main về, không xoá file ignored, needs_owner', () => {
+    const repo = tmpRepo({ 'a.txt': 'a\n', '.gitignore': '.env\n' });
+    git(repo, 'checkout', '-b', 'goal/G1-feat');
+    const store = memStore();
+    snapshotTurn(repo, 'goal/G1-feat', 'main', store, 'dev');
+
+    git(repo, 'checkout', 'main');
+    writeFileSync(join(repo, 'owner.txt'), 'owner\n');
+    git(repo, 'add', 'owner.txt');
+    execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'owner merge'], { cwd: repo });
+    const ownerMain = git(repo, 'rev-parse', 'refs/heads/main').trim();
+    writeFileSync(join(repo, '.env'), 'SECRET=1\n');
+
+    const res = recoverInterruptedTurn(store, repo);
+    expect(res?.needsOwner).toBe('recovered_interrupted_turn');
+    expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(ownerMain);
+    expect(existsSync(join(repo, '.env'))).toBe(true);
+    expect(store.getSetting(`turn_guard:${repo}`)).toBeFalsy();
+  });
 });

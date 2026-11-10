@@ -15,6 +15,8 @@ function safeGitEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 function safeGitArgs(args: string[]): string[] {
   return [
     '-c',
+    'safe.directory=*',
+    '-c',
     `core.hooksPath=${NO_FILE}`,
     '-c',
     'core.fsmonitor=false',
