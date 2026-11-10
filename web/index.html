@@ -115,12 +115,11 @@
     }
 
     .container {
-      max-width: 1400px;
       margin: 0 auto;
-      padding: 16px 20px 24px 20px;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 10px;
       box-sizing: border-box;
       width: 100%;
     }
@@ -129,7 +128,7 @@
       background-color: var(--card-bg);
       border-radius: 12px;
       border: 1px solid var(--border);
-      padding: 16px 20px;
+      padding: 10px;
       box-sizing: border-box;
     }
 
@@ -150,7 +149,7 @@
       flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 10px;
     }
 
     .brand-section {
@@ -347,18 +346,18 @@
     /* 3 Seat cards */
     .seats-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 10px;
     }
 
     .seat-card {
       background-color: var(--card-bg);
       border-radius: 12px;
       border: 1px solid var(--border);
-      padding: 16px 20px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
       box-sizing: border-box;
       transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
@@ -606,10 +605,10 @@
 
     /* Accounts Section */
     .accounts-section {
-      margin-top: 16px;
+      margin-top: 0;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 10px;
     }
 
     .accounts-section h2 {
@@ -622,15 +621,15 @@
     .accounts-list {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
     }
 
     .account-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      padding: 12px 16px;
+      gap: 10px;
+      padding: 10px;
       border-radius: 8px;
       background-color: var(--badge-bg);
       border: 1px solid var(--border);
@@ -696,7 +695,7 @@
     .board-and-log-layout {
       display: grid;
       grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.2fr);
-      gap: 16px;
+      gap: 10px;
       align-items: stretch;
     }
 
@@ -945,7 +944,7 @@
       border: 1px solid var(--border);
       border-top: none;
       border-radius: 0 0 12px 12px;
-      padding: 16px;
+      padding: 10px;
       box-sizing: border-box;
       width: 100%;
     }
@@ -1058,11 +1057,196 @@
       flex: 1;
     }
 
+    /* Goal & Pipeline & Ticket styles */
+    .goals-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .goal-group-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-sizing: border-box;
+    }
+
+    .goal-group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .goal-group-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      word-break: break-word;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .goal-group-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-approve-goal {
+      font-size: 12px;
+      padding: 6px 14px;
+    }
+
+    /* Pipeline 6 stages */
+    .pipeline-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 10px;
+      background-color: var(--badge-bg);
+      border-radius: 8px;
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      scrollbar-width: thin;
+    }
+
+    .pipeline-step {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      padding: 4px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .pipeline-step.stage-active {
+      font-weight: 700;
+      background-color: var(--accent);
+      color: #FFFFFF;
+    }
+
+    [data-theme="dark"] .pipeline-step.stage-active {
+      background-color: var(--accent);
+      color: #141413;
+    }
+
+    .pipeline-arrow {
+      color: var(--text-muted);
+      font-size: 10px;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    /* Ticket List within Goal */
+    .ticket-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .ticket-item-wrap {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background-color: var(--bg);
+      overflow: hidden;
+      transition: border-color 0.15s ease;
+    }
+
+    .ticket-row {
+      cursor: pointer;
+      user-select: none;
+      font-size: 13px;
+      transition: background-color 0.15s ease;
+    }
+
+    .ticket-row:hover,
+    .ticket-row:focus,
+    .ticket-row:focus-visible {
+      background-color: var(--border-subtle);
+      outline: none;
+    }
+
+    .ticket-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--text);
+    }
+
+    .ticket-title {
+      word-break: break-word;
+      font-weight: 500;
+    }
+
+    .ticket-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      vertical-align: middle;
+    }
+
+    .ticket-badge {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    /* Ticket History Panel */
+    .ticket-history-panel {
+      padding: 10px 14px;
+      background-color: var(--card-bg);
+      border-top: 1px solid var(--border-subtle);
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .history-entry {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      flex-wrap: wrap;
+    }
+
+    .history-time {
+      color: var(--text-muted);
+    }
+
+    .history-who {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .history-trans {
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .history-reason {
+      color: var(--text);
+      font-family: var(--font-sans);
+    }
+
     /* Command Section */
     .cmd-section {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 10px;
     }
 
     .recipient-radios {
@@ -1177,20 +1361,20 @@
     .inbox-section {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .notes-list {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
     }
 
     .note-item {
       background-color: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 12px 16px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -1340,8 +1524,8 @@
       background-color: var(--badge-bg);
     }
 
-    /* Responsive adjustments for 960px, 600px, and 375px */
-    @media (max-width: 960px) {
+    /* Responsive adjustments for 900px, 600px, and 375px */
+    @media (max-width: 900px) {
       .seats-grid {
         grid-template-columns: 1fr;
       }
@@ -1352,11 +1536,11 @@
 
     @media (max-width: 600px) {
       .container {
-        padding: 12px;
-        gap: 16px;
+        padding: 8px 10px;
+        gap: 8px;
       }
       .card {
-        padding: 14px 16px;
+        padding: 10px;
       }
       .session-bar {
         flex-direction: column;
@@ -1402,7 +1586,7 @@
         </label>
         <button id="refresh-energy-btn" class="btn btn-secondary" type="button">Làm mới Energy</button>
         <button id="approve-btn" class="btn btn-primary" type="button" disabled title="Không có thẻ chờ duyệt">Duyệt thẻ</button>
-        <button id="stop-btn" class="btn btn-danger" type="button">Dừng khẩn cấp</button>
+        <button id="stop-btn" class="btn btn-danger" type="button">Dừng</button>
         <button id="theme-toggle" class="btn btn-icon" type="button" aria-label="Chuyển sáng/tối">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="5"></circle>
@@ -1588,57 +1772,68 @@
           </div>
         </div>
       </div>
+
+      <!-- Kai - Audit -->
+      <div class="seat-card" id="seat-card-audit" style="display: none;">
+        <div class="seat-header">
+          <div>
+            <div class="seat-title-wrap">
+              <div class="seat-title" id="audit-title">Kai-Audit</div>
+              <svg id="audit-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
+                <path d="M12 3a9 9 0 0 1 9 9"></path>
+              </svg>
+            </div>
+            <div class="seat-tool" id="audit-tool">—</div>
+          </div>
+          <span class="seat-status-badge status-idle" id="audit-status-badge">Rảnh</span>
+        </div>
+        <div class="seat-info-row">
+          <div class="seat-info-item"><span>Task:</span><span id="audit-task">—</span></div>
+          <div class="seat-info-item"><span>Bắt đầu:</span><span id="audit-since">—</span></div>
+          <div class="seat-info-item"><span>Số lượt:</span><span id="audit-turns">0</span></div>
+        </div>
+        <div class="seat-swap-row">
+          <label for="audit-agent-select" class="seat-swap-label">Người ngồi ghế</label>
+          <select id="audit-agent-select" class="seat-swap-select" aria-label="Người ngồi ghế"></select>
+        </div>
+        <div class="last-line-container">
+          <span class="last-line-label">Dòng log cuối:</span>
+          <pre class="last-line-text" id="audit-last-line">—</pre>
+        </div>
+        <div class="seat-footer" id="audit-footer">
+          <div id="audit-login-indicator" class="seat-login-indicator">
+            <span class="login-dot dot-unknown"></span>
+            <span class="login-text">Đăng nhập: —</span>
+          </div>
+          <div id="audit-energy-box" class="seat-energy-box">
+            <span class="energy-unknown">Energy: —</span>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">5 giờ</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5 giờ: còn 100%">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">còn 100%</span>
+            </div>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">Tuần</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Tuần: còn 100%">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">còn 100%</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <!-- Bảng task dạng tab & Nhật ký -->
+    <!-- Bảng goal & ticket & Nhật ký -->
     <div class="board-and-log-layout">
-      <!-- Bảng task dạng tab thẻ hồ sơ -->
-      <section class="card task-board-section">
-        <h2 class="section-title">Bảng task</h2>
-        <div class="task-tabs-nav" role="tablist" aria-label="Bảng task" id="task-tablist" data-active-state="pending">
-          <button type="button" role="tab" id="tab-pending" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="pending" data-state="pending">
-            <span>Chờ</span>
-            <span class="task-tab-count" id="count-pending">0</span>
-          </button>
-          <button type="button" role="tab" id="tab-in_dev" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="in_dev" data-state="in_dev">
-            <span>Đang làm</span>
-            <span class="task-tab-count" id="count-in_dev">0</span>
-          </button>
-          <button type="button" role="tab" id="tab-awaiting_qc" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="awaiting_qc" data-state="awaiting_qc">
-            <span>Chờ test</span>
-            <span class="task-tab-count" id="count-awaiting_qc">0</span>
-          </button>
-          <button type="button" role="tab" id="tab-passed" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="passed" data-state="passed">
-            <span>Đạt</span>
-            <span class="task-tab-count" id="count-passed">0</span>
-          </button>
-          <button type="button" role="tab" id="tab-returned" class="task-tab" aria-selected="false" aria-controls="task-tabpanel" tabindex="-1" data-tab="returned" data-state="returned">
-            <span>Trả về</span>
-            <span class="task-tab-count" id="count-returned">0</span>
-          </button>
-        </div>
-        <div class="task-tabpanel" id="task-tabpanel" role="tabpanel" aria-labelledby="tab-pending" tabindex="0">
-          <table class="task-table">
-            <colgroup>
-              <col class="col-id" style="width: 72px;">
-              <col class="col-goal">
-              <col class="col-fixes" style="width: 80px;">
-              <col class="col-updated" style="width: 96px;">
-            </colgroup>
-            <thead>
-              <tr>
-                <th scope="col" class="col-id">ID</th>
-                <th scope="col" class="col-goal">Mục tiêu</th>
-                <th scope="col" class="col-fixes">Vòng sửa</th>
-                <th scope="col" class="col-updated">Cập nhật</th>
-              </tr>
-            </thead>
-            <tbody id="task-table-body">
-              <tr>
-                <td colspan="4" class="empty-placeholder">Không có thẻ</td>
-              </tr>
-            </tbody>
-          </table>
+      <!-- Bảng goal & ticket -->
+      <section class="card task-board-section goals-board-section">
+        <h2 class="section-title">Danh sách mục tiêu</h2>
+        <div id="goals-container" class="goals-container">
+          <div class="empty-placeholder">Chưa có goal nào</div>
         </div>
       </section>
 
@@ -1793,11 +1988,12 @@
       }
       var translateStatus = formatStatus;
 
-      // 2b. Seat Labels & Agent Display Names (pm->PM, dev->Dev, qc->QC)
+      // 2b. Seat Labels & Agent Display Names (pm->PM, dev->Dev, qc->QC, audit->Audit)
       var SEAT_MAP = {
         pm: 'PM',
         dev: 'Dev',
-        qc: 'QC'
+        qc: 'QC',
+        audit: 'Audit'
       };
       var SEAT_LABELS = SEAT_MAP;
       var SEAT_LABEL_MAP = SEAT_MAP;
@@ -1825,12 +2021,14 @@
         var defaultSeats = {
           elon: 'pm',
           jacky: 'dev',
-          jenny: 'qc'
+          jenny: 'qc',
+          kai: 'audit'
         };
         var defaultAgents = {
           pm: 'elon',
           dev: 'jacky',
-          qc: 'jenny'
+          qc: 'jenny',
+          audit: 'kai'
         };
 
         var sList = Array.isArray(seats) ? seats : [];
@@ -2075,30 +2273,23 @@
       var goalsList = document.getElementById('goals-list');
       var logList = document.getElementById('log-list');
       var queueList = document.getElementById('queue-list');
-
-      var taskTablist = document.getElementById('task-tablist');
-      var taskTabpanel = document.getElementById('task-tabpanel');
-      var taskTableBody = document.getElementById('task-table-body');
-
-      var countPending = document.getElementById('count-pending');
-      var countInDev = document.getElementById('count-in_dev');
-      var countAwaitingQc = document.getElementById('count-awaiting_qc');
-      var countPassed = document.getElementById('count-passed');
-      var countReturned = document.getElementById('count-returned');
-
-      var tabCounts = {
-        pending: countPending,
-        in_dev: countInDev,
-        awaiting_qc: countAwaitingQc,
-        passed: countPassed,
-        returned: countReturned
-      };
+      var goalsContainer = document.getElementById('goals-container');
 
       var TASK_TAB_KEYS = ['pending', 'in_dev', 'awaiting_qc', 'passed', 'returned'];
       var userSelectedTab = null;
       var lastTasksFingerprint = null;
       var currentActiveTab = 'pending';
-      var latestTasks = [];
+      var goalTabSelections = {};
+      var goalTicketsFingerprints = {};
+
+      var PIPELINE_STAGES = [
+        { key: 'intake', label: 'Tiếp nhận' },
+        { key: 'plan', label: 'Lập kế hoạch' },
+        { key: 'build', label: 'Đang làm' },
+        { key: 'verify', label: 'Kiểm thử' },
+        { key: 'audit', label: 'Kiểm tra bảo mật' },
+        { key: 'release', label: 'Phát hành' }
+      ];
 
       function getTasksFingerprint(tasks) {
         if (!Array.isArray(tasks)) return '';
@@ -2118,15 +2309,20 @@
         return parts.join('|');
       }
 
-      function resolveActiveTab(tasks) {
+      function resolveActiveTab(tasks, goalKey) {
+        var userSelected = goalKey ? goalTabSelections[goalKey] : userSelectedTab;
+        var lastFp = goalKey ? goalTicketsFingerprints[goalKey] : lastTasksFingerprint;
         var currentFingerprint = getTasksFingerprint(tasks);
-        if (lastTasksFingerprint !== null && currentFingerprint !== lastTasksFingerprint) {
-          userSelectedTab = null;
+        if (lastFp !== null && lastFp !== undefined && currentFingerprint !== lastFp) {
+          userSelected = null;
+          if (goalKey) goalTabSelections[goalKey] = null;
+          else userSelectedTab = null;
         }
-        lastTasksFingerprint = currentFingerprint;
+        if (goalKey) goalTicketsFingerprints[goalKey] = currentFingerprint;
+        else lastTasksFingerprint = currentFingerprint;
 
-        if (userSelectedTab) {
-          return userSelectedTab;
+        if (userSelected) {
+          return userSelected;
         }
 
         var list = Array.isArray(tasks) ? tasks : [];
@@ -2161,9 +2357,6 @@
             tabBtn.tabIndex = isActive ? 0 : -1;
           }
         });
-        if (taskTabpanel) {
-          taskTabpanel.setAttribute('aria-labelledby', 'tab-' + activeKey);
-        }
         var taskTabsNav = document.getElementById('task-tablist');
         if (taskTabsNav) {
           taskTabsNav.setAttribute('data-active-state', activeKey);
@@ -2172,10 +2365,30 @@
         }
       }
 
-      function renderTaskTable(tasks, activeKey) {
-        if (!taskTableBody) return;
-        clearChildren(taskTableBody);
+      function handleTabKeydown(e, activeTab, selectFn) {
+        var active = activeTab || currentActiveTab;
+        var currentIdx = TASK_TAB_KEYS.indexOf(active);
+        if (currentIdx === -1) currentIdx = 0;
 
+        if (e.key === 'ArrowRight' || e.key === 'Right') {
+          e.preventDefault();
+          var nextIdx = (currentIdx + 1) % TASK_TAB_KEYS.length;
+          (selectFn || selectTab)(TASK_TAB_KEYS[nextIdx], true);
+        } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
+          e.preventDefault();
+          var prevIdx = (currentIdx - 1 + TASK_TAB_KEYS.length) % TASK_TAB_KEYS.length;
+          (selectFn || selectTab)(TASK_TAB_KEYS[prevIdx], true);
+        }
+      }
+
+      function renderTicketTable(tasks, activeKey, tbodyEl) {
+        var tbody = tbodyEl;
+        if (!tbody) {
+          var el = document.getElementById('task-table-body');
+          if (el) tbody = el;
+        }
+        if (!tbody) return;
+        clearChildren(tbody);
         var list = Array.isArray(tasks) ? tasks : [];
         var filtered = list.filter(function (t) {
           if (activeKey === 'returned') {
@@ -2189,14 +2402,15 @@
           var td = document.createElement('td');
           td.colSpan = 4;
           td.className = 'empty-placeholder';
-          td.textContent = 'Không có thẻ';
+          td.textContent = 'Không có ticket';
           tr.appendChild(td);
-          taskTableBody.appendChild(tr);
+          tbody.appendChild(tr);
           return;
         }
 
         filtered.forEach(function (t) {
           var tr = document.createElement('tr');
+          tr.className = 'ticket-row';
 
           var tdId = document.createElement('td');
           tdId.className = 'col-id';
@@ -2205,12 +2419,12 @@
 
           var tdGoal = document.createElement('td');
           tdGoal.className = 'col-goal';
-          tdGoal.textContent = t.goal || '(Chưa có mô tả)';
+          tdGoal.textContent = t.goal || t.title || '(Chưa có mô tả)';
           tr.appendChild(tdGoal);
 
           var tdFixes = document.createElement('td');
           tdFixes.className = 'col-fixes';
-          tdFixes.textContent = String(t.fixRounds != null ? t.fixRounds : 0);
+          tdFixes.textContent = String(t.fix_rounds != null ? t.fix_rounds : (t.fixRounds != null ? t.fixRounds : 0));
           tr.appendChild(tdFixes);
 
           var tdUpdated = document.createElement('td');
@@ -2218,47 +2432,428 @@
           tdUpdated.textContent = (t.updatedAt || t.updated) ? formatTime(t.updatedAt || t.updated) : '—';
           tr.appendChild(tdUpdated);
 
-          taskTableBody.appendChild(tr);
+          tbody.appendChild(tr);
         });
       }
+      var renderTaskTable = renderTicketTable;
 
-      function selectTab(tabKey, focus) {
-        userSelectedTab = tabKey;
-        currentActiveTab = tabKey;
-        updateTabUI(tabKey);
-        renderTaskTable(latestTasks, tabKey);
-        if (focus) {
-          var btn = document.getElementById('tab-' + tabKey);
-          if (btn) btn.focus();
+      async function toggleTicketHistory(ticketId, containerEl) {
+        if (containerEl.dataset.loaded === 'true') {
+          setDisplay(containerEl, containerEl.style.display === 'none');
+          return;
         }
-      }
+        containerEl.dataset.loaded = 'true';
+        setDisplay(containerEl, true);
+        clearChildren(containerEl);
+        var loadingEl = document.createElement('div');
+        loadingEl.className = 'empty-placeholder';
+        loadingEl.textContent = 'Đang tải lịch sử…';
+        containerEl.appendChild(loadingEl);
+        try {
+          var res = await fetch('/api/tickets/' + encodeURIComponent(ticketId) + '/history');
+          if (!res.ok) throw new Error('Không thể tải lịch sử');
+          var list = await res.json();
+          clearChildren(containerEl);
+          if (!Array.isArray(list) || list.length === 0) {
+            var emptyEl = document.createElement('div');
+            emptyEl.className = 'empty-placeholder';
+            emptyEl.textContent = 'Chưa có lịch sử thay đổi';
+            containerEl.appendChild(emptyEl);
+            return;
+          }
+          list.forEach(function (h) {
+            var entry = document.createElement('div');
+            entry.className = 'history-entry';
 
-      function handleTabKeydown(e) {
-        var currentIdx = TASK_TAB_KEYS.indexOf(currentActiveTab);
-        if (currentIdx === -1) currentIdx = 0;
+            var timeEl = document.createElement('span');
+            timeEl.className = 'history-time';
+            timeEl.textContent = formatTime(h.at);
+            entry.appendChild(timeEl);
 
-        if (e.key === 'ArrowRight' || e.key === 'Right') {
-          e.preventDefault();
-          var nextIdx = (currentIdx + 1) % TASK_TAB_KEYS.length;
-          selectTab(TASK_TAB_KEYS[nextIdx], true);
-        } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
-          e.preventDefault();
-          var prevIdx = (currentIdx - 1 + TASK_TAB_KEYS.length) % TASK_TAB_KEYS.length;
-          selectTab(TASK_TAB_KEYS[prevIdx], true);
-        }
-      }
+            var whoEl = document.createElement('span');
+            whoEl.className = 'history-who';
+            whoEl.textContent = '[' + (h.by || 'system') + ']';
+            entry.appendChild(whoEl);
 
-      if (taskTablist) {
-        taskTablist.addEventListener('keydown', handleTabKeydown);
-      }
-      TASK_TAB_KEYS.forEach(function (key) {
-        var tabBtn = document.getElementById('tab-' + key);
-        if (tabBtn) {
-          tabBtn.addEventListener('click', function () {
-            selectTab(key, false);
+            var transEl = document.createElement('span');
+            transEl.className = 'history-trans';
+            transEl.textContent = (h.from_state || 'none') + ' → ' + (h.to_state || 'none');
+            entry.appendChild(transEl);
+
+            if (h.reason) {
+              var reasonEl = document.createElement('span');
+              reasonEl.className = 'history-reason';
+              reasonEl.textContent = '(' + h.reason + ')';
+              entry.appendChild(reasonEl);
+            }
+
+            containerEl.appendChild(entry);
           });
+        } catch (err) {
+          clearChildren(containerEl);
+          var errEl = document.createElement('div');
+          errEl.className = 'empty-placeholder';
+          errEl.style.color = 'var(--error-text, var(--danger))';
+          errEl.textContent = err.message || 'Lỗi tải lịch sử';
+          containerEl.appendChild(errEl);
         }
-      });
+      }
+
+      function renderGoals(goals, seats) {
+        var container = document.getElementById('goals-container');
+        if (!container) return;
+        clearChildren(container);
+
+        var list = Array.isArray(goals) ? goals.slice() : [];
+        if (list.length === 0) {
+          var empty = document.createElement('div');
+          empty.className = 'empty-placeholder';
+          empty.textContent = 'Chưa có goal nào';
+          container.appendChild(empty);
+          return;
+        }
+
+        // Mới nhất ở trên (n giảm dần)
+        list.sort(function (a, b) { return b.n - a.n; });
+
+        var hasAuditSeat = false;
+        if (Array.isArray(seats)) {
+          hasAuditSeat = seats.some(function (s) { return s.seat === 'audit' && s.agent; });
+        }
+
+        list.forEach(function (g) {
+          var card = document.createElement('div');
+          card.className = 'goal-group-card';
+          card.setAttribute('data-goal-n', String(g.n));
+
+          // 1. Goal header: G<n> · <tiêu đề> · <passed>/<total> đạt
+          var header = document.createElement('div');
+          header.className = 'goal-group-header';
+
+          var titleWrap = document.createElement('div');
+          titleWrap.className = 'goal-group-title';
+
+          var titleSpan = document.createElement('span');
+          titleSpan.textContent = 'G' + g.n + ' · ' + (g.title || '') + ' · ' + (g.passed || 0) + '/' + (g.total || 0) + ' đạt';
+          titleWrap.appendChild(titleSpan);
+          header.appendChild(titleWrap);
+
+          // Nút Duyệt merge: chỉ hiện khi goal ở qc_done (không audit) hoặc audit_passed
+          var canApprove = hasAuditSeat ? (g.state === 'audit_passed') : (g.state === 'qc_done' || g.state === 'audit_passed');
+          if (canApprove) {
+            var actions = document.createElement('div');
+            actions.className = 'goal-group-actions';
+            var approveGoalBtn = document.createElement('button');
+            approveGoalBtn.type = 'button';
+            approveGoalBtn.className = 'btn btn-primary btn-approve-goal';
+            approveGoalBtn.textContent = 'Duyệt merge';
+            approveGoalBtn.addEventListener('click', async function () {
+              if (!confirm('Duyệt merge goal G' + g.n + ' vào nhánh chính?')) {
+                return;
+              }
+              approveGoalBtn.disabled = true;
+              try {
+                var res = await postJson('/api/goal/approve', { goal: 'G' + g.n });
+                if (res && res.ok) {
+                  showFeedback(topFeedback, 'Đã duyệt và merge goal G' + g.n + ' (' + (res.sha || '').slice(0, 7) + ')', false);
+                } else {
+                  showFeedback(topFeedback, (res && res.message) || 'Lỗi duyệt goal', true);
+                }
+              } catch (err) {
+                showFeedback(topFeedback, err.message, true);
+              } finally {
+                approveGoalBtn.disabled = false;
+              }
+            });
+            actions.appendChild(approveGoalBtn);
+            header.appendChild(actions);
+          }
+
+          card.appendChild(header);
+
+          // 2. Thanh pipeline 6 chặng
+          var pipeline = document.createElement('div');
+          pipeline.className = 'pipeline-bar';
+          PIPELINE_STAGES.forEach(function (st, idx) {
+            if (idx > 0) {
+              var arrow = document.createElement('span');
+              arrow.className = 'pipeline-arrow';
+              arrow.textContent = '→';
+              pipeline.appendChild(arrow);
+            }
+            var step = document.createElement('span');
+            step.className = 'pipeline-step';
+            step.setAttribute('data-stage', st.key);
+            if (g.stage === st.key) {
+              step.classList.add('stage-active');
+            }
+            step.textContent = st.label;
+            pipeline.appendChild(step);
+          });
+          card.appendChild(pipeline);
+
+          // 3. 5 tab trạng thái cho ticket
+          var tickets = Array.isArray(g.tickets) ? g.tickets : [];
+          var counts = { pending: 0, in_dev: 0, awaiting_qc: 0, passed: 0, returned: 0 };
+          tickets.forEach(function (t) {
+            if (t.state === 'pending') counts.pending++;
+            else if (t.state === 'in_dev') counts.in_dev++;
+            else if (t.state === 'awaiting_qc') counts.awaiting_qc++;
+            else if (t.state === 'passed') counts.passed++;
+            else counts.returned++;
+          });
+
+          // Resolve active tab for this goal
+          var goalKey = 'G' + g.n;
+          var activeTab = (typeof resolveActiveTab === 'function') ? resolveActiveTab(tickets, goalKey) : 'pending';
+
+          var tabNav = document.createElement('div');
+          tabNav.className = 'task-tabs-nav';
+          tabNav.setAttribute('role', 'tablist');
+          tabNav.setAttribute('aria-label', 'Bảng ticket G' + g.n);
+          tabNav.setAttribute('data-active-state', activeTab);
+          tabNav.style.borderBottomColor = 'var(--tab-' + (activeTab === 'in_dev' ? 'in-dev' : (activeTab === 'awaiting_qc' ? 'awaiting-qc' : activeTab)) + ')';
+
+          var panelId = 'goal-G' + g.n + '-tabpanel';
+          var panel = document.createElement('div');
+          panel.className = 'task-tabpanel';
+          panel.setAttribute('role', 'tabpanel');
+          panel.id = panelId;
+          panel.setAttribute('aria-labelledby', 'goal-G' + g.n + '-tab-' + activeTab);
+          panel.tabIndex = 0;
+
+          var table = document.createElement('table');
+          table.className = 'task-table';
+
+          var colgroup = document.createElement('colgroup');
+
+          var colId = document.createElement('col');
+          colId.className = 'col-id';
+          colId.style.width = '72px';
+          colgroup.appendChild(colId);
+
+          var colGoal = document.createElement('col');
+          colGoal.className = 'col-goal';
+          colgroup.appendChild(colGoal);
+
+          var colFixes = document.createElement('col');
+          colFixes.className = 'col-fixes';
+          colFixes.style.width = '80px';
+          colgroup.appendChild(colFixes);
+
+          var colUpdated = document.createElement('col');
+          colUpdated.className = 'col-updated';
+          colUpdated.style.width = '96px';
+          colgroup.appendChild(colUpdated);
+
+          table.appendChild(colgroup);
+
+          var thead = document.createElement('thead');
+          var trHead = document.createElement('tr');
+
+          var thId = document.createElement('th');
+          thId.scope = 'col';
+          thId.className = 'col-id';
+          thId.textContent = 'ID';
+          trHead.appendChild(thId);
+
+          var thGoal = document.createElement('th');
+          thGoal.scope = 'col';
+          thGoal.className = 'col-goal';
+          thGoal.textContent = 'Mục tiêu';
+          trHead.appendChild(thGoal);
+
+          var thFixes = document.createElement('th');
+          thFixes.scope = 'col';
+          thFixes.className = 'col-fixes';
+          thFixes.textContent = 'Vòng sửa';
+          trHead.appendChild(thFixes);
+
+          var thUpdated = document.createElement('th');
+          thUpdated.scope = 'col';
+          thUpdated.className = 'col-updated';
+          thUpdated.textContent = 'Cập nhật';
+          trHead.appendChild(thUpdated);
+
+          thead.appendChild(trHead);
+          table.appendChild(thead);
+
+          var tbody = document.createElement('tbody');
+          table.appendChild(tbody);
+          panel.appendChild(table);
+
+          function renderTicketItems(selectedTabKey) {
+            clearChildren(tbody);
+            var filtered = tickets.filter(function (t) {
+              if (selectedTabKey === 'returned') {
+                return t.state === 'returned' || (t.state !== 'pending' && t.state !== 'in_dev' && t.state !== 'awaiting_qc' && t.state !== 'passed');
+              }
+              return t.state === selectedTabKey;
+            });
+
+            if (filtered.length === 0) {
+              var trEmpty = document.createElement('tr');
+              var tdEmpty = document.createElement('td');
+              tdEmpty.colSpan = 4;
+              tdEmpty.className = 'empty-placeholder';
+              tdEmpty.textContent = 'Không có ticket';
+              trEmpty.appendChild(tdEmpty);
+              tbody.appendChild(trEmpty);
+              return;
+            }
+
+            filtered.forEach(function (t) {
+              var tr = document.createElement('tr');
+              tr.className = 'ticket-row';
+              tr.tabIndex = 0;
+              tr.style.cursor = 'pointer';
+
+              var tdId = document.createElement('td');
+              tdId.className = 'col-id';
+              tdId.textContent = t.id || '—';
+              tr.appendChild(tdId);
+
+              var tdTitle = document.createElement('td');
+              tdTitle.className = 'col-goal';
+              var titleSpan = document.createElement('span');
+              titleSpan.className = 'ticket-title';
+              // Format: #<number>/<of> · <tiêu đề>
+              titleSpan.textContent = '#' + t.number + '/' + t.of + ' · ' + (t.title || '');
+              tdTitle.appendChild(titleSpan);
+
+              if (t.type || t.size) {
+                var meta = document.createElement('span');
+                meta.className = 'ticket-meta';
+                meta.style.marginLeft = '8px';
+                if (t.type) {
+                  var typeBadge = document.createElement('span');
+                  typeBadge.className = 'badge ticket-badge';
+                  typeBadge.textContent = t.type;
+                  meta.appendChild(typeBadge);
+                }
+                if (t.size) {
+                  var sizeBadge = document.createElement('span');
+                  sizeBadge.className = 'badge ticket-badge';
+                  sizeBadge.textContent = t.size;
+                  meta.appendChild(sizeBadge);
+                }
+                tdTitle.appendChild(meta);
+              }
+              tr.appendChild(tdTitle);
+
+              var tdFixes = document.createElement('td');
+              tdFixes.className = 'col-fixes';
+              tdFixes.textContent = String(t.fix_rounds != null ? t.fix_rounds : (t.fixRounds != null ? t.fixRounds : 0));
+              tr.appendChild(tdFixes);
+
+              var tdUpdated = document.createElement('td');
+              tdUpdated.className = 'col-updated';
+              tdUpdated.textContent = (t.updatedAt || t.updated) ? formatTime(t.updatedAt || t.updated) : '—';
+              tr.appendChild(tdUpdated);
+
+              tbody.appendChild(tr);
+
+              // Expandable history row
+              var trHistory = document.createElement('tr');
+              trHistory.className = 'ticket-history-row';
+              trHistory.style.display = 'none';
+
+              var tdHistory = document.createElement('td');
+              tdHistory.colSpan = 4;
+              tdHistory.style.padding = '0';
+
+              var historyPanel = document.createElement('div');
+              historyPanel.className = 'ticket-history-panel';
+              tdHistory.appendChild(historyPanel);
+              trHistory.appendChild(tdHistory);
+
+              tbody.appendChild(trHistory);
+
+              function toggleRowHistory() {
+                var isHidden = trHistory.style.display === 'none';
+                trHistory.style.display = isHidden ? '' : 'none';
+                if (isHidden) {
+                  toggleTicketHistory(t.id, historyPanel);
+                }
+              }
+
+              tr.addEventListener('click', toggleRowHistory);
+              tr.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleRowHistory();
+                }
+              });
+            });
+          }
+
+          function selectGoalTab(tabKey, focus) {
+            goalTabSelections[goalKey] = tabKey;
+            Array.from(tabNav.children).forEach(function (btn) {
+              var isCurrent = btn.getAttribute('data-state') === tabKey;
+              btn.setAttribute('aria-selected', isCurrent ? 'true' : 'false');
+              btn.tabIndex = isCurrent ? 0 : -1;
+              if (isCurrent && focus) {
+                btn.focus();
+              }
+            });
+            tabNav.setAttribute('data-active-state', tabKey);
+            tabNav.style.borderBottomColor = 'var(--tab-' + (tabKey === 'in_dev' ? 'in-dev' : (tabKey === 'awaiting_qc' ? 'awaiting-qc' : tabKey)) + ')';
+            panel.setAttribute('aria-labelledby', 'goal-G' + g.n + '-tab-' + tabKey);
+            renderTicketItems(tabKey);
+          }
+
+          tabNav.addEventListener('keydown', function (e) {
+            var curTab = goalTabSelections[goalKey] || activeTab;
+            handleTabKeydown(e, curTab, function (newKey, focus) {
+              selectGoalTab(newKey, focus);
+            });
+          });
+
+          TASK_TAB_KEYS.forEach(function (tabKey) {
+            var tabBtn = document.createElement('button');
+            tabBtn.type = 'button';
+            tabBtn.className = 'task-tab';
+            tabBtn.setAttribute('role', 'tab');
+            tabBtn.id = 'goal-G' + g.n + '-tab-' + tabKey;
+            tabBtn.setAttribute('data-tab', tabKey);
+            tabBtn.setAttribute('data-state', tabKey);
+            var isSel = (tabKey === activeTab);
+            tabBtn.setAttribute('aria-selected', isSel ? 'true' : 'false');
+            tabBtn.setAttribute('aria-controls', panelId);
+            tabBtn.tabIndex = isSel ? 0 : -1;
+
+            var labelSpan = document.createElement('span');
+            var tabLabelMap = {
+              pending: 'Chờ',
+              in_dev: 'Đang làm',
+              awaiting_qc: 'Chờ test',
+              passed: 'Đạt',
+              returned: 'Trả về'
+            };
+            labelSpan.textContent = tabLabelMap[tabKey] || tabKey;
+            tabBtn.appendChild(labelSpan);
+
+            var countSpan = document.createElement('span');
+            countSpan.className = 'task-tab-count';
+            countSpan.id = 'count-G' + g.n + '-' + tabKey;
+            countSpan.textContent = String(counts[tabKey] || 0);
+            tabBtn.appendChild(countSpan);
+
+            tabBtn.addEventListener('click', function () {
+              selectGoalTab(tabKey, false);
+            });
+
+            tabNav.appendChild(tabBtn);
+          });
+
+          card.appendChild(tabNav);
+          card.appendChild(panel);
+          renderTicketItems(activeTab);
+
+          container.appendChild(card);
+        });
+      }
 
       var notesList = document.getElementById('notes-list');
       var recipientRadios = document.getElementById('recipient-radios');
@@ -2678,7 +3273,7 @@
           }
         }
 
-        // Seats (pm, dev, qc)
+        // Seats (pm, dev, qc, audit)
         var seatsMap = {};
         if (Array.isArray(state.seats)) {
           state.seats.forEach(function (s) {
@@ -2689,27 +3284,15 @@
         renderSeat('pm', seatsMap['pm'], state.holder === 'pm', isBusy);
         renderSeat('dev', seatsMap['dev'], state.holder === 'dev', isBusy);
         renderSeat('qc', seatsMap['qc'], state.holder === 'qc', isBusy);
+        if (seatsMap['audit']) {
+          setDisplay(document.getElementById('seat-card-audit'), true, 'flex');
+          renderSeat('audit', seatsMap['audit'], state.holder === 'audit', isBusy);
+        } else {
+          setDisplay(document.getElementById('seat-card-audit'), false);
+        }
 
-        // Task Board
-        latestTasks = Array.isArray(state.tasks) ? state.tasks : [];
-
-        var counts = { pending: 0, in_dev: 0, awaiting_qc: 0, passed: 0, returned: 0 };
-        latestTasks.forEach(function (t) {
-          if (t.state === 'pending') counts.pending++;
-          else if (t.state === 'in_dev') counts.in_dev++;
-          else if (t.state === 'awaiting_qc') counts.awaiting_qc++;
-          else if (t.state === 'passed') counts.passed++;
-          else counts.returned++;
-        });
-
-        TASK_TAB_KEYS.forEach(function (k) {
-          var el = tabCounts[k];
-          if (el) el.textContent = String(counts[k]);
-        });
-
-        currentActiveTab = resolveActiveTab(latestTasks);
-        updateTabUI(currentActiveTab);
-        renderTaskTable(latestTasks, currentActiveTab);
+        // Goals & Pipeline & Tickets
+        renderGoals(state.goals, state.seats);
 
         // Logs
         if (logList) {
@@ -2917,7 +3500,7 @@
         });
       }
 
-      ['pm', 'dev', 'qc'].forEach(function (sk) {
+      ['pm', 'dev', 'qc', 'audit'].forEach(function (sk) {
         var selectEl = document.getElementById(sk + '-agent-select');
         if (selectEl) {
           selectEl.addEventListener('change', async function () {
@@ -2944,7 +3527,7 @@
 
       if (stopBtn) {
         stopBtn.addEventListener('click', async function () {
-          if (!confirm('Bạn có chắc chắn muốn Dừng khẩn cấp? Agent đang chạy sẽ bị dừng và hàng đợi sẽ bị xóa.')) {
+          if (!confirm('Bạn có chắc chắn muốn Dừng? Agent đang chạy sẽ bị dừng và hàng đợi sẽ bị xóa.')) {
             return;
           }
           stopBtn.disabled = true;
@@ -2953,7 +3536,7 @@
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
-              showFeedback(topFeedback, 'Đã gửi lệnh Dừng khẩn cấp', false);
+              showFeedback(topFeedback, 'Đã gửi lệnh Dừng', false);
             }
           } catch (err) {
             showFeedback(topFeedback, err.message, true);

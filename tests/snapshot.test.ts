@@ -109,7 +109,7 @@ describe('Snapshot and Log Tail', () => {
       expect(snap.project).toBeNull();
       expect(snap.session).toBeNull();
       expect(snap.holder).toBeNull();
-      expect(snap.tasks).toEqual([]);
+      expect(snap.goals).toEqual([]);
       expect(snap.log).toEqual([]);
       expect(snap.queue).toEqual([]);
 
@@ -119,6 +119,7 @@ describe('Snapshot and Log Tail', () => {
         agent: cfg.seats.pm,
         tool: cfg.agents[cfg.seats.pm].tool,
         status: 'idle',
+        ticket: null,
         taskId: null,
         since: null,
         turns: 0,
@@ -132,6 +133,7 @@ describe('Snapshot and Log Tail', () => {
         agent: cfg.seats.dev,
         tool: cfg.agents[cfg.seats.dev].tool,
         status: 'idle',
+        ticket: null,
         taskId: null,
         since: null,
         turns: 0,
@@ -145,6 +147,7 @@ describe('Snapshot and Log Tail', () => {
         agent: cfg.seats.qc,
         tool: cfg.agents[cfg.seats.qc].tool,
         status: 'idle',
+        ticket: null,
         taskId: null,
         since: null,
         turns: 0,
@@ -219,6 +222,7 @@ describe('Snapshot and Log Tail', () => {
       const qcCard = snap.seats.find((s) => s.seat === 'qc');
 
       expect(devCard?.status).toBe('running');
+      expect(devCard?.ticket).toBe('T-001');
       expect(devCard?.taskId).toBe('T-001');
       expect(devCard?.since).toBeTypeOf('string');
       expect(devCard?.turns).toBe(1);
@@ -233,78 +237,189 @@ describe('Snapshot and Log Tail', () => {
       expect(qcCard?.lastLine).toBe('');
     });
 
-    it('loads task cards and goals, gracefully falling back to empty string on missing file', () => {
-      const projDir = join(tmpDir, 'task-proj');
-      const tasksDir = join(projDir, 'team', 'tasks');
-      mkdirSync(tasksDir, { recursive: true });
+    it('P4-T9: builds goals from store and disk tickets with passed/total count and stages', () => {
+      const projDir = join(tmpDir, 'ticket-proj');
+      mkdirSync(join(projDir, 'team', 'tickets'), { recursive: true });
+      writeFileSync(join(projDir, 'team', 'project.yaml'), 'name: Proj\nkey: PRJ\n');
       store.setActiveProject(projDir);
 
-      // Write valid task card for T-001
-      const cardContent = `---
-id: T-001
-goal: Add authentication flow
-scope:
-  - src/auth.ts
-acceptance:
-  - Tokens are generated
-done_when: all tests pass
----
-# T-001
-`;
-      writeFileSync(join(tasksDir, 'T-001.md'), cardContent);
+      // Create goal G1 in store
+      store.createGoal(projDir, 'UI Dashboard');
+      store.setGoalState(projDir, 1, 'in_progress', 'pm');
 
-      const sessId = store.createSession(['Goal Auth'], projDir);
-      store.setTaskState(sessId, 'T-001', 'in_dev', 0);
-      store.setTaskState(sessId, 'T-002', 'pending', 1);
+      // Create 2 tickets: PRJ-0001 (passed), PRJ-0002 (pending)
+      writeFileSync(
+        join(projDir, 'team', 'tickets', 'PRJ-0001.md'),
+        `---
+id: PRJ-0001
+goal: G1
+number: 1
+of: 2
+title: Ticket 1
+type: feat
+size: S
+scope: [src/ui.ts]
+acceptance: [ok]
+done_when: done
+from_audit: false
+---
+`
+      );
+      writeFileSync(
+        join(projDir, 'team', 'tickets', 'PRJ-0002.md'),
+        `---
+id: PRJ-0002
+goal: G1
+number: 2
+of: 2
+title: Ticket 2
+type: fix
+size: M
+scope: [src/fix.ts]
+acceptance: [ok]
+done_when: done
+from_audit: false
+---
+`
+      );
+
+      store.upsertTicket(projDir, {
+        id: 'PRJ-0001',
+        goal: 'G1',
+        number: 1,
+        of: 2,
+        title: 'Ticket 1',
+        type: 'feat',
+        size: 'S',
+        scope: ['src/ui.ts'],
+        acceptance: ['ok'],
+        done_when: 'done',
+        depends_on: [],
+        from_audit: false,
+      });
+      store.setTicketState(projDir, 'PRJ-0001', 'passed', 'qc', 'passed ok');
+
+      store.upsertTicket(projDir, {
+        id: 'PRJ-0002',
+        goal: 'G1',
+        number: 2,
+        of: 2,
+        title: 'Ticket 2',
+        type: 'fix',
+        size: 'M',
+        scope: ['src/fix.ts'],
+        acceptance: ['ok'],
+        done_when: 'done',
+        depends_on: [],
+        from_audit: false,
+      });
+      store.setTicketState(projDir, 'PRJ-0002', 'pending', 'pm', 'created');
 
       const snap = buildSnapshot(store, cfg);
 
-      expect(snap.tasks).toEqual([
-        { id: 'T-001', goal: 'Add authentication flow', state: 'in_dev', fixRounds: 0 },
-        { id: 'T-002', goal: '', state: 'pending', fixRounds: 1 },
-      ]);
+      expect(snap.goals).toHaveLength(1);
+      const g1 = snap.goals[0];
+      expect(g1.n).toBe(1);
+      expect(g1.title).toBe('UI Dashboard');
+      expect(g1.state).toBe('in_progress');
+      expect(g1.stage).toBe('build');
+      expect(g1.passed).toBe(1);
+      expect(g1.total).toBe(2);
+      expect(g1.tickets).toHaveLength(2);
+      expect(g1.tickets[0].id).toBe('PRJ-0001');
+      expect(g1.tickets[0].state).toBe('passed');
+      expect(g1.tickets[1].id).toBe('PRJ-0002');
+      expect(g1.tickets[1].state).toBe('pending');
     });
 
-    it('does not leak goal when task file is symlinked outside or task id contains "../"', () => {
-      const projDir = join(tmpDir, 'symlink-proj');
-      const tasksDir = join(projDir, 'team', 'tasks');
-      mkdirSync(tasksDir, { recursive: true });
+    it('P4-T9: calculates goal stage across all 6 possible stages', () => {
+      const projDir = join(tmpDir, 'stages-proj');
+      mkdirSync(join(projDir, 'team', 'tickets'), { recursive: true });
+      writeFileSync(join(projDir, 'team', 'project.yaml'), 'name: Proj\nkey: STG\n');
       store.setActiveProject(projDir);
 
-      const outsideDir = mkdtempSync(join(tmpdir(), 'btm-outside-'));
-      const secretCard = `---
-id: T-999
-goal: Secret Outside Goal
-scope:
-  - secret.txt
-acceptance:
-  - secret
-done_when: secret
----
-# Secret
-`;
-      const outsideFile = join(outsideDir, 'secret.md');
-      writeFileSync(outsideFile, secretCard);
+      // 1. open -> intake
+      store.createGoal(projDir, 'Intake Goal');
+      store.setGoalState(projDir, 1, 'open', 'user');
 
-      // Symlink outside file into team/tasks/T-002.md
-      symlinkSync(outsideFile, join(tasksDir, 'T-002.md'));
+      // 2. in_progress without tickets or with PM holder -> plan
+      store.createGoal(projDir, 'Plan Goal');
+      store.setGoalState(projDir, 2, 'in_progress', 'pm');
 
-      // Put a secret card at team/secret.md to test '../secret'
-      writeFileSync(join(projDir, 'team', 'secret.md'), secretCard);
+      // 3. in_progress with ticket in in_dev -> build
+      store.createGoal(projDir, 'Build Goal');
+      store.setGoalState(projDir, 3, 'in_progress', 'dev');
+      store.upsertTicket(projDir, { id: 'STG-0001', goal: 'G3', number: 1, of: 1, title: 'T1', type: 'feat', size: 'S', scope: ['src/'], acceptance: ['ok'], done_when: 'done', depends_on: [], from_audit: false });
+      store.setTicketState(projDir, 'STG-0001', 'in_dev', 'dev', 'working');
 
-      const sessId = store.createSession(['Goal Test'], projDir);
-      store.setTaskState(sessId, 'T-002', 'pending', 0);
-      store.setTaskState(sessId, '../secret', 'pending', 0);
+      // 4. in_progress with ticket awaiting_qc -> verify
+      store.createGoal(projDir, 'Verify Goal');
+      store.setGoalState(projDir, 4, 'in_progress', 'qc');
+      store.upsertTicket(projDir, { id: 'STG-0002', goal: 'G4', number: 1, of: 1, title: 'T2', type: 'feat', size: 'S', scope: ['src/'], acceptance: ['ok'], done_when: 'done', depends_on: [], from_audit: false });
+      store.setTicketState(projDir, 'STG-0002', 'awaiting_qc', 'dev', 'ready');
+
+      // 5. qc_done with audit configured -> audit
+      store.createGoal(projDir, 'Audit Goal');
+      store.setGoalState(projDir, 5, 'qc_done', 'qc');
+
+      // 6. audit_passed / approved / merged -> release
+      store.createGoal(projDir, 'Release Goal');
+      store.setGoalState(projDir, 6, 'audit_passed', 'kai');
+
+      const auditCfg = { ...cfg, seats: { ...cfg.seats, audit: 'kai' } };
+      const snapWithAudit = buildSnapshot(store, auditCfg);
+
+      const findGoal = (n: number) => snapWithAudit.goals.find((g) => g.n === n);
+      expect(findGoal(1)?.stage).toBe('intake');
+      expect(findGoal(2)?.stage).toBe('plan');
+      expect(findGoal(3)?.stage).toBe('build');
+      expect(findGoal(4)?.stage).toBe('verify');
+      expect(findGoal(5)?.stage).toBe('audit');
+      expect(findGoal(6)?.stage).toBe('release');
+
+      // If no audit configured, qc_done -> release
+      const snapNoAudit = buildSnapshot(store, cfg);
+      expect(snapNoAudit.goals.find((g) => g.n === 5)?.stage).toBe('release');
+    });
+
+    it('P4-T10 fix 1: store có goal + working tree không có project.yaml → goals vẫn hiện từ store', () => {
+      const projDir = join(tmpDir, 'no-project-yaml');
+      mkdirSync(projDir, { recursive: true });
+      store.setActiveProject(projDir);
+      store.createGoal(projDir, 'Some Goal');
+      store.upsertTicket(projDir, {
+        id: 'GTM-0001',
+        goal: 'G1',
+        number: 1,
+        of: 1,
+        title: 'Ticket from DB',
+        type: 'feat',
+        size: 'S',
+        scope: ['src/'],
+        acceptance: ['ok'],
+        done_when: 'done',
+        depends_on: [],
+        from_audit: false,
+      });
 
       const snap = buildSnapshot(store, cfg);
+      expect(snap.goals).toHaveLength(1);
+      expect(snap.goals[0].n).toBe(1);
+      expect(snap.goals[0].title).toBe('Some Goal');
+      expect(snap.goals[0].tickets).toHaveLength(1);
+      expect(snap.goals[0].tickets[0].id).toBe('GTM-0001');
+      expect(snap.goals[0].tickets[0].title).toBe('Ticket from DB');
+    });
 
-      const t002 = snap.tasks.find((t) => t.id === 'T-002');
-      const tDotDot = snap.tasks.find((t) => t.id === '../secret');
-
-      expect(t002?.goal).toBe('');
-      expect(tDotDot?.goal).toBe('');
-
-      rmSync(outsideDir, { recursive: true, force: true });
+    it('P4-T9: includes Kai-Audit seat when seats.audit is configured', () => {
+      const auditCfg = { ...cfg, seats: { ...cfg.seats, audit: 'kai' } };
+      const snap = buildSnapshot(store, auditCfg);
+      expect(snap.seats).toHaveLength(4);
+      const auditCard = snap.seats.find((s) => s.seat === 'audit');
+      expect(auditCard).toBeDefined();
+      expect(auditCard?.agent).toBe('kai');
+      expect(auditCard?.status).toBe('idle');
+      expect(auditCard?.ticket).toBeNull();
     });
 
     it('limits snapshot log to exactly 50 newest events when there are > 50 events', () => {
@@ -440,27 +555,34 @@ done_when: secret
 
     it('includes members from cfg.agents and notes with reports', () => {
       const projDir = join(tmpDir, 'notes-proj');
-      mkdirSync(join(projDir, 'team', 'tasks'), { recursive: true });
+      mkdirSync(join(projDir, 'team', 'tickets'), { recursive: true });
       mkdirSync(join(projDir, 'team', 'reports'), { recursive: true });
+      writeFileSync(join(projDir, 'team', 'project.yaml'), 'name: Proj\nkey: TEST\n');
       store.setActiveProject(projDir);
 
-      // Create card T-001 with note N-1
+      // Create ticket TEST-0001 with note N-1
       writeFileSync(
-        join(projDir, 'team', 'tasks', 'T-001.md'),
+        join(projDir, 'team', 'tickets', 'TEST-0001.md'),
         `---
-id: T-001
-goal: Goal 1
+id: TEST-0001
+goal: G1
+number: 1
+of: 1
+title: Goal 1
+type: feat
+size: S
 scope: [src/]
 acceptance: [ok]
 done_when: done
+from_audit: false
 note: N-1
 ---
 `
       );
 
-      // Create report for T-001
+      // Create report for TEST-0001
       writeFileSync(
-        join(projDir, 'team', 'reports', 'T-001-dev.md'),
+        join(projDir, 'team', 'reports', 'TEST-0001-dev.md'),
         '## Bug\n- Bug 1\n## Cần sửa\n- Fix 1\nOK'
       );
 

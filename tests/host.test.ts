@@ -8,7 +8,9 @@ import { createHost as realCreateHost } from '../src/server/host.ts';
 import { tmpRepo } from './helpers.ts';
 import type { Runner, TurnOutput } from '../src/runner/run.ts';
 import { directPrompt } from '../src/core/prompts.ts';
-import { git } from '../src/git.ts';
+import { snapshotTurn } from '../src/core/guard.ts';
+import { acquireLock } from '../src/cli.ts';
+import { git, headSha } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
 
 // Test không gọi CLI thật để đọc Energy/đăng nhập (Plan 3 Global Constraints): mặc định monitor giả luôn OK.
@@ -38,6 +40,7 @@ describe('SessionHost', () => {
     dataDir = mkdtempSync(join(tmpdir(), 'btm-data-'));
     logDir = mkdtempSync(join(tmpdir(), 'btm-logs-'));
     repoDir = tmpRepo({
+      'team/project.yaml': 'key: GTM\n',
       'team/tasks/T-001.md': `---
 id: T-001
 goal: Sample task
@@ -295,6 +298,7 @@ done_when: done
   });
 
   it('3) khóa ngoài → command() tạo queued; nhả khóa → tick() chạy nó', async () => {
+    git(repoDir, 'checkout', '-b', 'goal/G1-task');
     const lockPath = join(dataDir, 'btm.lock');
     writeFileSync(lockPath, String(process.pid));
 
@@ -372,6 +376,7 @@ done_when: done
   });
 
   it('5) directPrompt: prompt tự do, không nhắc file thẻ; dev dùng allow, không commit; qc chỉ đọc, trả lời ngắn; host dùng nó', async () => {
+    git(repoDir, 'checkout', '-b', 'goal/G1-prompt');
     // 5.1 Check directPrompt('dev', ...)
     const devP = directPrompt('dev', 'Sửa hàm login', ['cat', 'ls']);
     expect(devP).not.toMatch(/team\/tasks/i);
@@ -436,6 +441,7 @@ done_when: done
   });
 
   it('6) lượt trực tiếp: phiên tạo cho nó được setSessionStatus "done" hoặc "error" khi xong', async () => {
+    git(repoDir, 'checkout', '-b', 'goal/G1-status');
     // 6.1 Success case -> session status 'done'
     const mockRunnerSuccess: Runner = vi.fn().mockResolvedValue({
       exitCode: 0,
@@ -513,6 +519,7 @@ done_when: done
   });
 
   it('8) dev trực tiếp commit với message "cmd <id>: <60 ký tự đầu>"', async () => {
+    git(repoDir, 'checkout', '-b', 'goal/G1-sample');
     const textLong = 'Sửa file sample.txt cho tính năng xác thực người dùng dài hơn 60 ký tự rất nhiều';
     const mockRunner: Runner = vi.fn().mockImplementation(
       async (_seat, _agent, _prompt, cwd) => {
@@ -543,7 +550,7 @@ done_when: done
 
     await host.tick();
 
-    const expectedMsg = `cmd ${cmdRes.id}: ${textLong.slice(0, 60)}`;
+    const expectedMsg = `G1: cmd ${cmdRes.id}: ${textLong.slice(0, 60)}`;
     const actualCommitMsg = git(repoDir, 'log', '-1', '--format=%s').trim();
     expect(actualCommitMsg).toBe(expectedMsg);
 
@@ -682,10 +689,12 @@ done_when: done
     const latest = store.getLatestSession(undefined, repoDir);
     expect(latest).toBeDefined();
     const session = store.getSession(latest!.id);
-    expect(session?.goals).toEqual(['Lệnh PM mở phiên']);
+    expect(session?.goals).toEqual(['1']);
+    expect(store.getGoal(repoDir, 1)?.title).toBe('Lệnh PM mở phiên');
   });
 
   it('command("qc", text) khi rảnh → chạy lượt trực tiếp, ghi lastMessage vào log_file', async () => {
+    git(repoDir, 'checkout', '-b', 'goal/G1-qc');
     let calledPrompt = '';
     const qcDone = deferred<string>();
     const mockRunner: Runner = vi.fn().mockImplementation(
@@ -856,6 +865,7 @@ done_when: done
       env: {},
     });
 
+    git(repoDir, 'checkout', '-b', 'goal/G1-stopping');
     await host.command('dev', 'Lệnh đầu tiên');
     await runnerStarted.promise;
 
@@ -903,6 +913,7 @@ done_when: done
       env: {},
     });
 
+    git(repoDir, 'checkout', '-b', 'goal/G1-awaiting');
     const cmdRes = await host.command('dev', 'Lệnh trực tiếp độc lập');
     expect(cmdRes.ok).toBe(true);
 
@@ -926,22 +937,12 @@ done_when: done
     expect(turns[0].task_id).toBe(`CMD-${cmdRes.id}`);
   });
 
-  it('dev trực tiếp: commitAll checkpoint "checkpoint before cmd <id>" TRƯỚC khi chạy runner (nếu working tree bẩn)', async () => {
+  it('dev trực tiếp: tree bẩn → từ chối dirty_tree, item cancelled, turn error, không gọi runner', async () => {
+    git(repoDir, 'checkout', '-b', 'goal/G1-dirty');
     // Tạo working tree bẩn trong repo
     writeFileSync(join(repoDir, 'dirty.txt'), 'dirty content before cmd');
 
-    let commitAtRunnerStart = '';
-    const mockRunner: Runner = vi.fn().mockImplementation(async () => {
-      // Đọc commit mới nhất ngay khi runner bắt đầu chạy
-      commitAtRunnerStart = git(repoDir, 'log', '-n', '1', '--format=%s').trim();
-      return {
-        exitCode: 0,
-        timedOut: false,
-        durationMs: 10,
-        output: 'dev done',
-        lastMessage: 'dev done',
-      };
-    });
+    const mockRunner: Runner = vi.fn();
 
     const host = createHost({
       cfg,
@@ -957,25 +958,38 @@ done_when: done
 
     await host.whenIdle();
 
-    expect(commitAtRunnerStart).toBe(`checkpoint before cmd ${cmdRes.id}`);
+    expect(mockRunner).not.toHaveBeenCalled();
+    const queue = store.listQueue(10);
+    const item = queue.find((q) => q.id === cmdRes.id);
+    expect(item?.status).toBe('cancelled');
+
+    const session = store.getLatestSession(undefined, repoDir);
+    expect(session?.status).toBe('error');
+    const turns = store.listTurns(session!.id);
+    expect(turns[0].result).toBe('error');
+    expect(turns[0].error).toBe('dirty_tree');
   });
 
   it('commitAll lỗi sau lượt trực tiếp → lượt "error", queue "done", phiên "error", trả lỗi lên log, không báo thành công', async () => {
+    git(repoDir, 'checkout', '-b', 'goal/G1-commit-fail');
     const origCommitAll = gitModule.commitAll;
     const commitSpy = vi.spyOn(gitModule, 'commitAll').mockImplementation((repo, msg, author) => {
-      if (msg.startsWith('cmd ')) {
+      if (msg.includes('cmd ')) {
         throw new Error('Simulated git commit error after runner');
       }
       return origCommitAll(repo, msg, author);
     });
 
     try {
-      const mockRunner: Runner = vi.fn().mockResolvedValue({
-        exitCode: 0,
-        timedOut: false,
-        durationMs: 10,
-        output: 'code changes done',
-        lastMessage: 'code changes done',
+      const mockRunner: Runner = vi.fn().mockImplementation(async (_s, _a, _p, cwd) => {
+        writeFileSync(join(cwd, 'sample.txt'), 'code changes done');
+        return {
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 10,
+          output: 'code changes done',
+          lastMessage: 'code changes done',
+        };
       });
 
       const host = createHost({
@@ -1053,6 +1067,7 @@ done_when: done
       env: {},
     });
 
+    git(repoDir, 'checkout', '-b', 'goal/G1-stop-dev');
     const cmdRes = await host.command('dev', 'Lệnh sửa lỗi trực tiếp');
     expect(cmdRes.ok).toBe(true);
 
@@ -1136,6 +1151,7 @@ done_when: done
       env: {},
     });
 
+    git(repoDir, 'checkout', '-b', 'goal/G1-idle');
     await host.command('dev', 'Lệnh chạy Dev');
     await runnerStarted.promise;
 
@@ -1188,6 +1204,7 @@ done_when: done
       env: {},
     });
 
+    git(repoDir, 'checkout', '-b', 'goal/G1-settle');
     await host.command('dev', 'Chạy lệnh chậm');
     await runnerStarted.promise;
 
@@ -1392,6 +1409,7 @@ done_when: done
       });
 
       store.setActiveProject(repoDir);
+      git(repoDir, 'checkout', '-b', 'goal/G1-gate');
       const res = await host.command('dev', 'Viết test mới');
       expect(res.ok).toBe(true);
 
@@ -1456,10 +1474,24 @@ done_when: done
       const mockRunner: Runner = vi.fn().mockImplementation(
         async (seat, agent, prompt, cwd) => {
           if (seat === 'pm') {
-            mkdirSync(join(cwd, 'team', 'tasks'), { recursive: true });
+            mkdirSync(join(cwd, 'team', 'tickets'), { recursive: true });
             writeFileSync(
-              join(cwd, 'team', 'tasks', 'T-001.md'),
-              `---\nid: T-001\ngoal: "Test handoff and resume"\nscope:\n  - "src/app.ts"\nacceptance:\n  - "ok"\ndone_when: "ok"\n---\n`
+              join(cwd, 'team', 'tickets', 'GTM-0001.md'),
+              `---
+id: GTM-0001
+goal: G1
+number: 1
+of: 1
+title: Test handoff and resume
+type: feat
+size: S
+scope:
+  - src/app.ts
+acceptance:
+  - ok
+done_when: ok
+---
+`
             );
             return { exitCode: 0, output: 'PM done' };
           }
@@ -1470,8 +1502,8 @@ done_when: done
               writeFileSync(join(cwd, 'src', 'app.ts'), 'code from jacky');
               mkdirSync(join(cwd, 'team', 'reports'), { recursive: true });
               writeFileSync(
-                join(cwd, 'team', 'reports', 'T-001-dev.md'),
-                `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+                join(cwd, 'team', 'reports', 'GTM-0001-dev.md'),
+                `GTM-0001 · G1#1/1 · jacky-Dev\n# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
               );
               // Gate check will fail for jacky on the 2nd dev turn
               devGateOk = false;
@@ -1483,8 +1515,8 @@ done_when: done
               mkdirSync(join(cwd, 'src'), { recursive: true });
               writeFileSync(join(cwd, 'src', 'app.ts'), 'code from jenny');
               writeFileSync(
-                join(cwd, 'team', 'reports', 'T-001-dev.md'),
-                `# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
+                join(cwd, 'team', 'reports', 'GTM-0001-dev.md'),
+                `GTM-0001 · G1#1/1 · jenny-Dev\n# Dev Report\n- Bug: không\n- Cần sửa: không\n- Cần xác nhận: OK\n`
               );
               return { exitCode: 0, output: 'Dev 2 done' };
             }
@@ -1498,6 +1530,9 @@ done_when: done
               return {
                 exitCode: 0,
                 lastMessage: JSON.stringify({
+                  ticket: 'GTM-0001',
+                  goal: 'G1',
+                  number: 1,
                   verdict: 'pass',
                   bugs: [],
                   fix: [],
@@ -1509,6 +1544,9 @@ done_when: done
             return {
               exitCode: 0,
               lastMessage: JSON.stringify({
+                ticket: 'GTM-0001',
+                goal: 'G1',
+                number: 1,
                 verdict: 'fail',
                 bugs: ['needs bugfix'],
                 fix: ['fix it'],
@@ -1555,9 +1593,8 @@ done_when: done
       const session1 = store.getLatestSession(undefined, repoDir);
       expect(session1?.status).toBe('needs_owner');
 
-      // The task state is 'returned'
-      const taskStates = store.listTaskStates(session1!.id);
-      expect(taskStates.find((t) => t.task_id === 'T-001')?.state).toBe('returned');
+      // The ticket state is 'returned'
+      expect(store.getTicketState(repoDir, 'GTM-0001')?.state).toBe('returned');
 
       // Swap Dev seat to jenny
       const seatRes1 = host.setSeat('dev', 'jenny');
@@ -1595,6 +1632,391 @@ done_when: done
       expect(qcRanWithElon).toBe(true);
       const session3 = store.getLatestSession(undefined, repoDir);
       expect(session3?.status).toBe('done');
+    });
+  });
+
+  describe('P4-FIX-C: Lệnh trực tiếp từ dashboard đi qua guard', () => {
+    it('đang ở main → lệnh dev bị từ chối direct_cmd_needs_goal_branch, main không đổi, không runner call', async () => {
+      // repoDir đang ở main (mặc định của tmpRepo)
+      const currentBranch = git(repoDir, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+      expect(currentBranch).toBe('main');
+      const mainHeadBefore = headSha(repoDir);
+
+      const mockRunner: Runner = vi.fn();
+      const host = createHost({
+        cfg,
+        store,
+        runner: mockRunner,
+        logDir,
+        dataDir,
+        env: {},
+      });
+
+      const res = await host.command('dev', 'Lệnh khi ở main');
+      expect(res.ok).toBe(true);
+
+      await host.tick();
+
+      // 1. Không gọi runner
+      expect(mockRunner).not.toHaveBeenCalled();
+
+      // 2. Queue item bị cancelled
+      const queue = store.listQueue(10);
+      const item = queue.find((q) => q.id === res.id);
+      expect(item?.status).toBe('cancelled');
+
+      // 3. Turn và Session ghi nhận lỗi direct_cmd_needs_goal_branch
+      const session = store.getLatestSession(undefined, repoDir);
+      expect(session?.status).toBe('error');
+      const turns = store.listTurns(session!.id);
+      expect(turns.length).toBe(1);
+      expect(turns[0].result).toBe('error');
+      expect(turns[0].error).toBe('direct_cmd_needs_goal_branch');
+
+      // 4. Main không đổi
+      expect(headSha(repoDir)).toBe(mainHeadBefore);
+    });
+
+    it('FIX-E B4: dev trực tiếp bị huỷ khi ticket goal đang làm; qc trực tiếp vẫn được chạy', async () => {
+      git(repoDir, 'checkout', '-b', 'goal/G2-my-feature');
+      store.upsertTicket(repoDir, {
+        id: 'GTM-0001',
+        goal: 'G2',
+        number: 1,
+        of: 1,
+        title: 'Ticket đang làm',
+        type: 'feat',
+        size: 'S',
+        scope: ['sample.txt'],
+        acceptance: ['ok'],
+        done_when: 'done',
+        depends_on: [],
+        from_audit: false,
+      });
+
+      const mockRunner: Runner = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 1,
+        output: 'ok',
+        lastMessage: 'ok',
+      });
+      const host = createHost({ cfg, store, runner: mockRunner, logDir, dataDir, env: {} });
+
+      for (const state of ['in_dev', 'returned', 'awaiting_qc'] as const) {
+        store.setTicketState(repoDir, 'GTM-0001', state, 'core', `state ${state}`);
+        const res = await host.command('dev', `dev command in ${state}`);
+        expect(res.ok).toBe(true);
+        await host.tick();
+        await host.whenIdle();
+
+        expect(store.listQueue(20).find((q) => q.id === res.id)?.status).toBe('cancelled');
+        const session = store.getLatestSession(undefined, repoDir)!;
+        const turns = store.listTurns(session.id);
+        expect(turns[0].error).toBe('direct_cmd_ticket_in_progress');
+      }
+
+      const qcRes = await host.command('qc', 'review ticket đang làm');
+      expect(qcRes.ok).toBe(true);
+      await host.tick();
+      await host.whenIdle();
+
+      expect(store.listQueue(20).find((q) => q.id === qcRes.id)?.status).toBe('done');
+      expect(mockRunner).toHaveBeenCalledTimes(1);
+    });
+
+    it('FIX-E B6: processQueue lần đầu khôi phục snapshot tồn đọng, xoá setting và log một dòng', async () => {
+      const mainBefore = git(repoDir, 'rev-parse', 'refs/heads/main').trim();
+      git(repoDir, 'checkout', '-b', 'goal/G3-recovery');
+      writeFileSync(join(repoDir, 'interrupted.txt'), 'partial');
+      git(repoDir, 'add', 'interrupted.txt');
+      git(repoDir, '-c', 'user.name=dev', '-c', 'user.email=dev@btm.local', 'commit', '-m', 'partial turn');
+
+      snapshotTurn(repoDir, 'goal/G3-recovery', 'main', store, 'dev');
+      git(repoDir, 'update-ref', 'refs/heads/main', headSha(repoDir));
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).not.toBe(mainBefore);
+
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const host = createHost({ cfg, store, runner: vi.fn(), logDir, dataDir, env: {} });
+      await host.tick();
+
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).not.toBe(mainBefore); // D4: không tự kéo main về khi phục hồi
+      expect(store.getSetting(`turn_guard:${repoDir}`)).toBe('');
+      expect(logSpy).toHaveBeenCalledWith('recovered_interrupted_turn');
+    });
+
+    it('D3: main đổi ngoài BTM (lệch sha ghim) → lệnh dev trực tiếp bị huỷ, không chạy agent, không kéo main về', async () => {
+      const mainBefore = git(repoDir, 'rev-parse', 'refs/heads/main').trim();
+      store.setSetting(`protected_sha:${repoDir}`, mainBefore);
+      git(repoDir, 'checkout', '-b', 'goal/G2-d3');
+      writeFileSync(join(repoDir, 'owner.txt'), 'owner merge\n');
+      git(repoDir, 'add', 'owner.txt');
+      git(repoDir, '-c', 'user.name=zon', '-c', 'user.email=zon@btm.local', 'commit', '-m', 'owner work');
+      const ownerSha = headSha(repoDir);
+      git(repoDir, 'update-ref', 'refs/heads/main', ownerSha);
+
+      const mockRunner: Runner = vi.fn();
+      const host = createHost({ cfg, store, runner: mockRunner, logDir, dataDir, env: {} });
+      const res = await host.command('dev', 'sửa nhỏ');
+      expect(res.ok).toBe(true);
+      await host.tick();
+
+      expect(mockRunner).not.toHaveBeenCalled();
+      expect(store.listQueue(10).find((q) => q.id === res.id)?.status).toBe('cancelled');
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).toBe(ownerSha);
+    });
+
+    it('đang ở nhánh goal → chạy, commit đúng prefix G<n>: cmd <id>: …', async () => {
+      git(repoDir, 'checkout', '-b', 'goal/G2-my-feature');
+
+      const text = 'Sửa logic tính toán số dư';
+      const mockRunner: Runner = vi.fn().mockImplementation(async (_seat, _agent, _prompt, cwd) => {
+        const storedSnapshot = JSON.parse(store.getSetting(`turn_guard:${repoDir}`) || 'null');
+        expect(storedSnapshot?.seat).toBe('dev');
+        writeFileSync(join(cwd, 'sample.txt'), 'dev modified on goal branch\n');
+        return {
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 10,
+          output: 'ok',
+          lastMessage: 'ok',
+        };
+      });
+
+      const host = createHost({
+        cfg,
+        store,
+        runner: mockRunner,
+        logDir,
+        dataDir,
+        env: {},
+      });
+
+      const res = await host.command('dev', text);
+      expect(res.ok).toBe(true);
+
+      await host.tick();
+
+      expect(mockRunner).toHaveBeenCalled();
+      const queue = store.listQueue(10);
+      const item = queue.find((q) => q.id === res.id);
+      expect(item?.status).toBe('done');
+
+      const lastCommitMsg = git(repoDir, 'log', '-1', '--format=%s').trim();
+      expect(lastCommitMsg).toBe(`G2: cmd ${res.id}: ${text}`);
+      expect(store.getSetting(`turn_guard:${repoDir}`)).toBe('');
+    });
+
+    it('dev lệnh trực tiếp checkout main + commit → main được khôi phục, quay về nhánh goal', async () => {
+      const mainHeadBefore = git(repoDir, 'rev-parse', 'main').trim();
+      git(repoDir, 'checkout', '-b', 'goal/G1-feature');
+
+      const mockRunner: Runner = vi.fn().mockImplementation(async (_seat, _agent, _prompt, cwd) => {
+        // Dev nghịch ngợm: checkout main và commit
+        git(cwd, 'checkout', 'main');
+        writeFileSync(join(cwd, 'evil.txt'), 'evil content on main');
+        git(cwd, 'add', '-A');
+        git(cwd, '-c', 'user.name=dev', '-c', 'user.email=dev@btm.local', 'commit', '-m', 'evil commit on main');
+        return {
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 10,
+          output: 'evil done',
+          lastMessage: 'evil done',
+        };
+      });
+
+      const host = createHost({
+        cfg,
+        store,
+        runner: mockRunner,
+        logDir,
+        dataDir,
+        env: {},
+      });
+
+      const res = await host.command('dev', 'Lệnh dev phá main');
+      expect(res.ok).toBe(true);
+
+      await host.tick();
+
+      // 1. Main được khôi phục về sha cũ
+      const mainHeadAfter = git(repoDir, 'rev-parse', 'main').trim();
+      expect(mainHeadAfter).toBe(mainHeadBefore);
+
+      // 2. Đã quay lại nhánh goal
+      const currentBranch = git(repoDir, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+      expect(currentBranch).toBe('goal/G1-feature');
+
+      // 3. Turn báo lỗi agent_modified_protected_branch
+      const session = store.getLatestSession(undefined, repoDir);
+      expect(session?.status).toBe('error');
+      const turns = store.listTurns(session!.id);
+      expect(turns[0].result).toBe('error');
+      expect(turns[0].error).toBe('agent_modified_protected_branch');
+    });
+
+    it('qc lệnh trực tiếp sửa file → bị huỷ (guard reset --hard + clean), working tree sạch', async () => {
+      git(repoDir, 'checkout', '-b', 'goal/G1-feature');
+      const initialContent = readFileSync(join(repoDir, 'sample.txt'), 'utf8');
+
+      const mockRunner: Runner = vi.fn().mockImplementation(async (_seat, _agent, _prompt, cwd) => {
+        // QC sửa file trái phép
+        writeFileSync(join(cwd, 'sample.txt'), 'qc tampered file');
+        writeFileSync(join(cwd, 'qc_extra.txt'), 'extra file created by qc');
+        return {
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 10,
+          output: 'qc done',
+          lastMessage: 'QC report',
+        };
+      });
+
+      const host = createHost({
+        cfg,
+        store,
+        runner: mockRunner,
+        logDir,
+        dataDir,
+        env: {},
+      });
+
+      const res = await host.command('qc', 'Kiểm tra file');
+      expect(res.ok).toBe(true);
+
+      await host.tick();
+
+      // 1. File đã sửa được hoàn trả nội dung cũ
+      expect(readFileSync(join(repoDir, 'sample.txt'), 'utf8').replace(/\r\n/g, '\n')).toBe(initialContent.replace(/\r\n/g, '\n'));
+
+      // 2. File tạo thêm bị xoá
+      expect(existsSync(join(repoDir, 'qc_extra.txt'))).toBe(false);
+
+      // 3. Working tree hoàn toàn sạch
+      expect(git(repoDir, 'status', '--porcelain').trim()).toBe('');
+
+      // 4. Turn báo lỗi qc_modified_repo
+      const session = store.getLatestSession(undefined, repoDir);
+      expect(session?.status).toBe('error');
+      const turns = store.listTurns(session!.id);
+      expect(turns[0].result).toBe('error');
+      expect(turns[0].error).toBe('qc_modified_repo');
+    });
+
+    it('C3: lệnh Dev trực tiếp bị chặn khi goal có ticket chưa passed mà có base_sha (gồm blocked/failed)', async () => {
+      git(repoDir, 'checkout', '-b', 'goal/G2-c3-feature');
+      const baseSha = headSha(repoDir);
+      store.upsertTicket(repoDir, {
+        id: 'GTM-0001',
+        goal: 'G2',
+        number: 1,
+        of: 1,
+        title: 'Ticket bị blocked/failed',
+        type: 'feat',
+        size: 'S',
+        scope: ['sample.txt'],
+        acceptance: ['ok'],
+        done_when: 'done',
+        depends_on: [],
+        from_audit: false,
+      });
+
+      const mockRunner: Runner = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 1,
+        output: 'ok',
+        lastMessage: 'ok',
+      });
+      const host = createHost({ cfg, store, runner: mockRunner, logDir, dataDir, env: {} });
+
+      for (const state of ['blocked', 'failed'] as const) {
+        store.setTicketState(repoDir, 'GTM-0001', state, 'core', `state ${state}`, 0, baseSha);
+        const res = await host.command('dev', `dev command in ${state}`);
+        expect(res.ok).toBe(true);
+        await host.tick();
+        await host.whenIdle();
+
+        expect(store.listQueue(20).find((q) => q.id === res.id)?.status).toBe('cancelled');
+        const session = store.getLatestSession(undefined, repoDir)!;
+        const turns = store.listTurns(session.id);
+        expect(turns[0].error).toBe('direct_cmd_ticket_in_progress');
+      }
+      expect(mockRunner).not.toHaveBeenCalled();
+    });
+
+    it('C4: lệnh Dev trực tiếp đụng team/tickets/ → khôi phục như ticket_tampered, không commit phần đó', async () => {
+      git(repoDir, 'checkout', '-b', 'goal/G2-c4-tickets');
+      mkdirSync(join(repoDir, 'team', 'tickets'), { recursive: true });
+      const originalTicket = '---\nid: GTM-0001\ngoal: G2\nnumber: 1\nof: 1\ntitle: Original\ntype: feat\nsize: S\nscope: [sample.txt]\nacceptance: [ok]\ndone_when: ok\n---\n';
+      writeFileSync(join(repoDir, 'team', 'tickets', 'GTM-0001.md'), originalTicket, 'utf8');
+      gitModule.commitAll(repoDir, 'GTM-0001: PM ticket', { name: 'elon', email: 'elon@btm.local' });
+
+      const mockRunner: Runner = vi.fn().mockImplementation(async (_seat, _agent, _prompt, cwd) => {
+        writeFileSync(join(cwd, 'sample.txt'), 'legit direct dev change\n', 'utf8');
+        writeFileSync(
+          join(cwd, 'team', 'tickets', 'GTM-0001.md'),
+          originalTicket.replace('scope: [sample.txt]', 'scope: [sample.txt, secret.txt]'),
+          'utf8'
+        );
+        writeFileSync(join(cwd, 'team', 'tickets', 'GTM-0002.md'), 'rogue ticket\n', 'utf8');
+        return {
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 5,
+          output: 'done',
+          lastMessage: 'done',
+        };
+      });
+
+      const host = createHost({ cfg, store, runner: mockRunner, logDir, dataDir, env: {} });
+      const res = await host.command('dev', 'Sửa sample nhưng lén sửa ticket');
+      expect(res.ok).toBe(true);
+      await host.tick();
+      await host.whenIdle();
+
+      expect(readFileSync(join(repoDir, 'team', 'tickets', 'GTM-0001.md'), 'utf8').replace(/\r\n/g, '\n')).toBe(
+        originalTicket
+      );
+      expect(existsSync(join(repoDir, 'team', 'tickets', 'GTM-0002.md'))).toBe(false);
+      expect(readFileSync(join(repoDir, 'sample.txt'), 'utf8').replace(/\r\n/g, '\n')).toBe(
+        'legit direct dev change\n'
+      );
+      expect(git(repoDir, 'diff', 'HEAD~1', 'HEAD', '--', 'team/tickets').trim()).toBe('');
+    });
+
+    it('C6: lock ngoài đang giữ → host không recoverInterruptedTurn và không xoá snapshot; chỉ recover sau khi giữ được lock', async () => {
+      const mainBefore = git(repoDir, 'rev-parse', 'refs/heads/main').trim();
+      git(repoDir, 'checkout', '-b', 'goal/G3-c6-lock');
+      writeFileSync(join(repoDir, 'in-flight.txt'), 'cli turn running');
+      git(repoDir, 'add', 'in-flight.txt');
+      git(repoDir, '-c', 'user.name=dev', '-c', 'user.email=dev@btm.local', 'commit', '-m', 'cli turn');
+
+      snapshotTurn(repoDir, 'goal/G3-c6-lock', 'main', store, 'dev');
+      git(repoDir, 'update-ref', 'refs/heads/main', headSha(repoDir));
+
+      // Giả lập CLI `btm run` đang giữ btm.lock
+      const externalRelease = acquireLock(dataDir);
+      expect(externalRelease).not.toBeNull();
+
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const host = createHost({ cfg, store, runner: vi.fn(), logDir, dataDir, env: {} });
+
+      await host.tick();
+      // Khi lock ngoài đang giữ: KHÔNG được recover hay xoá snapshot
+      expect(store.getSetting(`turn_guard:${repoDir}`)).not.toBe('');
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).not.toBe(mainBefore);
+      expect(logSpy).not.toHaveBeenCalledWith('recovered_interrupted_turn');
+
+      // Nhả lock ngoài rồi tick lại → lúc này host giữ được lock và recover
+      externalRelease!();
+      await host.tick();
+
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).not.toBe(mainBefore); // D4: không tự kéo main về khi phục hồi
+      expect(store.getSetting(`turn_guard:${repoDir}`)).toBe('');
+      expect(logSpy).toHaveBeenCalledWith('recovered_interrupted_turn');
+      logSpy.mockRestore();
     });
   });
 });

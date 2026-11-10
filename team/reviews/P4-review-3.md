@@ -1,0 +1,22 @@
+# Review độc lập lần 3 – toàn nhánh plan4-tickets @ 4798e93 (2026-11-10)
+
+Reviewer mới, chỉ đọc code + test. Kết luận: **needs fixes** (2 High). Test Windows: xem dòng cuối.
+B1–B9 của review 2: đã sửa, trừ B3, B4, B9 còn hở (C1, C3, C5).
+
+## Lỗi
+| # | Mức | Chỗ | Lỗi (kịch bản) | Sửa (1 dòng) |
+|---|---|---|---|---|
+| C1 | High | git.ts:17-25; guard.ts (cả file) | B3 sửa chưa hết. Chỉ chặn hooksPath/fsmonitor. Agent ghi `.git/config`: `commit.gpgSign=true` + `gpg.program=<script>`, hoặc `filter.x.clean/smudge` + `.git/info/attributes` (`* filter=x`), hoặc `merge.x.driver`. Sau đó chính BTM chạy script NGOÀI lượt agent: `commitAll` (session.ts:962, 1195, 1415), `git add`/`status`, `checkout -f` của guard, `merge` trong approveGoal. Script chạy `git update-ref refs/heads/main <evil>`. Đã tái hiện: gpg.program và clean filter vẫn chạy dù có `-c core.hooksPath`. | Guard băm/sao lưu `.git/config` + `.git/info/` trước lượt, sau lượt khôi phục và báo vi phạm; git.ts thêm `-c commit.gpgSign=false -c tag.gpgSign=false`. |
+| C2 | High | session.ts:969 (gate.ts:178); guard.ts:34-37 | `runGate` chạy build/lint/test, tức chạy code do Dev viết, SAU guard (908) và TRƯỚC snapshot QC (1117). Test chứa `git update-ref refs/heads/main X` → `snapshotTurn` đọc lại main mới mỗi lượt nên coi main bẩn là gốc, không ai phát hiện. Quá giờ chỉ kill `sh`, process con chạy tiếp. | Bọc gate bằng snapshot+guard như lượt QC. Ghim sha main trong store (chỉ approveGoal/migrate được đổi) và kiểm tra khi snapshot và khi approve. |
+| C3 | Med | host.ts:207-215 | B4 chưa hết. Lệnh trực tiếp Dev chỉ bị chặn khi ticket ở `in_dev/returned/awaiting_qc`. Ticket `blocked`/`failed` vẫn giữ `base_sha` (session.ts:924, 956, 1025, 1211). Anh gửi lệnh Dev để gỡ BLOCKED → commit `G<n>: cmd …` nằm trong base..HEAD → resume bị `commit_missing_ticket_id` mỗi vòng → ticket failed. | Chặn khi có ticket nào chưa `passed` mà có `base_sha` (gồm blocked/failed), hoặc reset base sau lệnh trực tiếp. |
+| C4 | Med | host.ts:341-345; session.ts:1249-1251 | Commit lệnh trực tiếp Dev không qua gate. (a) Được sửa `team/tickets/*` của ticket `pending` (nới scope/acceptance), tức lọt ticket_tampered. (b) Code commit khi ticket còn pending nằm TRƯỚC base của ticket nên QC không thấy. Goal không có audit: `reviewed_sha` = đỉnh nhánh, gồm cả commit này → anh bấm Duyệt merge → code chưa QC vào main. | Từ chối commit lệnh trực tiếp nếu đụng `team/tickets/`; goal có commit `cmd` ngoài dải ticket thì bắt audit hoặc không cho approve. |
+| C5 | Low | session.ts:1894-1910 | B9 chưa hết. `resumeSession` không kiểm goal đã `merged/approved` (chỉ runSession:1722 có kiểm). Phiên nhiều goal: G1 xong và anh đã merge, G2 needs_owner → Resume → G1 về `in_progress` → `qc_done` → nút Duyệt merge hiện lại. | Bỏ qua goal merged/approved trong resume giống runSession. |
+| C6 | Low | host.ts:131-136, 904-906 | `recoverInterruptedTurn` chạy TRƯỚC `acquireLock` (144). `command()` dev/qc không kiểm `busy()`. Khi `btm run` (CLI) đang giữ lock giữa lượt, một lệnh dashboard làm host guard luôn lượt đang chạy (`checkout -f`, `reset`, `clean`) và xoá snapshot đã lưu. | Kiểm lock trước khi recover; nếu `isExternalLockHeld()` thì bỏ qua. |
+| C7 | Low | session.ts:689-699; ticket.ts checkReady | PM ghi `depends_on` trỏ tới ticket số lớn hơn hoặc ID không tồn tại → ticket đầu `blocked`, return ngay nên ticket sau không bao giờ chạy → goal kẹt vĩnh viễn (PM không được sửa ticket cũ). | Khi nhận ticket PM, kiểm `depends_on` phải là ID có thật và số nhỏ hơn. |
+| C8 | Low | guard.ts:218, 232; session.ts:1008, 1058 | `clean -fd` giữ lại file bị ignore. Dev/QC cài file ignored (vd `node_modules/.bin/*` giả, `.env`) tồn tại qua các lượt → gate/QC chạy test "xanh" giả. Không đưa code vào main nhưng làm gate mất tác dụng. | Lượt qc/audit và trước gate: so sánh danh sách file ignored, có file mới thì báo vi phạm (hoặc `clean -fdx` có chọn lọc). |
+
+## Ghi chú ngoài phạm vi code nhánh
+- Agent có shell nên có thể `git push` thẳng lên remote main nếu máy có credential, hoặc để lại process `setsid` chạy sau lượt (runner chỉ kill process group). Guard local không chặn được: cần bỏ credential push khỏi user agent, và ghim sha main (C2) để ít nhất phát hiện được.
+- Không thấy lỗi giao diện mới; approve vẫn qua x-btm/Origin/JSON.
+
+Test Windows (`npx vitest run`): 658/674. 16 fail = 15 lỗi đã biết (symlink, process group, quoting) + `web.test.ts` "os.tmpdir() nằm dưới <repo>/.tmp" (do môi trường TMPDIR khi gọi npx trực tiếp, test có từ main, không phải lỗi nhánh).

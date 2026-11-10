@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
-import { openStore, type Store, type BoardState, type QueueItem } from '../src/store/db.ts';
+import { openStore, type Store, type BoardState, type QueueItem, type GoalState } from '../src/store/db.ts';
+import type { Ticket } from '../src/ticket/ticket.ts';
 
 describe('Store SQLite', () => {
   describe('in-memory store', () => {
@@ -855,6 +856,204 @@ describe('Store SQLite', () => {
 
       store.close();
       rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    describe('Plan 4 Task 2: Goals, Tickets, History, Project Counters', () => {
+      const sampleTicket: Ticket = {
+        id: 'GTM-0001',
+        goal: 'G1',
+        number: 1,
+        of: 2,
+        title: 'Feature login',
+        type: 'feat',
+        size: 'M',
+        scope: ['src/login.ts'],
+        acceptance: ['Works'],
+        done_when: 'Tests pass',
+        depends_on: [],
+        from_audit: false,
+      };
+
+      it('tạo G1, G2 → n 1, 2; project khác bắt đầu lại 1; getGoal & listGoals & setGoalState hoạt động đúng', () => {
+        const store = openStore(':memory:');
+        const projA = '/proj/alpha';
+        const projB = '/proj/beta';
+
+        const g1 = store.createGoal(projA, 'Giao diện đăng nhập');
+        expect(g1.n).toBe(1);
+        expect(g1.branch).toBe('goal/G1-giao-dien-dang-nhap');
+
+        const g2 = store.createGoal(projA, 'Reset mật khẩu');
+        expect(g2.n).toBe(2);
+        expect(g2.branch).toBe('goal/G2-reset-mat-khau');
+
+        // Project khác bắt đầu lại từ 1
+        const gB1 = store.createGoal(projB, 'Tính năng mới');
+        expect(gB1.n).toBe(1);
+        expect(gB1.branch).toBe('goal/G1-tinh-nang-moi');
+
+        // getGoal
+        const row1 = store.getGoal(projA, 1);
+        expect(row1).not.toBeNull();
+        expect(row1?.n).toBe(1);
+        expect(row1?.title).toBe('Giao diện đăng nhập');
+        expect(row1?.state).toBe('open');
+        expect(row1?.branch).toBe('goal/G1-giao-dien-dang-nhap');
+
+        expect(store.getGoal(projA, 99)).toBeNull();
+
+        // listGoals
+        const goalsA = store.listGoals(projA);
+        expect(goalsA).toHaveLength(2);
+        expect(goalsA.map((g) => g.n)).toEqual([1, 2]);
+
+        const goalsB = store.listGoals(projB);
+        expect(goalsB).toHaveLength(1);
+        expect(goalsB[0].n).toBe(1);
+
+        // setGoalState
+        store.setGoalState(projA, 1, 'in_progress', 'elon-pm', 'start work');
+        const row1Updated = store.getGoal(projA, 1);
+        expect(row1Updated?.state).toBe('in_progress');
+
+        store.close();
+      });
+
+      it('upsertTicket, setTicketState, getTicketState và ticketHistory (transaction & history 2 dòng)', () => {
+        const store = openStore(':memory:');
+        const proj = '/proj/alpha';
+
+        store.upsertTicket(proj, sampleTicket);
+
+        const initial = store.getTicketState(proj, 'GTM-0001');
+        expect(initial).toEqual({
+          state: 'pending',
+          fix_rounds: 0,
+          base_sha: null,
+        });
+
+        // setTicketState pending -> in_dev
+        store.setTicketState(proj, 'GTM-0001', 'in_dev', 'jacky-dev', 'start dev', 0, 'sha-base-1');
+        const inDev = store.getTicketState(proj, 'GTM-0001');
+        expect(inDev?.state).toBe('in_dev');
+        expect(inDev?.base_sha).toBe('sha-base-1');
+
+        // setTicketState in_dev -> passed
+        store.setTicketState(proj, 'GTM-0001', 'passed', 'jenny-qc', 'all tests passed');
+        const passed = store.getTicketState(proj, 'GTM-0001');
+        expect(passed?.state).toBe('passed');
+        expect(passed?.base_sha).toBe('sha-base-1');
+
+        // History phải có 2 dòng đúng from/to/by/reason
+        const history = store.ticketHistory(proj, 'GTM-0001');
+        expect(history).toHaveLength(2);
+        expect(history[0].from_state).toBe('pending');
+        expect(history[0].to_state).toBe('in_dev');
+        expect(history[0].by).toBe('jacky-dev');
+        expect(history[0].reason).toBe('start dev');
+
+        expect(history[1].from_state).toBe('in_dev');
+        expect(history[1].to_state).toBe('passed');
+        expect(history[1].by).toBe('jenny-qc');
+        expect(history[1].reason).toBe('all tests passed');
+
+        // setTicketState với ticket chưa có → ném lỗi
+        expect(() => {
+          store.setTicketState(proj, 'GTM-9999', 'in_dev', 'jacky', 'invalid');
+        }).toThrow(/not found/i);
+
+        store.close();
+      });
+
+      it('upsertTicket lần 2 giữ nguyên state và fix_rounds', () => {
+        const store = openStore(':memory:');
+        const proj = '/proj/alpha';
+
+        store.upsertTicket(proj, sampleTicket);
+        store.setTicketState(proj, 'GTM-0001', 'in_dev', 'jacky', 'start', 2, 'sha-base-123');
+
+        // Upsert lại cùng ticket với title thay đổi
+        const modifiedTicket: Ticket = {
+          ...sampleTicket,
+          title: 'Updated title',
+        };
+        store.upsertTicket(proj, modifiedTicket);
+
+        const stateAfter = store.getTicketState(proj, 'GTM-0001');
+        expect(stateAfter?.state).toBe('in_dev');
+        expect(stateAfter?.fix_rounds).toBe(2);
+        expect(stateAfter?.base_sha).toBe('sha-base-123');
+
+        // listTickets phản ánh title mới
+        const tickets = store.listTickets(proj);
+        expect(tickets).toHaveLength(1);
+        expect(tickets[0].title).toBe('Updated title');
+        expect(tickets[0].state).toBe('in_dev');
+
+        store.close();
+      });
+
+      it('listTickets lọc theo goal và sort đúng', () => {
+        const store = openStore(':memory:');
+        const proj = '/proj/alpha';
+
+        const t1 = { ...sampleTicket, id: 'GTM-0001', goal: 'G1', number: 1 };
+        const t2 = { ...sampleTicket, id: 'GTM-0002', goal: 'G1', number: 2 };
+        const t3 = { ...sampleTicket, id: 'GTM-0003', goal: 'G2', number: 1 };
+
+        store.upsertTicket(proj, t2);
+        store.upsertTicket(proj, t1);
+        store.upsertTicket(proj, t3);
+
+        const all = store.listTickets(proj);
+        expect(all.map((t) => t.id)).toEqual(['GTM-0001', 'GTM-0002', 'GTM-0003']);
+
+        const g1Tickets = store.listTickets(proj, 'G1');
+        expect(g1Tickets.map((t) => t.id)).toEqual(['GTM-0001', 'GTM-0002']);
+
+        const g2Tickets = store.listTickets(proj, 'G2');
+        expect(g2Tickets.map((t) => t.id)).toEqual(['GTM-0003']);
+
+        store.close();
+      });
+
+      it('nextTicketSeq & bumpTicketSeq: bắt đầu 1, bump max không giảm, persist khi reopen DB', () => {
+        const tmpDir = mkdtempSync(join(tmpdir(), 'btm-store-counter-'));
+        const dbPath = join(tmpDir, 'test.db');
+
+        let store = openStore(dbPath);
+        const proj = '/proj/counter-test';
+
+        // Bắt đầu 1
+        expect(store.nextTicketSeq(proj)).toBe(1);
+
+        // bumpTicketSeq(p, 12) rồi bumpTicketSeq(p, 5) → nextTicketSeq = 13
+        store.bumpTicketSeq(proj, 12);
+        expect(store.nextTicketSeq(proj)).toBe(13);
+
+        store.bumpTicketSeq(proj, 5);
+        expect(store.nextTicketSeq(proj)).toBe(13);
+
+        // Tạo goal & ticket để kiểm tra persist
+        store.createGoal(proj, 'Goal persist');
+        store.upsertTicket(proj, sampleTicket);
+        store.setTicketState(proj, 'GTM-0001', 'in_dev', 'jacky', 'work');
+
+        // Đóng DB và mở lại
+        store.close();
+
+        store = openStore(dbPath);
+        expect(store.nextTicketSeq(proj)).toBe(13);
+
+        const savedGoal = store.getGoal(proj, 1);
+        expect(savedGoal?.title).toBe('Goal persist');
+
+        const savedTicketState = store.getTicketState(proj, 'GTM-0001');
+        expect(savedTicketState?.state).toBe('in_dev');
+
+        store.close();
+        rmSync(tmpDir, { recursive: true, force: true });
+      });
     });
   });
 });

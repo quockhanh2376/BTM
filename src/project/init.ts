@@ -9,6 +9,7 @@ export type RunOpenspecFn = (
 ) => void | { ok?: boolean; error?: string };
 
 export interface InitProjectOptions {
+  key: string;
   runOpenspec?: RunOpenspecFn;
 }
 
@@ -35,8 +36,12 @@ export function initProject(
   projectsRoot: string,
   name: string,
   templatesFrom: string,
-  opts: { runOpenspec?: RunOpenspecFn } = {}
+  opts: InitProjectOptions
 ): string {
+  if (!opts || !opts.key || typeof opts.key !== 'string' || !/^[A-Z]{2,5}$/.test(opts.key)) {
+    throw new Error(`Invalid project key "${opts?.key}". Project key must match /^[A-Z]{2,5}$/`);
+  }
+
   const runOpenspec = opts.runOpenspec ?? defaultRunOpenspec;
   if (!name || !/^[a-z0-9-]+$/.test(name)) {
     throw new Error(`Invalid project name "${name}". Project name must match /^[a-z0-9-]+$/`);
@@ -76,12 +81,16 @@ export function initProject(
     mkdirSync(projectPath, { recursive: true });
     created = true;
 
-    mkdirSync(join(projectPath, 'team', 'tasks'), { recursive: true });
+    mkdirSync(join(projectPath, 'team', 'tickets'), { recursive: true });
+    mkdirSync(join(projectPath, 'team', 'goals'), { recursive: true });
     mkdirSync(join(projectPath, 'team', 'prompts'), { recursive: true });
     mkdirSync(join(projectPath, 'team', 'reports'), { recursive: true });
     mkdirSync(join(projectPath, 'team', 'templates'), { recursive: true });
     mkdirSync(join(projectPath, 'team', 'memory'), { recursive: true });
     mkdirSync(join(projectPath, 'docs'), { recursive: true });
+
+    // Ghi team/project.yaml
+    writeFileSync(join(projectPath, 'team', 'project.yaml'), `key: ${opts.key}\n`, 'utf8');
 
     // Chép team/templates/report.md từ repo BTM
     writeFileSync(join(projectPath, 'team', 'templates', 'report.md'), templateContent, 'utf8');

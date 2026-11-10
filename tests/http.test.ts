@@ -45,6 +45,7 @@ describe('HTTP Server & SSE', () => {
     stopCalls: number;
     commandCalls: { to: string; text: string }[];
     autoApproveCalls: boolean[];
+    approveGoalCalls: number[];
   };
 
   beforeEach(async () => {
@@ -60,6 +61,11 @@ describe('HTTP Server & SSE', () => {
       stopCalls: 0,
       commandCalls: [],
       autoApproveCalls: [],
+      approveGoalCalls: [],
+      approveGoal(n: number) {
+        host.approveGoalCalls.push(n);
+        return { ok: true, sha: 'merge-sha-123' };
+      },
       async start(goals: string[], opts?: any) {
         if (opts?.prepare) {
           try {
@@ -137,7 +143,7 @@ describe('HTTP Server & SSE', () => {
       expect(data).toHaveProperty('session');
       expect(data).toHaveProperty('holder');
       expect(data).toHaveProperty('seats');
-      expect(data).toHaveProperty('tasks');
+      expect(data).toHaveProperty('goals');
       expect(data).toHaveProperty('log');
       expect(data).toHaveProperty('queue');
     });
@@ -1352,6 +1358,167 @@ describe('HTTP Server & SSE', () => {
       const data = await res.json();
       expect(data.error).toBe('Đang có phiên chạy');
       expect(store.listNotes(testRepo).length).toBe(0);
+    });
+  });
+
+  describe('P4-T9: GET /api/tickets/:id/history', () => {
+    it('returns 404 when there is no active project', async () => {
+      const res = await fetch(`${baseUrl}/api/tickets/GTM-0001/history`);
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error).toBe('No active project');
+    });
+
+    it('returns chronological ticket history when project is active', async () => {
+      const projDir = '/repo/test-proj';
+      store.setActiveProject(projDir);
+      store.upsertTicket(projDir, {
+        id: 'GTM-0001',
+        goal: 'G1',
+        number: 1,
+        of: 1,
+        title: 'Ticket Test',
+        type: 'feat',
+        size: 'S',
+        scope: ['src/'],
+        acceptance: ['ok'],
+        done_when: 'done',
+        depends_on: [],
+        from_audit: false,
+      });
+
+      store.setTicketState(projDir, 'GTM-0001', 'in_dev', 'jacky', 'started work');
+      store.setTicketState(projDir, 'GTM-0001', 'awaiting_qc', 'jacky', 'dev done');
+      store.setTicketState(projDir, 'GTM-0001', 'passed', 'jenny', 'qc ok');
+
+      const res = await fetch(`${baseUrl}/api/tickets/GTM-0001/history`);
+      expect(res.status).toBe(200);
+      const history = await res.json();
+      expect(Array.isArray(history)).toBe(true);
+      expect(history.length).toBeGreaterThanOrEqual(3);
+      expect(history[0].to_state).toBe('in_dev');
+      expect(history[0].by).toBe('jacky');
+      expect(history[1].to_state).toBe('awaiting_qc');
+      expect(history[2].to_state).toBe('passed');
+      expect(history[2].by).toBe('jenny');
+    });
+  });
+
+  describe('P4-T9: POST /api/goal/approve', () => {
+    it('returns 403 when x-btm header is missing', async () => {
+      const res = await fetch(`${baseUrl}/api/goal/approve`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ goal: 'G1' }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 403 when Origin is invalid', async () => {
+      const res = await fetch(`${baseUrl}/api/goal/approve`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: 'http://malicious-site.com',
+        },
+        body: JSON.stringify({ goal: 'G1' }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 415 when Content-Type is not application/json', async () => {
+      const res = await fetch(`${baseUrl}/api/goal/approve`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'text/plain',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: 'goal=G1',
+      });
+      expect(res.status).toBe(415);
+    });
+
+    it('returns 400 when body does not match schema { goal: "G<n>" }', async () => {
+      const res = await fetch(`${baseUrl}/api/goal/approve`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ goal: 'invalid-goal' }),
+      });
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toContain('Invalid goal format');
+    });
+
+    it('returns 409 when host.busy() returns true', async () => {
+      host.busy = () => true;
+      const res = await fetch(`${baseUrl}/api/goal/approve`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ goal: 'G1' }),
+      });
+      expect(res.status).toBe(409);
+      const data = await res.json();
+      expect(data.code).toBe('busy');
+    });
+
+    it('returns 409 when goal is not_ready or conflict', async () => {
+      host.busy = () => false;
+      host.approveGoal = () => ({
+        ok: false,
+        code: 'not_ready',
+        message: 'Goal G1 is in state in_progress, expected qc_done',
+      });
+
+      const res = await fetch(`${baseUrl}/api/goal/approve`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ goal: 'G1' }),
+      });
+      expect(res.status).toBe(409);
+      const data = await res.json();
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('not_ready');
+      expect(data.message).toContain('qc_done');
+    });
+
+    it('returns 200 and calls host.approveGoal on success', async () => {
+      host.busy = () => false;
+      host.approveGoal = (n: number) => {
+        host.approveGoalCalls.push(n);
+        return { ok: true, sha: 'abcd1234ef5678' };
+      };
+
+      const res = await fetch(`${baseUrl}/api/goal/approve`, {
+        method: 'POST',
+        headers: {
+          'x-btm': '1',
+          'content-type': 'application/json',
+          Origin: `http://127.0.0.1:${port}`,
+        },
+        body: JSON.stringify({ goal: 'G2' }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(data.sha).toBe('abcd1234ef5678');
+      expect(host.approveGoalCalls).toContain(2);
     });
   });
 

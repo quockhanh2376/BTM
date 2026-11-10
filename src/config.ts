@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
-export type Seat = 'pm' | 'dev' | 'qc';
-export const SeatSchema = z.enum(['pm', 'dev', 'qc']);
+export type Seat = 'pm' | 'dev' | 'qc' | 'audit';
+export const SeatSchema = z.enum(['pm', 'dev', 'qc', 'audit']);
 
 export type Tool = 'claude-code' | 'antigravity-cli' | 'codex-cli';
 export const ToolSchema = z.enum(['claude-code', 'antigravity-cli', 'codex-cli']);
@@ -26,6 +26,7 @@ export const SessionSchema = z.object({
     pm: z.number().int().nonnegative(),
     dev: z.number().int().nonnegative(),
     qc: z.number().int().nonnegative(),
+    audit: z.number().int().nonnegative().default(4),
   }).strict(),
   require_task_approval: z.boolean(),
   auto_schedule: z.literal(false),
@@ -36,6 +37,7 @@ export const TurnSchema = z.object({
     pm: z.number().positive(),
     dev: z.number().positive(),
     qc: z.number().positive(),
+    audit: z.number().positive().default(20),
   }).strict(),
   max_parallel_agents: z.literal(1),
   commit_before_dev_turn: z.boolean(),
@@ -46,6 +48,7 @@ export const SeatsSchema = z.object({
   pm: z.string(),
   dev: z.string(),
   qc: z.string(),
+  audit: z.string().default(''),
 }).strict();
 
 export const AgentConfigSchema = z.object({
@@ -98,6 +101,7 @@ export const PluginsSchema = z.object({
     pm: z.array(z.string()),
     dev: z.array(z.string()),
     qc: z.array(z.string()),
+    audit: z.array(z.string()).default([]),
   }).strict(),
   later: z.array(z.string()).optional(),
 }).strict();
@@ -123,8 +127,12 @@ const BaseConfigSchema = z.object({
 
 export const ConfigSchema = BaseConfigSchema.superRefine((cfg, ctx) => {
   const seatKeys: Seat[] = ['pm', 'dev', 'qc'];
+  if (cfg.seats.audit) {
+    seatKeys.push('audit');
+  }
   for (const seat of seatKeys) {
     const agentId = cfg.seats[seat];
+    if (!agentId) continue;
     const agent = Object.hasOwn(cfg.agents, agentId) ? cfg.agents[agentId] : undefined;
     if (!agent) {
       ctx.addIssue({

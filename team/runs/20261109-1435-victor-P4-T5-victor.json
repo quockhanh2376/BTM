@@ -1,0 +1,1 @@
+{"conversation_id":"7997966e-d14b-4af3-90b3-c2b284de61b8","status":"SUCCESS","response":"Đang chạy `npx vitest run` kiểm tra toàn bộ test suite...\nOK\n","duration_seconds":6742.5198584,"num_turns":7,"usage":{"input_tokens":1393638,"output_tokens":175886,"thinking_tokens":116029,"cache_read_tokens":51224605,"total_tokens":1569524}}

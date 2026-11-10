@@ -1,17 +1,42 @@
 import { existsSync, statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Config, Seat, Tool } from '../config.ts';
-import { effectiveSeats, type Store, type BoardState, type QueueItem } from '../store/db.ts';
-import { loadTaskCards } from '../task/card.ts';
+import { effectiveSeats, type Store, type GoalState, type QueueItem } from '../store/db.ts';
+import { loadTickets, type Ticket, type TicketState, type TicketType, type TicketSize } from '../ticket/ticket.ts';
+import { readProjectKey } from '../ticket/goal.ts';
 import type { EnergyWindow } from '../energy/quota.ts';
 import type { LoginState } from '../energy/login.ts';
+
+export type GoalStage = 'intake' | 'plan' | 'build' | 'verify' | 'audit' | 'release';
+
+export interface GoalTicketSnapshot {
+  id: string;
+  number: number;
+  of: number;
+  title: string;
+  type: TicketType;
+  size: TicketSize;
+  state: TicketState;
+  fix_rounds: number;
+}
+
+export interface GoalSnapshot {
+  n: number;
+  title: string;
+  state: GoalState;
+  stage: GoalStage;
+  passed: number;
+  total: number;
+  tickets: GoalTicketSnapshot[];
+}
 
 export interface SeatCard {
   seat: Seat;
   agent: string;
   tool: Tool;
   status: 'running' | 'waiting' | 'idle';
-  taskId: string | null;
+  ticket: string | null;
+  taskId?: string | null;
   since: string | null;
   turns: number;
   lastLine: string;
@@ -57,12 +82,7 @@ export interface Snapshot {
   } | null;
   holder: Seat | null;
   seats: SeatCard[];
-  tasks: {
-    id: string;
-    goal: string;
-    state: BoardState;
-    fixRounds: number;
-  }[];
+  goals: GoalSnapshot[];
   log: {
     at: string;
     who: string;
@@ -168,10 +188,14 @@ function getAccounts(store: Store, cfg: Config): AccountCard[] {
 
 function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
   const effSeats = effectiveSeats(cfg, store);
-  const seats = Object.keys(effSeats) as Seat[];
-  return seats.map((seat) => {
-    const agent = effSeats[seat];
-    const tool = cfg.agents[agent].tool;
+  const seatKeys: Seat[] = ['pm', 'dev', 'qc'];
+  const auditAgent = (effSeats.audit || cfg.seats.audit || '').trim();
+  if (auditAgent) {
+    seatKeys.push('audit');
+  }
+  return seatKeys.map((seat) => {
+    const agent = effSeats[seat] || cfg.seats[seat] || '';
+    const tool = cfg.agents[agent]?.tool ?? 'claude-code';
     const candidates = Object.entries(cfg.agents)
       .filter(([_, a]) => a.can_sit.includes(seat))
       .map(([name]) => name);
@@ -180,6 +204,7 @@ function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
       agent,
       tool,
       status: 'idle',
+      ticket: null,
       taskId: null,
       since: null,
       turns: 0,
@@ -191,6 +216,112 @@ function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
   });
 }
 
+function buildGoals(
+  project: string | null,
+  store: Store,
+  cfg: Config,
+  holder: Seat | null
+): GoalSnapshot[] {
+  if (!project) return [];
+
+  let diskTickets: Ticket[] = [];
+  try {
+    const key = readProjectKey(project);
+    try {
+      diskTickets = loadTickets(project, key);
+    } catch {}
+  } catch {
+    // If readProjectKey throws (e.g. team/project.yaml missing in working tree),
+    // proceed without disk tickets and build goals from the SQLite store
+  }
+
+  const diskTicketMap = new Map<string, Ticket>();
+  for (const dt of diskTickets) {
+    diskTicketMap.set(dt.id, dt);
+  }
+
+  try {
+    const auditAgent = (effectiveSeats(cfg, store).audit || cfg.seats?.audit || '').trim();
+    const hasAudit = auditAgent.length > 0;
+
+    const goalRows = store.listGoals(project);
+    const goals: GoalSnapshot[] = [];
+
+    for (const g of goalRows) {
+      const dbTickets = store.listTickets(project, `G${g.n}`);
+      const goalDiskTickets = diskTickets.filter((dt) => dt.goal === `G${g.n}`);
+
+      const ticketIdSet = new Set<string>();
+      for (const t of dbTickets) ticketIdSet.add(t.id);
+      for (const t of goalDiskTickets) ticketIdSet.add(t.id);
+
+      const combinedTickets: GoalTicketSnapshot[] = [];
+      for (const id of ticketIdSet) {
+        const disk = diskTicketMap.get(id);
+        const db = dbTickets.find((t) => t.id === id);
+        const stateInfo = store.getTicketState(project, id);
+
+        const number = disk?.number ?? db?.number ?? 1;
+        const of = disk?.of ?? db?.of ?? 1;
+        const title = disk?.title ?? db?.title ?? '';
+        const type = disk?.type ?? db?.type ?? 'feat';
+        const size = disk?.size ?? db?.size ?? 'S';
+        const state = stateInfo?.state ?? db?.state ?? 'pending';
+        const fix_rounds = stateInfo?.fix_rounds ?? db?.fix_rounds ?? 0;
+
+        combinedTickets.push({
+          id,
+          number,
+          of,
+          title,
+          type,
+          size,
+          state,
+          fix_rounds,
+        });
+      }
+
+      combinedTickets.sort((a, b) => a.number - b.number);
+
+      const total = combinedTickets.length;
+      const passed = combinedTickets.filter((t) => t.state === 'passed').length;
+
+      let stage: GoalStage;
+      if (g.state === 'open') {
+        stage = 'intake';
+      } else if (g.state === 'in_progress') {
+        if (holder === 'pm' || combinedTickets.length === 0) {
+          stage = 'plan';
+        } else if (combinedTickets.some((t) => t.state === 'in_dev' || t.state === 'returned')) {
+          stage = 'build';
+        } else if (combinedTickets.some((t) => t.state === 'awaiting_qc')) {
+          stage = 'verify';
+        } else {
+          stage = 'build';
+        }
+      } else if (g.state === 'qc_done') {
+        stage = hasAudit ? 'audit' : 'release';
+      } else {
+        stage = 'release';
+      }
+
+      goals.push({
+        n: g.n,
+        title: g.title,
+        state: g.state,
+        stage,
+        passed,
+        total,
+        tickets: combinedTickets,
+      });
+    }
+
+    return goals;
+  } catch {
+    return [];
+  }
+}
+
 export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const project = store.getActiveProject();
   const queue = store.listQueue(50);
@@ -200,20 +331,21 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const members = Object.keys(cfg.agents);
 
   const rawNotes = project ? store.listNotes(project, 10) : [];
-  let allCards: ReturnType<typeof loadTaskCards> = [];
+  let allTickets: Ticket[] = [];
   if (project) {
     try {
-      allCards = loadTaskCards(join(project, 'team', 'tasks'), project);
+      const key = readProjectKey(project);
+      allTickets = loadTickets(project, key);
     } catch {}
   }
 
   const notes = rawNotes.map((n) => {
     let reportLines: string[] = [];
     if (project) {
-      const matchingCards = allCards.filter(
+      const matchingTickets = allTickets.filter(
         (c) => c.note === `N-${n.id}` || c.note === String(n.id)
       );
-      for (const card of matchingCards) {
+      for (const card of matchingTickets) {
         const reportFile = join(project, 'team', 'reports', `${card.id}-dev.md`);
         if (existsSync(reportFile)) {
           try {
@@ -244,7 +376,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       session: null,
       holder: null,
       seats: createDefaultSeats(cfg, store),
-      tasks: [],
+      goals: [],
       log: [],
       queue,
       settings,
@@ -269,7 +401,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       session: null,
       holder: null,
       seats: createDefaultSeats(cfg, store),
-      tasks: [],
+      goals: buildGoals(project, store, cfg, null),
       log: [],
       queue,
       settings,
@@ -287,7 +419,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       session: null,
       holder: null,
       seats: createDefaultSeats(cfg, store),
-      tasks: [],
+      goals: buildGoals(project, store, cfg, null),
       log: [],
       queue,
       settings,
@@ -303,10 +435,14 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const holder: Seat | null = runningTurn ? runningTurn.seat : null;
 
   const effSeats = effectiveSeats(cfg, store);
-  const seatKeys = Object.keys(effSeats) as Seat[];
+  const seatKeys: Seat[] = ['pm', 'dev', 'qc'];
+  const auditAgent = (effSeats.audit || cfg.seats.audit || '').trim();
+  if (auditAgent) {
+    seatKeys.push('audit');
+  }
   const seats: SeatCard[] = seatKeys.map((seat) => {
-    const agent = effSeats[seat];
-    const tool = cfg.agents[agent].tool;
+    const agent = effSeats[seat] || cfg.seats[seat] || '';
+    const tool = cfg.agents[agent]?.tool ?? 'claude-code';
     const candidates = Object.entries(cfg.agents)
       .filter(([_, a]) => a.can_sit.includes(seat))
       .map(([name]) => name);
@@ -323,7 +459,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     const seatTurns = turns.filter((t) => t.seat === seat);
     const lastTurn = seatTurns.length > 0 ? seatTurns[seatTurns.length - 1] : null;
 
-    const taskId = lastTurn?.task_id ?? null;
+    const ticket = (status === 'running' && runningTurn?.seat === seat) ? (runningTurn.task_id ?? null) : null;
     const since = lastTurn?.started_at ?? null;
     const turnsCount = store.countTurns(s.id, seat);
     const lastLine = lastLogLine(lastTurn?.log_file ?? null);
@@ -333,7 +469,8 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       agent,
       tool,
       status,
-      taskId,
+      ticket,
+      taskId: ticket,
       since,
       turns: turnsCount,
       lastLine,
@@ -343,23 +480,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     };
   });
 
-  const taskStates = store.listTaskStates(s.id);
-  const taskGoals = new Map<string, string>();
-  try {
-    const cards = loadTaskCards(join(project, 'team', 'tasks'), project);
-    for (const card of cards) {
-      taskGoals.set(card.id, card.goal);
-    }
-  } catch {}
-
-  const tasks = taskStates.map((ts) => {
-    return {
-      id: ts.task_id,
-      goal: taskGoals.get(ts.task_id) ?? '',
-      state: ts.state,
-      fixRounds: ts.fix_rounds,
-    };
-  });
+  const goals = buildGoals(project, store, cfg, holder);
 
   const logEntries: { at: string; who: string; text: string }[] = [];
 
@@ -417,7 +538,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     },
     holder,
     seats,
-    tasks,
+    goals,
     log,
     queue,
     settings,

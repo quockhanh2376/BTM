@@ -28,11 +28,24 @@ export const QcResultSchema = z.object({
   confirm: ArrayOfStringsSchema,
 });
 
-function parseAndValidate(jsonStr: string): QcResult {
+function parseAndValidateTicket(
+  jsonStr: string,
+  expect: { ticket: string; goal: string; number: number }
+): QcResult {
   try {
     const raw = JSON.parse(jsonStr);
     const parsed = QcResultSchema.safeParse(raw);
     if (!parsed.success) {
+      return createInvalidResult();
+    }
+
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      raw.ticket !== expect.ticket ||
+      raw.goal !== expect.goal ||
+      raw.number !== expect.number
+    ) {
       return createInvalidResult();
     }
 
@@ -53,7 +66,10 @@ function parseAndValidate(jsonStr: string): QcResult {
   }
 }
 
-export function parseQcResult(text: string): QcResult {
+export function parseTicketQcResult(
+  text: string,
+  expect: { ticket: string; goal: string; number: number }
+): QcResult {
   if (typeof text !== 'string') {
     return createInvalidResult();
   }
@@ -63,7 +79,7 @@ export function parseQcResult(text: string): QcResult {
 
   if (matches.length > 0) {
     const lastContent = matches[matches.length - 1][1].trim();
-    return parseAndValidate(lastContent);
+    return parseAndValidateTicket(lastContent, expect);
   }
 
   if (text.includes('```')) {
@@ -75,5 +91,5 @@ export function parseQcResult(text: string): QcResult {
     return createInvalidResult();
   }
 
-  return parseAndValidate(trimmed);
+  return parseAndValidateTicket(trimmed, expect);
 }

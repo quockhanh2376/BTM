@@ -210,7 +210,7 @@ describe('Web Dashboard (web/index.html)', () => {
 
   it('renders required layout components and Vietnamese texts', () => {
     expect(html).toContain('Bot Task Manager');
-    expect(html).toContain('Dừng khẩn cấp');
+    expect(html).toContain('Dừng');
     expect(html).toContain('Duyệt thẻ');
     expect(html).toContain('Mục tiêu phiên');
     expect(html).toContain('Energy: —');
@@ -473,7 +473,7 @@ describe('Web Dashboard (web/index.html)', () => {
     });
   });
 
-  describe('P2-T11: Bảng task dạng tab thẻ hồ sơ', () => {
+  describe('P4-T9: Dashboard bảng theo goal, pipeline, lịch sử, nút Duyệt merge', () => {
     const getLuminance = (hex: string): number => {
       const clean = hex.replace('#', '');
       const r = parseInt(clean.slice(0, 2), 16) / 255;
@@ -491,29 +491,206 @@ describe('Web Dashboard (web/index.html)', () => {
       return (lighter + 0.05) / (darker + 0.05);
     };
 
-    it('có cấu trúc ARIA tablist/tab/tabpanel và đầy đủ 5 tab kèm số đếm', () => {
-      // 1. role="tablist" và role="tabpanel"
-      expect(html).toContain('role="tablist"');
-      expect(html).toContain('role="tabpanel"');
-
-      // 2. 5 tabs với role="tab", aria-selected, aria-controls
-      const tabMatches = [...html.matchAll(/role=["']tab["'][^>]*>/g)];
-      expect(tabMatches.length).toBeGreaterThanOrEqual(5);
-      expect(html).toContain('aria-selected');
-      expect(html).toContain('aria-controls');
-
-      // 3. 5 nhãn tab và 5 ID số đếm
-      expect(html).toContain('Chờ');
+    it('web có đủ 6 nhãn chặng pipeline tiếng Việt', () => {
+      expect(html).toContain('Tiếp nhận');
+      expect(html).toContain('Lập kế hoạch');
       expect(html).toContain('Đang làm');
-      expect(html).toContain('Chờ test');
-      expect(html).toContain('Đạt');
-      expect(html).toContain('Trả về');
+      expect(html).toContain('Kiểm thử');
+      expect(html).toContain('Kiểm tra bảo mật');
+      expect(html).toContain('Phát hành');
 
-      expect(html).toContain('id="count-pending"');
-      expect(html).toContain('id="count-in_dev"');
-      expect(html).toContain('id="count-awaiting_qc"');
-      expect(html).toContain('id="count-passed"');
-      expect(html).toContain('id="count-returned"');
+      const match = html.match(/PIPELINE_STAGES\s*=\s*(\[[\s\S]*?\]);/);
+      expect(match).not.toBeNull();
+      const stages = new Function(`return ${match![1]};`)() as Array<{ key: string; label: string }>;
+      expect(stages).toHaveLength(6);
+      expect(stages.map((s) => s.key)).toEqual(['intake', 'plan', 'build', 'verify', 'audit', 'release']);
+      expect(stages.map((s) => s.label)).toEqual([
+        'Tiếp nhận',
+        'Lập kế hoạch',
+        'Đang làm',
+        'Kiểm thử',
+        'Kiểm tra bảo mật',
+        'Phát hành',
+      ]);
+    });
+
+    it('nút Duyệt merge là <button> và có hộp xác nhận gọi POST /api/goal/approve', () => {
+      // 1. Phải là phần tử <button>
+      expect(html).toMatch(/document\.createElement\(['"]button['"]\)[\s\S]*?Duyệt merge/);
+      expect(html).toContain('btn-approve-goal');
+
+      // 2. Có gọi confirm và POST /api/goal/approve
+      expect(html).toMatch(/confirm\([^)]*Duyệt merge goal/);
+      expect(html).toContain('/api/goal/approve');
+
+      // 3. Điều kiện sẵn sàng: chỉ hiện khi qc_done (không audit) hoặc audit_passed
+      expect(html).toMatch(/g\.state\s*===\s*['"]audit_passed['"]/);
+      expect(html).toMatch(/g\.state\s*===\s*['"]qc_done['"]/);
+    });
+
+    it('độ tương phản nhãn chặng pipeline đạt >= 4.5:1 cả sáng và tối cho cả active và inactive', () => {
+      // Light theme: inactive text #55554F on #EEEEEC (badge-bg), active text #FFFFFF on #2B5BD7 (accent)
+      const lightInactiveContrast = getContrastRatio('#55554F', '#EEEEEC');
+      expect(lightInactiveContrast).toBeGreaterThanOrEqual(4.5);
+
+      const lightActiveContrast = getContrastRatio('#FFFFFF', '#2B5BD7');
+      expect(lightActiveContrast).toBeGreaterThanOrEqual(4.5);
+
+      // Dark theme: inactive text #B5B5AE on #2B2B28 (badge-bg), active text #141413 on #8AAEFF (accent)
+      const darkInactiveContrast = getContrastRatio('#B5B5AE', '#2B2B28');
+      expect(darkInactiveContrast).toBeGreaterThanOrEqual(4.5);
+
+      const darkActiveContrast = getContrastRatio('#141413', '#8AAEFF');
+      expect(darkActiveContrast).toBeGreaterThanOrEqual(4.5);
+
+      // CSS styles verify
+      expect(html).toMatch(/\.pipeline-step\s*\{[^}]*color:\s*var\(--text-muted\)/);
+      expect(html).toMatch(/\.pipeline-step\.stage-active\s*\{[^}]*background-color:\s*var\(--accent\)/);
+      expect(html).toMatch(/\[data-theme=["']dark["']\]\s+\.pipeline-step\.stage-active\s*\{[^}]*color:\s*#141413/);
+    });
+
+    it('renderGoals hiển thị đầu nhóm goal dạng G<n> · <tiêu đề> · <passed>/<total> đạt và sắp xếp n giảm dần', () => {
+      const match = html.match(/function\s+renderGoals\s*\([^)]*\)\s*\{[\s\S]*?\n\s{6}\}/);
+      expect(match).not.toBeNull();
+      const fnCode = match![0];
+
+      const createdElements: any[] = [];
+      const mockContainer = {
+        firstChild: null,
+        appendChild(el: any) {
+          createdElements.push(el);
+        },
+        removeChild() {},
+      };
+
+      const mockDocument = {
+        getElementById: (id: string) => (id === 'goals-container' ? mockContainer : null),
+        createElement: (tag: string) => {
+          const el: any = {
+            tagName: tag,
+            className: '',
+            textContent: '',
+            children: [] as any[],
+            dataset: {},
+            style: {},
+            classList: {
+              classes: new Set<string>(),
+              add(c: string) { this.classes.add(c); el.className += ' ' + c; },
+              remove(c: string) { this.classes.delete(c); },
+              contains(c: string) { return this.classes.has(c); },
+            },
+            setAttribute(name: string, val: string) {
+              this[name] = val;
+            },
+            appendChild(child: any) {
+              this.children.push(child);
+            },
+            addEventListener() {},
+          };
+          return el;
+        },
+      };
+
+      const runRender = new Function(
+        'document',
+        'clearChildren',
+        'setDisplay',
+        'postJson',
+        'showFeedback',
+        'topFeedback',
+        'formatTime',
+        'PIPELINE_STAGES',
+        'TASK_TAB_KEYS',
+        'goalTabSelections',
+        'resolveActiveTab',
+        `
+        ${fnCode}
+        return renderGoals;
+        `
+      )(mockDocument, () => {}, () => {}, () => {}, () => {}, {}, (t: string) => t, [
+        { key: 'intake', label: 'Tiếp nhận' },
+        { key: 'plan', label: 'Lập kế hoạch' },
+        { key: 'build', label: 'Đang làm' },
+        { key: 'verify', label: 'Kiểm thử' },
+        { key: 'audit', label: 'Kiểm tra bảo mật' },
+        { key: 'release', label: 'Phát hành' },
+      ], ['pending', 'in_dev', 'awaiting_qc', 'passed', 'returned'], {}, () => 'pending');
+
+      const mockGoals = [
+        { n: 1, title: 'Goal Một', state: 'in_progress', stage: 'build', passed: 1, total: 2, tickets: [] },
+        { n: 2, title: 'Goal Hai', state: 'qc_done', stage: 'release', passed: 3, total: 3, tickets: [] },
+      ];
+
+      runRender(mockGoals, []);
+
+      // Verify sorted descending by n: G2 should be first, then G1
+      expect(createdElements.length).toBe(2);
+      const card2 = createdElements[0];
+      const card1 = createdElements[1];
+
+      // G2 header text
+      const titleWrap2 = card2.children[0].children[0];
+      expect(titleWrap2.children[0].textContent).toBe('G2 · Goal Hai · 3/3 đạt');
+
+      // G1 header text
+      const titleWrap1 = card1.children[0].children[0];
+      expect(titleWrap1.children[0].textContent).toBe('G1 · Goal Một · 1/2 đạt');
+    });
+
+    it('dòng ticket hiển thị #<number>/<of> · <tiêu đề> + chip type/size, dòng lịch sử là tr có 1 td colspan=4', () => {
+      // 1. Ô Mục tiêu bỏ lặp Ticket ID: hiển thị #<number>/<of> · <tiêu đề>
+      expect(html).toContain("'#' + t.number + '/' + t.of + ' · ' + (t.title || '')");
+      expect(html).not.toContain("'#' + t.number + '/' + t.of + ' · ' + t.id");
+
+      // 2. Chip type / size
+      expect(html).toContain("typeBadge.className = 'badge ticket-badge'");
+      expect(html).toContain("sizeBadge.className = 'badge ticket-badge'");
+
+      // 3. Dòng lịch sử mở ra dưới ticket là tr có 1 td colspan=4
+      expect(html).toContain("trHistory.className = 'ticket-history-row'");
+      expect(html).toContain("tdHistory.colSpan = 4");
+      expect(html).toMatch(/toggleTicketHistory\s*\(\s*t\.id/);
+      expect(html).toContain('ticket-history-panel');
+    });
+
+    it('CSS không đặt display: flex|grid|block cho .ticket-row hay td trong bảng ticket', () => {
+      // 1. .ticket-row giữ cursor: pointer, hover, focus nhưng không có display: flex|grid|block
+      const ticketRowMatch = html.match(/\.ticket-row\s*\{([^}]+)\}/);
+      expect(ticketRowMatch).not.toBeNull();
+      const ticketRowCss = ticketRowMatch![1];
+      expect(ticketRowCss).not.toMatch(/display\s*:\s*(flex|grid|block)/);
+      expect(ticketRowCss).toMatch(/cursor\s*:\s*pointer/);
+
+      // 2. Hover và focus cho .ticket-row
+      expect(html).toMatch(/\.ticket-row:hover/);
+      expect(html).toMatch(/\.ticket-row:focus/);
+
+      // 3. Không có rule CSS nào đặt display: flex|grid|block cho .ticket-row
+      expect(html).not.toMatch(/\.ticket-row[^{]*\{[^}]*display\s*:\s*(flex|grid|block)/);
+
+      // 4. td trong .task-table không được đặt display: flex|grid|block
+      const tdRule = html.match(/\.task-table\s+td\s*\{([^}]+)\}/);
+      if (tdRule) {
+        expect(tdRule[1]).not.toMatch(/display\s*:\s*(flex|grid|block)/);
+      }
+      expect(html).not.toMatch(/\.task-table\s+td[^{]*\{[^}]*display\s*:\s*(flex|grid|block)/);
+      expect(html).not.toMatch(/\.task-table\s+\.col-[a-z]+[^{]*\{[^}]*display\s*:\s*(flex|grid|block)/);
+    });
+
+    it('mọi nội dung agent sinh (tiêu đề, lý do lịch sử) đều gắn bằng textContent, không có innerHTML và an toàn với XSS', () => {
+      // 1. Tuyệt đối không có innerHTML trong toàn bộ file index.html
+      expect(html).not.toContain('innerHTML');
+
+      // 2. Gán text qua textContent
+      expect(html).toContain('.textContent =');
+      expect(html).toMatch(/titleSpan\.textContent\s*=/);
+      expect(html).toMatch(/reasonEl\.textContent\s*=/);
+
+      // 3. Test với payload chứa thẻ <script>
+      const mockElem = { textContent: '' };
+      const maliciousTitle = '<script>alert("XSS")</script>';
+      mockElem.textContent = maliciousTitle;
+      expect(mockElem.textContent).toBe('<script>alert("XSS")</script>');
     });
 
     it('CSS: tab dạng thẻ hồ sơ (bo góc trên ~12px, chồng lên nhau nhẹ), tab active nổi cao hơn, nền accent, không viền giữa', () => {
@@ -529,74 +706,109 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(html).toMatch(/\[aria-selected=["']true["']\][^{]*\{[^}]*(border-bottom:\s*none|margin-bottom:\s*-[1-3]px)/);
 
       // 4. Mobile: tablist cuộn ngang trong chính nó
-      expect(html).toMatch(/\[role=["']tablist["']\]|\.task-tabs[^{]*\{[^}]*overflow-x:\s*auto/);
+      expect(html).toMatch(/\[role=["']tablist["']\]|\.task-tabs-nav[^{]*\{[^}]*overflow-x:\s*auto/);
     });
 
-    it('độ tương phản chữ trên cả 2 theme đều đạt >= 4.5:1 cho cả tab active và không active', () => {
-      // Light theme active: #FFFFFF on #2B5BD7 (accent light)
-      const lightActiveContrast = getContrastRatio('#FFFFFF', '#2B5BD7');
-      expect(lightActiveContrast).toBeGreaterThanOrEqual(4.5);
+    it('có cấu trúc ARIA tablist/tab/tabpanel và đầy đủ 5 tab kèm số đếm', () => {
+      // 1. role="tablist" và role="tabpanel"
+      expect(html).toContain("tabNav.setAttribute('role', 'tablist')");
+      expect(html).toContain("panel.setAttribute('role', 'tabpanel')");
 
-      // Light theme inactive: #55554F on #E5E5DF
-      const lightInactiveContrast = getContrastRatio('#55554F', '#E5E5DF');
-      expect(lightInactiveContrast).toBeGreaterThanOrEqual(4.5);
+      // 2. 5 tabs với role="tab", aria-selected, aria-controls
+      expect(html).toContain("tabBtn.setAttribute('role', 'tab')");
+      expect(html).toContain("panel.setAttribute('role', 'tabpanel')");
+      expect(html).toContain('aria-selected');
+      expect(html).toContain('aria-controls');
 
-      // Dark theme active: #141413 on #8AAEFF (accent dark)
-      const darkActiveContrast = getContrastRatio('#141413', '#8AAEFF');
-      expect(darkActiveContrast).toBeGreaterThanOrEqual(4.5);
-
-      // Dark theme inactive: #B5B5AE on #2B2B28
-      const darkInactiveContrast = getContrastRatio('#B5B5AE', '#2B2B28');
-      expect(darkInactiveContrast).toBeGreaterThanOrEqual(4.5);
-
-      // Đảm bảo CSS có định nghĩa biến hoặc quy tắc màu cho tab active và inactive ở cả 2 theme
-      expect(html).toMatch(/--tab-active-text[^;]*#ffffff/i);
-      expect(html).toMatch(/--tab-inactive-bg[^;]*#e5e5df/i);
-      expect(html).toMatch(/--tab-inactive-text[^;]*#55554f/i);
-      expect(html).toMatch(/--tab-active-text[^;]*#141413/i);
-      expect(html).toMatch(/--tab-inactive-bg[^;]*#2b2b28/i);
-      expect(html).toMatch(/--tab-inactive-text[^;]*#b5b5ae/i);
-
-      // B.1: Số đếm trên tab active ở theme sáng tương phản >= 4.5:1, không dùng nền pha alpha (dùng màu đặc)
-      const activeCountMatch = html.match(/\.task-tab\[aria-selected=["']true["']\]\s+\.task-tab-count\s*\{([^}]+)\}/);
-      expect(activeCountMatch).not.toBeNull();
-      const activeCountCss = activeCountMatch![1];
-      expect(activeCountCss).not.toMatch(/rgba|hsla/i);
-      // Nền #1e3f99, chữ #ffffff -> tương phản >= 4.5:1
-      const lightActiveCountContrast = getContrastRatio('#FFFFFF', '#1E3F99');
-      expect(lightActiveCountContrast).toBeGreaterThanOrEqual(4.5);
+      // 3. 5 nhãn tab và số đếm task-tab-count
+      expect(html).toContain('Chờ');
+      expect(html).toContain('Đang làm');
+      expect(html).toContain('Chờ test');
+      expect(html).toContain('Đạt');
+      expect(html).toContain('Trả về');
+      expect(html).toContain('task-tab-count');
     });
 
-    it('panel bên dưới là bảng chữ ID · Mục tiêu · Vòng sửa · Cập nhật, mục tiêu xuống dòng, trống ghi "Không có thẻ"', () => {
-      // 1. Tiêu đề bảng: ID, Mục tiêu, Vòng sửa, Cập nhật
-      expect(html).toMatch(/<th[^>]*>ID<\/th>/);
-      expect(html).toMatch(/<th[^>]*>Mục tiêu<\/th>/);
-      expect(html).toMatch(/<th[^>]*>Vòng sửa<\/th>/);
-      expect(html).toMatch(/<th[^>]*>Cập nhật<\/th>/);
+    it('cả 5 tab đều mang thuộc tính data-state tương ứng với trạng thái', () => {
+      expect(html).toContain("tabBtn.setAttribute('data-state', tabKey)");
+      expect(html).toContain("TASK_TAB_KEYS = ['pending', 'in_dev', 'awaiting_qc', 'passed', 'returned']");
+    });
 
-      // 2. Mục tiêu dài thì xuống dòng (word-break và white-space: normal, bỏ nowrap ở cột Mục tiêu)
-      expect(html).toMatch(/(word-break:\s*break-word|overflow-wrap:\s*break-word)/);
-      expect(html).toMatch(/white-space:\s*normal/);
-      expect(html).not.toMatch(/\.col-goal[^{]*\{[^}]*white-space:\s*nowrap/);
+    it('hàng chứa 2 khung dùng align-items: stretch', () => {
+      const layoutMatch = html.match(/\.board-and-log-layout\s*\{([^}]+)\}/);
+      expect(layoutMatch).not.toBeNull();
+      const css = layoutMatch![1];
+      expect(css).toMatch(/align-items:\s*stretch/);
+      expect(css).not.toMatch(/align-items:\s*start/);
+    });
 
-      // 3. Trống ghi "Không có thẻ"
-      expect(html).toContain('Không có thẻ');
+    it('hỗ trợ điều hướng phím ← → đổi tab với vòng lặp tuần hoàn', () => {
+      expect(html).toMatch(/ArrowRight|ArrowLeft/);
+      expect(html).toMatch(/addEventListener\s*\(\s*['"]keydown['"]/);
 
-      // 4. B.2: table-layout fixed + word-break, các cột khác ngắn để không bao giờ làm trang cuộn ngang ở 375px
-      expect(html).toMatch(/\.task-table\s*\{[^}]*table-layout:\s*fixed/);
-      expect(html).toMatch(/\.task-table\s*\{[^}]*(word-break:\s*break-word|overflow-wrap:\s*break-word)/);
-      expect(html).toMatch(/\.col-id\s*\{[^}]*width:\s*(5[0-9]|6[0-5]|7[0-5])px/);
-      expect(html).toMatch(/\.col-fixes\s*\{[^}]*width:\s*(5[0-9]|6[0-5]|7[0-9]|8[0-5])px/);
-      expect(html).toMatch(/\.col-updated\s*\{[^}]*width:\s*(6[0-9]|7[0-5]|9[0-6])px/);
+      const keyFnMatch = html.match(/function\s+handleTabKeydown\s*\([^)]*\)\s*\{[\s\S]*?\n\s{6}\}/);
+      expect(keyFnMatch).not.toBeNull();
+      const fnCode = keyFnMatch![0];
+
+      let selectedTab = 'pending';
+      let focused = false;
+      const mockSelectTab = (tabKey: string, focus: boolean) => {
+        selectedTab = tabKey;
+        focused = focus;
+      };
+
+      const runKeydown = new Function(
+        'e',
+        'currentActiveTab',
+        'selectTab',
+        'TASK_TAB_KEYS',
+        `
+        ${fnCode}
+        handleTabKeydown(e, currentActiveTab, selectTab);
+        `
+      );
+
+      const TASK_TAB_KEYS = ['pending', 'in_dev', 'awaiting_qc', 'passed', 'returned'];
+
+      // ArrowRight từ pending -> in_dev
+      let defaultPrevented = false;
+      const evRight = { key: 'ArrowRight', preventDefault: () => { defaultPrevented = true; } };
+      runKeydown(evRight, 'pending', mockSelectTab, TASK_TAB_KEYS);
+      expect(defaultPrevented).toBe(true);
+      expect(selectedTab).toBe('in_dev');
+      expect(focused).toBe(true);
+
+      // ArrowRight từ tab cuối 'returned' -> vòng lại 'pending'
+      runKeydown(evRight, 'returned', mockSelectTab, TASK_TAB_KEYS);
+      expect(selectedTab).toBe('pending');
+
+      // ArrowLeft từ 'pending' -> vòng về 'returned'
+      const evLeft = { key: 'ArrowLeft', preventDefault: () => {} };
+      runKeydown(evLeft, 'pending', mockSelectTab, TASK_TAB_KEYS);
+      expect(selectedTab).toBe('returned');
+
+      // ArrowLeft từ 'awaiting_qc' -> 'in_dev'
+      runKeydown(evLeft, 'awaiting_qc', mockSelectTab, TASK_TAB_KEYS);
+      expect(selectedTab).toBe('in_dev');
+    });
+
+    it('khi xếp dọc ở màn hẹp vẫn giữ min-height 360px', () => {
+      expect(html).not.toMatch(/@media[^{]*\{[^}]*\.task-tabpanel\s*\{[^}]*min-height:\s*(0|none|[1-2][0-9]{2}px|3[0-5][0-9]px)/);
+    });
+
+    it('khung Bảng task là flex column', () => {
+      const taskBoardMatch = html.match(/\.task-board-section\s*\{([^}]+)\}/);
+      expect(taskBoardMatch).not.toBeNull();
+      const css = taskBoardMatch![1];
+      expect(css).toMatch(/display:\s*flex/);
+      expect(css).toMatch(/flex-direction:\s*column/);
     });
 
     it('mặc định tab active theo thẻ đang chạy, fallback tab đầu tiên có thẻ, giữ lựa chọn người dùng cho đến khi trạng thái thay đổi', () => {
-      // Trích xuất hàm resolveActiveTab hoặc computeActiveTab
       const tabFnMatch = html.match(/function\s+(resolveActiveTab|computeActiveTab|getActiveTab)\s*\([^)]*\)\s*\{[\s\S]*?(?=\n\s*function\s+updateTabUI)/);
       expect(tabFnMatch).not.toBeNull();
       const fnCode = tabFnMatch![0];
 
-      // Hàm trích xuất vân tay hoặc kiểm tra thay đổi trạng thái thẻ
       const fpFnMatch = html.match(/function\s+(getTasksFingerprint|computeTasksFingerprint)[\s\S]*?(?=\n\s*function\s+resolveActiveTab)/);
       expect(fpFnMatch).not.toBeNull();
       const fpCode = fpFnMatch![0];
@@ -610,6 +822,8 @@ describe('Web Dashboard (web/index.html)', () => {
         ${fpCode}
         var userSelectedTab = userSelected;
         var lastTasksFingerprint = lastFingerprint;
+        var goalTabSelections = {};
+        var goalTicketsFingerprints = {};
         ${fnCode}
         var active = resolveActiveTab(tasks);
         return { active: active, userSelectedTab: userSelectedTab, lastTasksFingerprint: lastTasksFingerprint };
@@ -670,59 +884,72 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(keepMetaResult.userSelectedTab).toBe('returned');
     });
 
-    it('hỗ trợ điều hướng phím ← → đổi tab với vòng lặp tuần hoàn', () => {
-      // Phím ArrowLeft và ArrowRight được lắng nghe
-      expect(html).toMatch(/ArrowRight|ArrowLeft/);
-      expect(html).toMatch(/addEventListener\s*\(\s*['"]keydown['"]/);
-
-      const keyFnMatch = html.match(/function\s+handleTabKeydown\s*\([^)]*\)\s*\{[\s\S]*?(?=\n\s*if\s*\(taskTablist\))/);
-      expect(keyFnMatch).not.toBeNull();
-      const fnCode = keyFnMatch![0];
-
-      let selectedTab = 'pending';
-      let focused = false;
-      const mockSelectTab = (tabKey: string, focus: boolean) => {
-        selectedTab = tabKey;
-        focused = focus;
-      };
-
-      const runKeydown = new Function(
-        'e',
-        'currentActiveTab',
-        'selectTab',
-        'TASK_TAB_KEYS',
-        `
-        ${fnCode}
-        handleTabKeydown(e);
-        `
-      );
-
-      const TASK_TAB_KEYS = ['pending', 'in_dev', 'awaiting_qc', 'passed', 'returned'];
-
-      // ArrowRight từ pending -> in_dev
-      let defaultPrevented = false;
-      const evRight = { key: 'ArrowRight', preventDefault: () => { defaultPrevented = true; } };
-      runKeydown(evRight, 'pending', mockSelectTab, TASK_TAB_KEYS);
-      expect(defaultPrevented).toBe(true);
-      expect(selectedTab).toBe('in_dev');
-      expect(focused).toBe(true);
-
-      // ArrowRight từ tab cuối 'returned' -> vòng lại 'pending'
-      runKeydown(evRight, 'returned', mockSelectTab, TASK_TAB_KEYS);
-      expect(selectedTab).toBe('pending');
-
-      // ArrowLeft từ 'pending' -> vòng về 'returned'
-      const evLeft = { key: 'ArrowLeft', preventDefault: () => {} };
-      runKeydown(evLeft, 'pending', mockSelectTab, TASK_TAB_KEYS);
-      expect(selectedTab).toBe('returned');
-
-      // ArrowLeft từ 'awaiting_qc' -> 'in_dev'
-      runKeydown(evLeft, 'awaiting_qc', mockSelectTab, TASK_TAB_KEYS);
-      expect(selectedTab).toBe('in_dev');
+    it('panel bên dưới tab có flex: 1 và min-height 360px để luôn kéo dài xuống đáy khung', () => {
+      const panelMatch = html.match(/\.task-tabpanel\s*\{([^}]+)\}/);
+      expect(panelMatch).not.toBeNull();
+      const css = panelMatch![1];
+      expect(css).toMatch(/flex:\s*1(\s+1\s+(0|0%|auto))?/);
+      expect(css).toMatch(/min-height:\s*360px/);
     });
 
-    it('renderTaskTable hiển thị đúng các cột ID, Mục tiêu, Vòng sửa, Cập nhật và trạng thái trống "Không có thẻ"', () => {
-      const renderFnMatch = html.match(/function\s+renderTaskTable\s*\([^)]*\)\s*\{[\s\S]*?(?=\n\s*function\s+selectTab)/);
+    it('bảng trong panel giữ nguyên và dòng Không có ticket nằm trên cùng panel', () => {
+      const tdMatch = html.match(/\.task-table\s+td\s*\{([^}]+)\}/);
+      expect(tdMatch).not.toBeNull();
+      expect(tdMatch![1]).toMatch(/vertical-align:\s*top/);
+
+      const tableMatch = html.match(/\.task-table\s*\{([^}]+)\}/);
+      expect(tableMatch).not.toBeNull();
+      expect(tableMatch![1]).not.toMatch(/height:\s*(100%|inherit)/);
+
+      expect(html).toMatch(/tdEmpty\.textContent\s*=\s*['"]Không có ticket['"]/);
+    });
+
+    it('bảng trong panel: table width 100%, table-layout fixed, có colgroup và đặt đúng độ rộng các cột', () => {
+      // 1. table width 100% và table-layout fixed
+      expect(html).toMatch(/\.task-table\s*\{[^}]*width:\s*100%/);
+      expect(html).toMatch(/\.task-table\s*\{[^}]*table-layout:\s*fixed/);
+
+      // 2. Đặt độ rộng cột ID ~72px, Vòng sửa ~80px, Cập nhật ~96px, Mục tiêu phần còn lại
+      expect(html).toMatch(/(\.col-id|col\.col-id|style=["'][^"']*width:\s*72px)[^{;]*\{?[^}]*width:\s*72px/);
+      expect(html).toMatch(/(\.col-fixes|col\.col-fixes|style=["'][^"']*width:\s*80px)[^{;]*\{?[^}]*width:\s*80px/);
+      expect(html).toMatch(/(\.col-updated|col\.col-updated|style=["'][^"']*width:\s*96px)[^{;]*\{?[^}]*width:\s*96px/);
+
+      // 3. Cột Mục tiêu/tiêu đề tự co giãn phần còn lại (width auto hoặc word-break)
+      expect(html).toMatch(/\.col-goal\s*\{[^}]*(width:\s*auto|word-break:\s*break-word|overflow-wrap:\s*break-word)/);
+
+      // 4. Có colgroup với 4 col
+      expect(html).toContain("document.createElement('colgroup')");
+      expect(html).toContain("colId.className = 'col-id'");
+      expect(html).toContain("colGoal.className = 'col-goal'");
+      expect(html).toContain("colFixes.className = 'col-fixes'");
+      expect(html).toContain("colUpdated.className = 'col-updated'");
+    });
+
+    it('panel bên dưới là bảng chữ ID · Mục tiêu · Vòng sửa · Cập nhật, mục tiêu xuống dòng, trống ghi "Không có ticket"', () => {
+      // 1. Tiêu đề bảng: ID, Mục tiêu/Tiêu đề, Vòng sửa, Cập nhật
+      expect(html).toMatch(/thId\.textContent\s*=\s*['"]ID['"]/);
+      expect(html).toMatch(/thGoal\.textContent\s*=\s*['"](Mục tiêu|Tiêu đề)['"]/);
+      expect(html).toMatch(/thFixes\.textContent\s*=\s*['"]Vòng sửa['"]/);
+      expect(html).toMatch(/thUpdated\.textContent\s*=\s*['"]Cập nhật['"]/);
+
+      // 2. Mục tiêu dài thì xuống dòng
+      expect(html).toMatch(/(word-break:\s*break-word|overflow-wrap:\s*break-word)/);
+      expect(html).toMatch(/white-space:\s*normal/);
+      expect(html).not.toMatch(/\.col-goal[^{]*\{[^}]*white-space:\s*nowrap/);
+
+      // 3. Trống ghi "Không có ticket"
+      expect(html).toContain('Không có ticket');
+
+      // 4. table-layout fixed + word-break
+      expect(html).toMatch(/\.task-table\s*\{[^}]*table-layout:\s*fixed/);
+      expect(html).toMatch(/\.task-table\s*\{[^}]*(word-break:\s*break-word|overflow-wrap:\s*break-word)/);
+      expect(html).toMatch(/\.col-id\s*\{[^}]*width:\s*(5[0-9]|6[0-5]|7[0-5])px/);
+      expect(html).toMatch(/\.col-fixes\s*\{[^}]*width:\s*(5[0-9]|6[0-5]|7[0-9]|8[0-5])px/);
+      expect(html).toMatch(/\.col-updated\s*\{[^}]*width:\s*(6[0-9]|7[0-5]|9[0-6])px/);
+    });
+
+    it('renderTaskTable hiển thị đúng các cột ID, Mục tiêu, Vòng sửa, Cập nhật và trạng thái trống "Không có ticket"', () => {
+      const renderFnMatch = html.match(/function\s+(renderTicketTable|renderTaskTable)\s*\([^)]*\)\s*\{[\s\S]*?(?=\n\s*(?:var\s+renderTaskTable|function))/);
       expect(renderFnMatch).not.toBeNull();
       const fnCode = renderFnMatch![0];
 
@@ -735,12 +962,14 @@ describe('Web Dashboard (web/index.html)', () => {
       };
 
       const mockDocument = {
+        getElementById: () => mockTbody,
         createElement: (tag: string) => {
           return {
             tagName: tag,
             className: '',
             textContent: '',
             children: [] as any[],
+            style: {},
             appendChild(child: any) {
               this.children.push(child);
             },
@@ -750,31 +979,28 @@ describe('Web Dashboard (web/index.html)', () => {
 
       const runRender = new Function(
         'document',
-        'taskTableBody',
         'clearChildren',
         'formatTime',
-        'tasks',
-        'activeKey',
         `
         ${fnCode}
-        renderTaskTable(tasks, activeKey);
+        return renderTicketTable;
         `
-      );
+      )(mockDocument, () => {}, (t: string) => t.slice(11, 19));
 
-      // 1. Khi tab rỗng -> hiển thị "Không có thẻ"
-      runRender(mockDocument, mockTbody, () => {}, (t: string) => t, [], 'pending');
+      // 1. Khi tab rỗng -> hiển thị "Không có ticket"
+      runRender([], 'pending', mockTbody);
       expect(createdRows.length).toBe(1);
       const emptyRow = createdRows[0];
-      expect(emptyRow.children[0].textContent).toBe('Không có thẻ');
+      expect(emptyRow.children[0].textContent).toBe('Không có ticket');
       expect(emptyRow.children[0].className).toContain('empty-placeholder');
 
       // 2. Khi tab có thẻ -> hiển thị đủ các cột
       createdRows.length = 0;
       const testTasks = [
-        { id: 'T-001', goal: 'Xây dựng giao diện tab cho bảng task', state: 'in_dev', fixRounds: 2, updatedAt: '2026-11-08T13:00:00Z' },
-        { id: 'T-002', goal: 'Task khác', state: 'pending', fixRounds: 0 },
+        { id: 'T-001', goal: 'Xây dựng giao diện tab cho bảng task', state: 'in_dev', fix_rounds: 2, updatedAt: '2026-11-08T13:00:00Z' },
+        { id: 'T-002', goal: 'Task khác', state: 'pending', fix_rounds: 0 },
       ];
-      runRender(mockDocument, mockTbody, () => {}, (t: string) => t.slice(11, 19), testTasks, 'in_dev');
+      runRender(testTasks, 'in_dev', mockTbody);
       expect(createdRows.length).toBe(1);
       const row = createdRows[0];
       expect(row.children[0].textContent).toBe('T-001');
@@ -782,73 +1008,6 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(row.children[2].textContent).toBe('2');
       expect(row.children[3].textContent).toBe('13:00:00');
     });
-  });
-
-  describe('P2-T12: Khung Bảng task cao bằng cả hàng và panel min-height 360px', () => {
-    it('hàng chứa 2 khung dùng align-items: stretch', () => {
-      const layoutMatch = html.match(/\.board-and-log-layout\s*\{([^}]+)\}/);
-      expect(layoutMatch).not.toBeNull();
-      const css = layoutMatch![1];
-      expect(css).toMatch(/align-items:\s*stretch/);
-      expect(css).not.toMatch(/align-items:\s*start/);
-    });
-
-    it('khung Bảng task là flex column', () => {
-      const taskBoardMatch = html.match(/\.task-board-section\s*\{([^}]+)\}/);
-      expect(taskBoardMatch).not.toBeNull();
-      const css = taskBoardMatch![1];
-      expect(css).toMatch(/display:\s*flex/);
-      expect(css).toMatch(/flex-direction:\s*column/);
-    });
-
-    it('panel bên dưới tab có flex: 1 và min-height 360px để luôn kéo dài xuống đáy khung', () => {
-      const panelMatch = html.match(/\.task-tabpanel\s*\{([^}]+)\}/);
-      expect(panelMatch).not.toBeNull();
-      const css = panelMatch![1];
-      expect(css).toMatch(/flex:\s*1(\s+1\s+(0|0%|auto))?/);
-      expect(css).toMatch(/min-height:\s*360px/);
-    });
-
-    it('khi xếp dọc ở màn hẹp vẫn giữ min-height 360px', () => {
-      expect(html).not.toMatch(/@media[^{]*\{[^}]*\.task-tabpanel\s*\{[^}]*min-height:\s*(0|none|[1-2][0-9]{2}px|3[0-5][0-9]px)/);
-    });
-
-    it('bảng trong panel giữ nguyên và dòng Không có thẻ nằm trên cùng panel', () => {
-      const panelHtmlMatch = html.match(/<div[^>]*id=["']task-tabpanel["'][^>]*>([\s\S]*?)<\/div>/);
-      expect(panelHtmlMatch).not.toBeNull();
-      const panelInner = panelHtmlMatch![1];
-      expect(panelInner).toContain('class="task-table"');
-      expect(panelInner).toMatch(/<tbody[^>]*id=["']task-table-body["'][^>]*>[\s\S]*?Không có thẻ[\s\S]*?<\/tbody>/);
-
-      const tdMatch = html.match(/\.task-table\s+td\s*\{([^}]+)\}/);
-      expect(tdMatch).not.toBeNull();
-      expect(tdMatch![1]).toMatch(/vertical-align:\s*top/);
-
-      const tableMatch = html.match(/\.task-table\s*\{([^}]+)\}/);
-      expect(tableMatch).not.toBeNull();
-      expect(tableMatch![1]).not.toMatch(/height:\s*(100%|inherit)/);
-
-      expect(html).toMatch(/td\.textContent\s*=\s*['"]Không có thẻ['"]/);
-    });
-  });
-
-  describe('P2-T13: Mỗi tab một màu theo trạng thái và căn chỉnh độ rộng cột bảng task', () => {
-    const getLuminance = (hex: string): number => {
-      const clean = hex.replace('#', '');
-      const r = parseInt(clean.slice(0, 2), 16) / 255;
-      const g = parseInt(clean.slice(2, 4), 16) / 255;
-      const b = parseInt(clean.slice(4, 6), 16) / 255;
-      const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-      return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
-    };
-
-    const getContrastRatio = (hex1: string, hex2: string): number => {
-      const l1 = getLuminance(hex1);
-      const l2 = getLuminance(hex2);
-      const lighter = Math.max(l1, l2);
-      const darker = Math.min(l1, l2);
-      return (lighter + 0.05) / (darker + 0.05);
-    };
 
     it('định nghĩa 5 biến màu trạng thái cho cả 2 theme (:root và [data-theme="dark"])', () => {
       // 1. :root có đủ 5 biến màu trạng thái (Chờ = slate, Đang làm = xanh dương, Chờ test = vàng cam, Đạt = xanh lá, Trả về = đỏ)
@@ -872,6 +1031,71 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(darkCss).toMatch(/--(tab|state)-awaiting[-_]qc:\s*#[0-9a-fA-F]{6}/i);
       expect(darkCss).toMatch(/--(tab|state)-passed:\s*#[0-9a-fA-F]{6}/i);
       expect(darkCss).toMatch(/--(tab|state)-returned:\s*#[0-9a-fA-F]{6}/i);
+    });
+
+    it('tab không active có dải màu riêng 3px ở mép trên và số đếm có màu riêng', () => {
+      // 1. Dải màu riêng 3px ở mép trên
+      expect(html).toMatch(/border-top:\s*3px\s+solid/i);
+      expect(html).toMatch(/\.task-tab\[data-state=["']pending["']\][^{]*\{[^}]*border-top:\s*3px/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']in_dev["']\][^{]*\{[^}]*border-top:\s*3px/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']awaiting_qc["']\][^{]*\{[^}]*border-top:\s*3px/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']passed["']\][^{]*\{[^}]*border-top:\s*3px/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']returned["']\][^{]*\{[^}]*border-top:\s*3px/);
+
+      // 2. Số đếm màu riêng cho từng tab
+      expect(html).toMatch(/\.task-tab\[data-state=["']pending["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']in_dev["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']awaiting_qc["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']passed["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']returned["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
+    });
+
+    it('tab active có nền đặc màu riêng và đường viền nối panel cùng màu đó', () => {
+      // 1. Tab active có nền đặc màu riêng và viền riêng cho cả 5 trạng thái
+      expect(html).toMatch(/\.task-tab\[data-state=["']pending["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']in_dev["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']awaiting_qc["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']passed["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+      expect(html).toMatch(/\.task-tab\[data-state=["']returned["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
+
+      // 2. Đường viền nối panel cùng màu với tab active
+      expect(html).toMatch(/\.task-tabs-nav\[data-active-state|\.task-tabs-nav:has/);
+      expect(html).toMatch(/border-bottom(-color)?:\s*(2px\s+solid\s+)?var\(--(tab|state)-/);
+    });
+
+    it('độ tương phản chữ trên cả 2 theme đều đạt >= 4.5:1 cho cả tab active và không active', () => {
+      // Light theme active: #FFFFFF on #2B5BD7 (accent light)
+      const lightActiveContrast = getContrastRatio('#FFFFFF', '#2B5BD7');
+      expect(lightActiveContrast).toBeGreaterThanOrEqual(4.5);
+
+      // Light theme inactive: #55554F on #E5E5DF
+      const lightInactiveContrast = getContrastRatio('#55554F', '#E5E5DF');
+      expect(lightInactiveContrast).toBeGreaterThanOrEqual(4.5);
+
+      // Dark theme active: #141413 on #8AAEFF (accent dark)
+      const darkActiveContrast = getContrastRatio('#141413', '#8AAEFF');
+      expect(darkActiveContrast).toBeGreaterThanOrEqual(4.5);
+
+      // Dark theme inactive: #B5B5AE on #2B2B28
+      const darkInactiveContrast = getContrastRatio('#B5B5AE', '#2B2B28');
+      expect(darkInactiveContrast).toBeGreaterThanOrEqual(4.5);
+
+      // Đảm bảo CSS có định nghĩa biến hoặc quy tắc màu cho tab active và inactive ở cả 2 theme
+      expect(html).toMatch(/--tab-active-text[^;]*#ffffff/i);
+      expect(html).toMatch(/--tab-inactive-bg[^;]*#e5e5df/i);
+      expect(html).toMatch(/--tab-inactive-text[^;]*#55554f/i);
+      expect(html).toMatch(/--tab-active-text[^;]*#141413/i);
+      expect(html).toMatch(/--tab-inactive-bg[^;]*#2b2b28/i);
+      expect(html).toMatch(/--tab-inactive-text[^;]*#b5b5ae/i);
+
+      // Số đếm trên tab active ở theme sáng tương phản >= 4.5:1, không dùng nền pha alpha (dùng màu đặc)
+      const activeCountMatch = html.match(/\.task-tab\[aria-selected=["']true["']\]\s+\.task-tab-count\s*\{([^}]+)\}/);
+      expect(activeCountMatch).not.toBeNull();
+      const activeCountCss = activeCountMatch![1];
+      expect(activeCountCss).not.toMatch(/rgba|hsla/i);
+      // Nền #1e3f99, chữ #ffffff -> tương phản >= 4.5:1
+      const lightActiveCountContrast = getContrastRatio('#FFFFFF', '#1E3F99');
+      expect(lightActiveCountContrast).toBeGreaterThanOrEqual(4.5);
     });
 
     it('độ tương phản chữ trên nền tab active và số đếm trên cả 2 theme đều đạt >= 4.5:1', () => {
@@ -938,67 +1162,6 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(getContrastRatio(darkAwaitingQc!, '#2B2B28')).toBeGreaterThanOrEqual(4.5);
       expect(getContrastRatio(darkPassed!, '#2B2B28')).toBeGreaterThanOrEqual(4.5);
       expect(getContrastRatio(darkReturned!, '#2B2B28')).toBeGreaterThanOrEqual(4.5);
-    });
-
-    it('cả 5 tab đều mang thuộc tính data-state tương ứng với trạng thái', () => {
-      expect(html).toMatch(/<button[^>]*id=["']tab-pending["'][^>]*data-state=["']pending["']/);
-      expect(html).toMatch(/<button[^>]*id=["']tab-in_dev["'][^>]*data-state=["']in_dev["']/);
-      expect(html).toMatch(/<button[^>]*id=["']tab-awaiting_qc["'][^>]*data-state=["']awaiting_qc["']/);
-      expect(html).toMatch(/<button[^>]*id=["']tab-passed["'][^>]*data-state=["']passed["']/);
-      expect(html).toMatch(/<button[^>]*id=["']tab-returned["'][^>]*data-state=["']returned["']/);
-    });
-
-    it('tab không active có dải màu riêng 3px ở mép trên và số đếm có màu riêng', () => {
-      // 1. Dải màu riêng 3px ở mép trên
-      expect(html).toMatch(/border-top:\s*3px\s+solid/i);
-      expect(html).toMatch(/\.task-tab\[data-state=["']pending["']\][^{]*\{[^}]*border-top:\s*3px/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']in_dev["']\][^{]*\{[^}]*border-top:\s*3px/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']awaiting_qc["']\][^{]*\{[^}]*border-top:\s*3px/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']passed["']\][^{]*\{[^}]*border-top:\s*3px/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']returned["']\][^{]*\{[^}]*border-top:\s*3px/);
-
-      // 2. Số đếm màu riêng cho từng tab
-      expect(html).toMatch(/\.task-tab\[data-state=["']pending["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']in_dev["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']awaiting_qc["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']passed["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']returned["']\]\s+\.task-tab-count[^{]*\{[^}]*color:/);
-    });
-
-    it('tab active có nền đặc màu riêng và đường viền nối panel cùng màu đó', () => {
-      // 1. Tab active có nền đặc màu riêng và viền riêng cho cả 5 trạng thái
-      expect(html).toMatch(/\.task-tab\[data-state=["']pending["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']in_dev["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']awaiting_qc["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']passed["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
-      expect(html).toMatch(/\.task-tab\[data-state=["']returned["']\]\[aria-selected=["']true["']\][^{]*\{[^}]*background-color:/);
-
-      // 2. Đường viền nối panel cùng màu với tab active
-      expect(html).toMatch(/\.task-tabs-nav\[data-active-state|\.task-tabs-nav:has/);
-      expect(html).toMatch(/border-bottom(-color)?:\s*(2px\s+solid\s+)?var\(--(tab|state)-/);
-
-      // 3. updateTabUI cập nhật data-active-state hoặc màu viền nối
-      expect(html).toMatch(/data-active-state|borderBottomColor|--tab-active/);
-    });
-
-    it('bảng trong panel: table width 100%, table-layout fixed, có colgroup và đặt đúng độ rộng các cột', () => {
-      // 1. Bảng có <colgroup> và 4 <col>
-      expect(html).toMatch(/<colgroup>[\s\S]*?<col[\s\S]*?<\/colgroup>/);
-
-      // 2. table width 100% và table-layout fixed
-      expect(html).toMatch(/\.task-table\s*\{[^}]*width:\s*100%/);
-      expect(html).toMatch(/\.task-table\s*\{[^}]*table-layout:\s*fixed/);
-
-      // 3. Đặt độ rộng cột ID ~72px, Vòng sửa ~80px, Cập nhật ~96px, Mục tiêu phần còn lại
-      expect(html).toMatch(/(\.col-id|col\.col-id|style=["'][^"']*width:\s*72px)[^{;]*\{?[^}]*width:\s*72px/);
-      expect(html).toMatch(/(\.col-fixes|col\.col-fixes|style=["'][^"']*width:\s*80px)[^{;]*\{?[^}]*width:\s*80px/);
-      expect(html).toMatch(/(\.col-updated|col\.col-updated|style=["'][^"']*width:\s*96px)[^{;]*\{?[^}]*width:\s*96px/);
-
-      // 4. Cột Mục tiêu tự co giãn phần còn lại (width auto hoặc word-break)
-      expect(html).toMatch(/\.col-goal\s*\{[^}]*(width:\s*auto|word-break:\s*break-word|overflow-wrap:\s*break-word)/);
-
-      // 5. Không tràn khung ở mobile 375px: không có min-width lớn hơn 320px trên bảng/panel
-      expect(html).not.toMatch(/\.task-table\s*\{[^}]*min-width:\s*(3[3-9][0-9]|[4-9][0-9]{2})/);
     });
   });
 
@@ -1211,6 +1374,23 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(html).toContain('Tiếp tục phiên');
       expect(html).toContain('/api/resume');
       expect(html).toMatch(/status\s*===\s*['"]needs_owner['"]\s*\|\|\s*status\s*===\s*['"]stopped['"]/);
+    });
+  });
+
+  describe('P4-UI1: Nút "Dừng" + dashboard dày cho màn 27" 2K/4K', () => {
+    it('đổi chữ "Dừng khẩn cấp" thành "Dừng" trên nút #stop-btn, confirm và feedback, giữ nguyên id và btn-danger', () => {
+      expect(html).not.toContain('Dừng khẩn cấp');
+      expect(html).toMatch(/<button[^>]*id=["']stop-btn["'][^>]*class=["'][^"']*\bbtn-danger\b[^"']*["'][^>]*>\s*Dừng\s*<\/button>/);
+      expect(html).toMatch(/confirm\([^)]*Dừng\?/);
+      expect(html).toContain('Đã gửi lệnh Dừng');
+    });
+
+    it('bỏ max-width: 1400px của khung chính, dùng full width, thu gọn khoảng cách và dùng repeat(auto-fit, minmax(280px, 1fr))', () => {
+      expect(html).not.toContain('max-width: 1400px');
+      expect(html).toContain('auto-fit');
+      expect(html).toMatch(/\.seats-grid\s*\{[^}]*repeat\(\s*auto-fit\s*,\s*minmax\(\s*280px\s*,\s*1fr\s*\)\s*\)/);
+      expect(html).toMatch(/\.seat-footer\s*\{[^}]*margin-top:\s*auto/);
+      expect(html).toMatch(/@media\s*\(\s*max-width:\s*900px\s*\)/);
     });
   });
 

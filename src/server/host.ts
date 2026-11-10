@@ -2,14 +2,20 @@ import { existsSync, readFileSync, appendFileSync, mkdirSync, writeFileSync, rea
 import { join, relative, isAbsolute } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { effectiveSeats, type Store } from '../store/db.ts';
-import type { Runner } from '../runner/run.ts';
+import type { Runner, TurnOutput } from '../runner/run.ts';
 import type { HostApi } from './http.ts';
 import { runSession, resumeSession } from '../core/session.ts';
-import { devPrompt, directPrompt } from '../core/prompts.ts';
-import type { TaskCard } from '../task/card.ts';
-import { commitAll } from '../git.ts';
+import { directPrompt } from '../core/prompts.ts';
+import { git, commitAll } from '../git.ts';
+import {
+  snapshotTurn,
+  guardStoredAgentTurn,
+  recoverInterruptedTurn,
+  restoreTicketFilesFromBase,
+} from '../core/guard.ts';
 import { acquireLock } from '../cli.ts';
 import { inboxPath } from './inbox.ts';
+import { approveGoal as approveGoalFn, type ApproveGoalResult } from '../ticket/goal.ts';
 import { createMonitor } from '../energy/monitor.ts';
 import { readEnergy } from '../energy/quota.ts';
 import { checkLogin } from '../energy/login.ts';
@@ -23,6 +29,7 @@ export interface HostDeps {
   env: NodeJS.ProcessEnv;
   runSession?: typeof runSession;
   resumeSession?: typeof resumeSession;
+  approveGoal?: typeof approveGoalFn;
   monitor?: ReturnType<typeof createMonitor>;
 }
 
@@ -51,6 +58,7 @@ export function createHost(d: HostDeps): HostApi & {
   let currentTurnId: number | null = null;
   let currentQueueItemId: number | null = null;
   let currentProcessQueuePromise: Promise<void> | null = null;
+  let checkedInterruptedTurn = false;
   const idleResolvers: Array<() => void> = [];
 
   function notifyIfIdle(): void {
@@ -117,17 +125,37 @@ export function createHost(d: HostDeps): HostApi & {
   }
 
   async function processQueue(): Promise<void> {
-    if (isBusy || isStopping) {
+    if (isBusy || isStopping || isExternalLockHeld()) {
       return;
     }
 
     const item = d.store.nextQueued();
-    if (!item) {
+    if (!item && checkedInterruptedTurn) {
       return;
     }
 
     const release = acquireLock(d.dataDir);
     if (!release) {
+      return;
+    }
+
+    if (!checkedInterruptedTurn) {
+      checkedInterruptedTurn = true;
+      const activeProject = d.store.getActiveProject();
+      try {
+        const recovery = activeProject ? recoverInterruptedTurn(d.store, activeProject) : null;
+        if (recovery) {
+          console.log(recovery.needsOwner ?? 'recovered_interrupted_turn');
+        }
+      } catch (err: any) {
+        console.log(`recover_interrupted_turn_failed: ${err?.message || String(err)}`);
+        release();
+        return;
+      }
+    }
+
+    if (!item) {
+      release();
       return;
     }
 
@@ -163,8 +191,61 @@ export function createHost(d: HostDeps): HostApi & {
 
       let turnResult: 'done' | 'error' = 'error';
 
-      let gateFailedReason: string | null = null;
       if (item.to === 'dev' || item.to === 'qc') {
+        let currentBranch = '';
+        try {
+          currentBranch = git(activeProject, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+        } catch (err: any) {
+          d.store.endTurn(turnId, 'error', `git_error: ${err?.message || String(err)}`);
+          d.store.recordHandoffFailure(sessionId, taskId, 'git_error');
+          d.store.setSessionStatus(sessionId, 'error');
+          d.store.setQueueStatus(item.id, 'cancelled');
+          return;
+        }
+
+        const protectedBranch = d.cfg.git.protected_branch || 'main';
+        const goalMatch = currentBranch.match(/^goal\/G(\d+)(?:-.*)?$/);
+        const isGoalBranch = Boolean(goalMatch) && currentBranch !== protectedBranch;
+
+        if (!isGoalBranch) {
+          d.store.endTurn(turnId, 'error', 'direct_cmd_needs_goal_branch');
+          d.store.recordHandoffFailure(sessionId, taskId, 'direct_cmd_needs_goal_branch');
+          d.store.setSessionStatus(sessionId, 'error');
+          d.store.setQueueStatus(item.id, 'cancelled');
+          return;
+        }
+
+        const goalN = goalMatch![1];
+
+        if (
+          item.to === 'dev' &&
+          d.store
+            .listTickets(activeProject, `G${goalN}`)
+            .some(
+              (ticket) =>
+                ticket.state === 'in_dev' ||
+                ticket.state === 'returned' ||
+                ticket.state === 'awaiting_qc' ||
+                (ticket.state !== 'passed' && ticket.state !== 'cancelled' && Boolean(ticket.base_sha))
+            )
+        ) {
+          d.store.endTurn(turnId, 'error', 'direct_cmd_ticket_in_progress');
+          d.store.recordHandoffFailure(sessionId, taskId, 'direct_cmd_ticket_in_progress');
+          d.store.setSessionStatus(sessionId, 'error');
+          d.store.setQueueStatus(item.id, 'cancelled');
+          return;
+        }
+
+        const dirtyCheck = git(activeProject, 'status', '--porcelain').trim();
+        if (dirtyCheck.length > 0) {
+          d.store.endTurn(turnId, 'error', 'dirty_tree');
+          d.store.recordHandoffFailure(sessionId, taskId, 'dirty_tree');
+          d.store.setSessionStatus(sessionId, 'error');
+          d.store.setQueueStatus(item.id, 'cancelled');
+          return;
+        }
+
+        let gateFailedReason: string | null = null;
         if (monitor && agent) {
           try {
             await monitor.refresh([agent]);
@@ -176,101 +257,227 @@ export function createHost(d: HostDeps): HostApi & {
             gateFailedReason = gateCheck.reason;
           }
         }
-      }
 
-      if (gateFailedReason) {
-        d.store.endTurn(turnId, 'error', gateFailedReason);
-        d.store.setQueueStatus(item.id, 'done');
-        turnResult = 'error';
-      } else if (item.to === 'dev') {
-        const author = { name: agent, email: `${agent}@btm.local` };
-        try {
-          commitAll(activeProject, `checkpoint before cmd ${item.id}`, author);
-        } catch {}
-
-        const prompt = directPrompt('dev', item.text, d.cfg.runner.agy_allow_commands);
-        const output = await d.runner('dev', agent, prompt, activeProject, logFile, {
-          signal: abortController.signal,
-        });
-
-        if (abortController.signal.aborted) {
-          d.store.endTurn(turnId, 'error', 'aborted');
-          d.store.setQueueStatus(item.id, 'cancelled');
-          if (createdSessionForTurn) {
-            const currentSession = d.store.getSession(sessionId);
-            if (currentSession?.status !== 'stopped') {
-              d.store.setSessionStatus(sessionId, 'stopped');
-            }
-          }
-          return;
-        }
-
-        if (output.timedOut) {
-          d.store.endTurn(turnId, 'timeout', 'timeout');
-          d.store.setQueueStatus(item.id, 'done');
-          turnResult = 'error';
-        } else if (output.exitCode !== 0) {
-          d.store.endTurn(turnId, 'error', `exit_${output.exitCode}`);
+        if (gateFailedReason) {
+          d.store.endTurn(turnId, 'error', gateFailedReason);
+          d.store.recordHandoffFailure(sessionId, taskId, gateFailedReason);
           d.store.setQueueStatus(item.id, 'done');
           turnResult = 'error';
         } else {
-          let commitError: string | null = null;
-          const commitMsg = `cmd ${item.id}: ${item.text.slice(0, 60)}`;
+          const snapshot = snapshotTurn(
+            activeProject,
+            currentBranch,
+            protectedBranch,
+            d.store,
+            item.to
+          );
+          if (snapshot.protectedBranchMoved) {
+            d.store.endTurn(turnId, 'error', 'protected_branch_moved');
+            d.store.recordHandoffFailure(sessionId, taskId, 'protected_branch_moved');
+            d.store.setSessionStatus(sessionId, 'error');
+            d.store.setQueueStatus(item.id, 'cancelled');
+            return;
+          }
           const author = { name: agent, email: `${agent}@btm.local` };
-          try {
-            commitAll(activeProject, commitMsg, author);
-          } catch (err: any) {
-            commitError = err?.message || String(err);
-          }
 
-          if (commitError) {
-            d.store.endTurn(turnId, 'error', `commit_failed: ${commitError}`);
+          if (item.to === 'dev') {
+            const prompt = directPrompt('dev', item.text, d.cfg.runner.agy_allow_commands);
+            let output: TurnOutput | null = null;
+            let runError: any = null;
             try {
-              appendFileSync(logFile, `\ncommitAll failed: ${commitError}\n`);
-            } catch {}
-            d.store.setQueueStatus(item.id, 'done');
-            turnResult = 'error';
-          } else {
-            d.store.endTurn(turnId, 'ok');
-            d.store.setQueueStatus(item.id, 'done');
-            turnResult = 'done';
-          }
-        }
-      } else if (item.to === 'qc') {
-        const prompt = directPrompt('qc', item.text, d.cfg.runner.agy_allow_commands);
-        const output = await d.runner('qc', agent, prompt, activeProject, logFile, {
-          signal: abortController.signal,
-        });
-
-        if (abortController.signal.aborted) {
-          d.store.endTurn(turnId, 'error', 'aborted');
-          d.store.setQueueStatus(item.id, 'cancelled');
-          if (createdSessionForTurn) {
-            const currentSession = d.store.getSession(sessionId);
-            if (currentSession?.status !== 'stopped') {
-              d.store.setSessionStatus(sessionId, 'stopped');
+              output = await d.runner('dev', agent, prompt, activeProject, logFile, {
+                signal: abortController.signal,
+              });
+            } catch (err: any) {
+              runError = err;
             }
+
+            const isAbort = abortController.signal.aborted || runError?.name === 'AbortError';
+
+            if (runError) {
+              const reason = isAbort ? 'aborted' : (runError?.message || String(runError));
+              d.store.endTurn(turnId, 'error', reason);
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
+                isErrorOrTimeoutOrAbort: true,
+                taskId,
+                author,
+                reason,
+              });
+              d.store.setQueueStatus(item.id, isAbort ? 'cancelled' : 'done');
+              turnResult = 'error';
+              if (createdSessionForTurn && sessionId !== null) {
+                d.store.setSessionStatus(sessionId, isAbort ? 'stopped' : 'error');
+              }
+              return;
+            }
+
+            if (isAbort) {
+              d.store.endTurn(turnId, 'error', 'aborted');
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
+                isErrorOrTimeoutOrAbort: true,
+                taskId,
+                author,
+                reason: 'aborted',
+              });
+              d.store.setQueueStatus(item.id, 'cancelled');
+              if (createdSessionForTurn && sessionId !== null) {
+                d.store.setSessionStatus(sessionId, 'stopped');
+              }
+              return;
+            }
+
+            if (output!.timedOut) {
+              d.store.endTurn(turnId, 'timeout', 'timeout');
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
+                isErrorOrTimeoutOrAbort: true,
+                taskId,
+                author,
+                reason: 'timeout',
+              });
+              d.store.setQueueStatus(item.id, 'done');
+              turnResult = 'error';
+            } else if (output!.exitCode !== 0) {
+              const reason = `exit_${output!.exitCode}`;
+              d.store.endTurn(turnId, 'error', reason);
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
+                isErrorOrTimeoutOrAbort: true,
+                taskId,
+                author,
+                reason,
+              });
+              d.store.setQueueStatus(item.id, 'done');
+              turnResult = 'error';
+            } else {
+              const guardRes = guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev');
+
+              if (guardRes.modifiedProtectedBranch) {
+                d.store.endTurn(turnId, 'error', 'agent_modified_protected_branch');
+                d.store.recordHandoffFailure(sessionId, taskId, 'agent_modified_protected_branch');
+                d.store.setQueueStatus(item.id, 'done');
+                turnResult = 'error';
+              } else if (guardRes.switchedBranch) {
+                d.store.endTurn(turnId, 'error', 'agent_switched_branch');
+                d.store.recordHandoffFailure(sessionId, taskId, 'agent_switched_branch');
+                d.store.setQueueStatus(item.id, 'done');
+                turnResult = 'error';
+              } else {
+                restoreTicketFilesFromBase(activeProject, snapshot.preHead);
+                let commitError: string | null = null;
+                const commitMsg = `G${goalN}: cmd ${item.id}: ${item.text.slice(0, 60)}`;
+                try {
+                  commitAll(activeProject, commitMsg, author);
+                } catch (err: any) {
+                  commitError = err?.message || String(err);
+                }
+
+                if (commitError) {
+                  d.store.endTurn(turnId, 'error', `commit_failed: ${commitError}`);
+                  try {
+                    appendFileSync(logFile, `\ncommitAll failed: ${commitError}\n`);
+                  } catch {}
+                  d.store.setQueueStatus(item.id, 'done');
+                  turnResult = 'error';
+                } else {
+                  const devNote =
+                    guardRes.ignoredListFailed
+                      ? 'ignored_list_failed'
+                      : (guardRes.ignoredCleanedCount ?? 0) > 0
+                      ? `ignored_cleaned:${guardRes.ignoredCleanedCount}`
+                      : undefined;
+                  d.store.endTurn(turnId, 'ok', devNote);
+                  d.store.setQueueStatus(item.id, 'done');
+                  turnResult = 'done';
+                }
+              }
+            }
+          } else if (item.to === 'qc') {
+            const prompt = directPrompt('qc', item.text, d.cfg.runner.agy_allow_commands);
+            let output: TurnOutput | null = null;
+            let runError: any = null;
+            try {
+              output = await d.runner('qc', agent, prompt, activeProject, logFile, {
+                signal: abortController.signal,
+              });
+            } catch (err: any) {
+              runError = err;
+            }
+
+            const isAbort = abortController.signal.aborted || runError?.name === 'AbortError';
+
+            if (runError) {
+              const reason = isAbort ? 'aborted' : (runError?.message || String(runError));
+              d.store.endTurn(turnId, 'error', reason);
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
+                isErrorOrTimeoutOrAbort: true,
+              });
+              d.store.setQueueStatus(item.id, isAbort ? 'cancelled' : 'done');
+              turnResult = 'error';
+              if (createdSessionForTurn && sessionId !== null) {
+                d.store.setSessionStatus(sessionId, isAbort ? 'stopped' : 'error');
+              }
+              return;
+            }
+
+            if (isAbort) {
+              d.store.endTurn(turnId, 'error', 'aborted');
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
+                isErrorOrTimeoutOrAbort: true,
+              });
+              d.store.setQueueStatus(item.id, 'cancelled');
+              if (createdSessionForTurn && sessionId !== null) {
+                d.store.setSessionStatus(sessionId, 'stopped');
+              }
+              return;
+            }
+
+            if (output!.lastMessage) {
+              try {
+                appendFileSync(logFile, `\n${output!.lastMessage}\n`);
+              } catch {}
+            }
+
+            if (output!.timedOut) {
+              d.store.endTurn(turnId, 'timeout', 'timeout');
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
+                isErrorOrTimeoutOrAbort: true,
+              });
+              turnResult = 'error';
+            } else if (output!.exitCode !== 0) {
+              const reason = `exit_${output!.exitCode}`;
+              d.store.endTurn(turnId, 'error', reason);
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
+                isErrorOrTimeoutOrAbort: true,
+              });
+              turnResult = 'error';
+            } else {
+              const guardRes = guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc');
+
+              if (guardRes.modifiedProtectedBranch) {
+                d.store.endTurn(turnId, 'error', 'agent_modified_protected_branch');
+                d.store.recordHandoffFailure(sessionId, taskId, 'agent_modified_protected_branch');
+                turnResult = 'error';
+              } else if (guardRes.switchedBranch) {
+                d.store.endTurn(turnId, 'error', 'agent_switched_branch');
+                d.store.recordHandoffFailure(sessionId, taskId, 'agent_switched_branch');
+                turnResult = 'error';
+              } else if (guardRes.headChanged || guardRes.treeDirty) {
+                d.store.endTurn(turnId, 'error', 'qc_modified_repo');
+                d.store.recordHandoffFailure(sessionId, taskId, 'qc_modified_repo');
+                turnResult = 'error';
+              } else {
+                const qcNote =
+                  guardRes.ignoredListFailed
+                    ? 'ignored_list_failed'
+                    : (guardRes.ignoredCleanedCount ?? 0) > 0
+                    ? `ignored_cleaned:${guardRes.ignoredCleanedCount}`
+                    : undefined;
+                d.store.endTurn(turnId, 'ok', qcNote);
+                turnResult = 'done';
+              }
+            }
+            d.store.setQueueStatus(item.id, 'done');
           }
-          return;
         }
-
-        if (output.lastMessage) {
-          try {
-            appendFileSync(logFile, `\n${output.lastMessage}\n`);
-          } catch {}
-        }
-
-        if (output.timedOut) {
-          d.store.endTurn(turnId, 'timeout', 'timeout');
-          turnResult = 'error';
-        } else if (output.exitCode !== 0) {
-          d.store.endTurn(turnId, 'error', `exit_${output.exitCode}`);
-          turnResult = 'error';
-        } else {
-          d.store.endTurn(turnId, 'ok');
-          turnResult = 'done';
-        }
-        d.store.setQueueStatus(item.id, 'done');
       }
 
       if (createdSessionForTurn && sessionId !== null) {
@@ -783,9 +990,22 @@ export function createHost(d: HostDeps): HostApi & {
     return { ok: true };
   }
 
+  function approveGoal(n: number): ApproveGoalResult {
+    if (busy()) {
+      return { ok: false, code: 'busy', message: 'Phiên/lượt đang chạy' };
+    }
+    const activeProject = d.store.getActiveProject();
+    if (!activeProject) {
+      return { ok: false, code: 'not_ready', message: 'Chưa có dự án active' };
+    }
+    const fn = d.approveGoal ?? approveGoalFn;
+    return fn(d.store, activeProject, d.cfg, n);
+  }
+
   return {
     start,
     approve,
+    approveGoal,
     resume,
     stop,
     command,

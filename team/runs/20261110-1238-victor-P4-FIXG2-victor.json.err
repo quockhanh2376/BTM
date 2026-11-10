@@ -1,0 +1,3 @@
+root agent idle; waiting up to 50m0s for 1 background task(s)
+error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 152h59m32s. (response may be truncated)
+AGY_ERROR: {"short_error":"RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 152h59m32s.","status":"RESOURCE_EXHAUSTED","error_code":429,"code_kind":"http","retryable":true,"error_id":"56a61d34-aa36-445a-ad24-fd91ffd3fbab-258"}

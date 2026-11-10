@@ -21,17 +21,24 @@ settings="{\"permissions\":{\"allow\":$allow}}"
 conv_file="team/runs/$who.conv"
 conv_args=()
 prompt="$(cat "$prompt_file")"
-# Hội thoại mới → gắn luật cố định ở đầu; hội thoại cũ đã có luật.
-if [ -s "$conv_file" ]; then conv_args=(--conversation "$(cat "$conv_file")"); else prompt="$(cat "team/prompts/rules-$who.md")
+# Mặc định MỖI TASK 1 HỘI THOẠI MỚI (giữ 1 hội thoại dài đã đốt hết quota agy: ~265M token cache/lượt, 2026-11-10).
+# Chỉ tiếp tục hội thoại cũ khi gọi với CONTINUE=1 (vd vòng fix ngay sau task, cần ngữ cảnh).
+if [ "${CONTINUE:-0}" = "1" ] && [ -s "$conv_file" ]; then conv_args=(--conversation "$(cat "$conv_file")"); else prompt="$(cat "team/prompts/rules-$who.md")
 $prompt"; fi
+# Mỗi lượt nhắc lại: lệnh ngoài danh sách bị chặn và agy dừng CẢ lượt (đã mất 3 lượt vì git diff <file>, git grep).
+prompt="NHẮC: terminal chỉ chạy được NGUYÊN VĂN: git status | git status --short | git diff | git diff --stat | git log --oneline -10 | npx vitest run | npx tsc --noEmit. Không thêm tham số, không git grep. Tìm/đọc file bằng công cụ tìm kiếm/đọc file của bạn. KHÔNG xoá test hay tính năng cũ (a11y, phím tắt, layout…) trừ khi prompt cho phép rõ – thay đổi giao diện thì viết lại test cho giao diện mới.
+
+$prompt"
 
 out="team/runs/$(date +%Y%m%d-%H%M)-$who-$(basename "$prompt_file" .md).json"
 echo "$(date '+%F %T') · start $who · $prompt_file · $out" >> team/runs/runs.log
 set +e
-agy -p "$prompt" --mode accept-edits --settings "$settings" \
-  --output-format json --print-timeout "${tmin}m" "${conv_args[@]}" > "$out" 2> "$out.err"
+# stream-json: từng bước ghi ngay vào .stream.jsonl để xem trực tiếp (team/bin/watch.mjs); dòng "result" cuối = JSON cũ.
+agy -p "$prompt" --model "${AGY_MODEL:-gemini-3.8-flash-medium}" --effort "${AGY_EFFORT:-medium}" --mode accept-edits --settings "$settings" \
+  --output-format stream-json --print-timeout "${tmin}m" "${conv_args[@]}" > "$out.stream.jsonl" 2> "$out.err"
 rc=$?
 set -e
+node -e 'const fs=require("fs");const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n");let r=null;for(const l of L){try{const j=JSON.parse(l);if(j.event==="result")r=j.result}catch{}}fs.writeFileSync(process.argv[2],JSON.stringify(r??{status:"NO_RESULT"}))' "$out.stream.jsonl" "$out" 2>/dev/null || true
 # Lưu id hội thoại để lần sau V/Q nhớ ngữ cảnh.
 node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(j.conversation_id)require("fs").writeFileSync(process.argv[2],j.conversation_id)' "$out" "$conv_file" 2>/dev/null || true
 status=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.status+" denied="+JSON.stringify(j.denied_actions||[]))}catch{console.log("no-json")}' "$out")

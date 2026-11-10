@@ -1,0 +1,1 @@
+Cần xác nhận: `npx tsc --noEmit` sạch; `npx vitest run` chạy 3 lần đều dừng lúc nạp config do `spawn EPERM` (0 test chạy), chưa xác nhận được mốc 15 fail Windows.

@@ -33,6 +33,7 @@ describe('Config', () => {
       pm: 'elon',
       dev: 'jacky',
       qc: 'jenny',
+      audit: '',
     });
     expect(config.runner.agy_allow_commands).toContain('npx vitest');
   });
@@ -40,6 +41,33 @@ describe('Config', () => {
   it('rejects auto_schedule true', () => {
     const configFile = writeTestConfig((raw) => {
       raw.session.auto_schedule = true;
+    });
+    expect(() => loadConfig(configFile)).toThrow(ConfigError);
+  });
+
+  it('loads config with audit seat when agent can sit in audit', () => {
+    const configFile = writeTestConfig((raw) => {
+      raw.agents.kai = {
+        tool: 'antigravity-cli',
+        command: 'agy',
+        can_sit: ['audit'],
+      };
+      raw.seats.audit = 'kai';
+    });
+    const config = loadConfig(configFile);
+    expect(config.seats.audit).toBe('kai');
+  });
+
+  it('rejects audit seat pointing to agent that cannot sit in audit', () => {
+    const configFile = writeTestConfig((raw) => {
+      raw.seats.audit = 'jacky'; // jacky only has can_sit: [dev]
+    });
+    expect(() => loadConfig(configFile)).toThrow(ConfigError);
+  });
+
+  it('rejects audit seat pointing to non-existent agent', () => {
+    const configFile = writeTestConfig((raw) => {
+      raw.seats.audit = 'non-existent-agent';
     });
     expect(() => loadConfig(configFile)).toThrow(ConfigError);
   });

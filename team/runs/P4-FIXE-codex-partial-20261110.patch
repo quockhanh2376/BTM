@@ -1,0 +1,1057 @@
+diff --git a/src/core/guard.ts b/src/core/guard.ts
+index f131621..580f2f8 100644
+--- a/src/core/guard.ts
++++ b/src/core/guard.ts
+@@ -1,5 +1,6 @@
+ import type { Seat } from '../config.ts';
+ import { git, headSha, commitAll } from '../git.ts';
++import type { Store } from '../store/db.ts';
+ 
+ export interface TurnGuardSnapshot {
+   goalBranch: string;
+@@ -7,6 +8,7 @@ export interface TurnGuardSnapshot {
+   protectedBranch: string;
+   protectedHead: string;
+   otherGoalBranches?: Record<string, string>;
++  seat?: Seat;
+ }
+ 
+ export interface GuardTurnResult {
+@@ -17,7 +19,17 @@ export interface GuardTurnResult {
+   modifiedOtherGoal?: boolean;
+ }
+ 
+-export function snapshotTurn(repo: string, goalBranch: string, protectedBranch?: string): TurnGuardSnapshot {
++function turnGuardKey(repo: string): string {
++  return `turn_guard:${repo}`;
++}
++
++export function snapshotTurn(
++  repo: string,
++  goalBranch: string,
++  protectedBranch?: string,
++  store?: Pick<Store, 'setSetting'>,
++  seat?: Seat
++): TurnGuardSnapshot {
+   const prot = protectedBranch || 'main';
+   const protRef = prot.startsWith('refs/heads/') ? prot : `refs/heads/${prot}`;
+   let protectedHead = '';
+@@ -43,13 +55,52 @@ export function snapshotTurn(repo: string, goalBranch: string, protectedBranch?:
+     }
+   } catch {}
+ 
+-  return {
++  const snapshot: TurnGuardSnapshot = {
+     goalBranch,
+     preHead: headSha(repo),
+     protectedBranch: prot,
+     protectedHead,
+     otherGoalBranches,
+   };
++  if (seat) {
++    snapshot.seat = seat;
++  }
++  if (store && seat) {
++    store.setSetting(turnGuardKey(repo), JSON.stringify(snapshot));
++  }
++  return snapshot;
++}
++
++export function guardStoredAgentTurn(
++  store: Pick<Store, 'setSetting'>,
++  repo: string,
++  snapshot: TurnGuardSnapshot,
++  seat: Seat,
++  options?: Parameters<typeof guardAgentTurn>[3]
++): GuardTurnResult {
++  try {
++    return guardAgentTurn(repo, snapshot, seat, options);
++  } finally {
++    store.setSetting(turnGuardKey(repo), '');
++  }
++}
++
++export function recoverInterruptedTurn(
++  store: Pick<Store, 'getSetting' | 'setSetting'>,
++  repo: string
++): GuardTurnResult | null {
++  const raw = store.getSetting(turnGuardKey(repo));
++  if (!raw) {
++    return null;
++  }
++
++  const snapshot = JSON.parse(raw) as TurnGuardSnapshot;
++  const seat = snapshot.seat;
++  if (!seat || !['pm', 'dev', 'qc', 'audit'].includes(seat)) {
++    store.setSetting(turnGuardKey(repo), '');
++    throw new Error('Invalid persisted turn guard snapshot');
++  }
++  return guardStoredAgentTurn(store, repo, snapshot, seat);
+ }
+ 
+ export function guardAgentTurn(
+diff --git a/src/core/session.ts b/src/core/session.ts
+index 46d1cb3..d149212 100644
+--- a/src/core/session.ts
++++ b/src/core/session.ts
+@@ -17,6 +17,8 @@ import {
+   type GuardTurnResult,
+   snapshotTurn,
+   guardAgentTurn,
++  guardStoredAgentTurn,
++  recoverInterruptedTurn,
+ } from './guard.ts';
+ 
+ export {
+@@ -291,6 +293,30 @@ function cleanupPmWorkingTree(repo: string, recorded: RecordedTickets, prePmStat
+   }
+ }
+ 
++function restoreTicketFilesFromBase(repo: string, base: string): void {
++  const changedTickets = getWorkingTreeChanges(repo).filter((f) => f.startsWith('team/tickets/'));
++  if (changedTickets.length === 0) {
++    return;
++  }
++
++  const baseFiles = new Set(
++    git(repo, 'ls-tree', '-r', '--name-only', base, 'team/tickets')
++      .split(/\r?\n/)
++      .filter(Boolean)
++  );
++  git(repo, 'reset', base, '--', 'team/tickets');
++  if (baseFiles.size > 0) {
++    git(repo, 'checkout', base, '--', 'team/tickets');
++  }
++  for (const file of changedTickets) {
++    if (!baseFiles.has(file)) {
++      try {
++        rmSync(join(repo, file), { force: true });
++      } catch {}
++    }
++  }
++}
++
+ function pmModifiedExistingTickets(repo: string, recorded: RecordedTickets): boolean {
+   const ticketsDir = join(repo, 'team', 'tickets');
+   for (const [f, oldContent] of recorded.contents.entries()) {
+@@ -484,7 +510,7 @@ async function processGoal(
+       notes: promptNotes,
+       hasOpenspec,
+     });
+-    const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
++    const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
+     const recordedBeforePm = recordExistingTickets(d.repo);
+     const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
+ 
+@@ -495,7 +521,7 @@ async function processGoal(
+       const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+       const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+       d.store.endTurn(pmTurnId, 'error', reason);
+-      const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm', {
++      const pmGuard = guardStoredAgentTurn(d.store, d.repo, pmSnapshot, 'pm', {
+         isErrorOrTimeoutOrAbort: true,
+       });
+       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+@@ -515,7 +541,7 @@ async function processGoal(
+       const isAbort = Boolean(d.signal?.aborted);
+       const reason = isAbort ? 'aborted' : (pmOutput.timedOut ? 'timeout' : `exit_${pmOutput.exitCode}`);
+       d.store.endTurn(pmTurnId, isAbort || pmOutput.timedOut ? (isAbort ? 'error' : 'timeout') : 'error', reason);
+-      const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm', {
++      const pmGuard = guardStoredAgentTurn(d.store, d.repo, pmSnapshot, 'pm', {
+         isErrorOrTimeoutOrAbort: true,
+       });
+       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+@@ -530,7 +556,7 @@ async function processGoal(
+       }
+       return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+     }
+-    const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm');
++    const pmGuard = guardStoredAgentTurn(d.store, d.repo, pmSnapshot, 'pm');
+     d.store.endTurn(pmTurnId, 'ok');
+ 
+     if (pmGuard.modifiedProtectedBranch) {
+@@ -561,10 +587,21 @@ async function processGoal(
+ 
+     let tickets: Ticket[] = [];
+     try {
+-      tickets = loadTickets(d.repo, key, `G${goal.n}`);
++      tickets = loadTickets(d.repo, key).filter(
++        (t) => !recordedBeforePm.files.has(`${t.id}.md`)
++      );
+       if (tickets.length === 0) {
+         throw new TicketError(`No tickets created by PM for goal G${goal.n}`);
+       }
++      if (tickets.some((t) => t.goal !== `G${goal.n}`)) {
++        cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
++        return {
++          status: 'needs_owner',
++          sessionId,
++          tasks,
++          notes: ['pm_ticket_wrong_goal'],
++        };
++      }
+       const numParts = tickets.map((t) => {
+         const parts = t.id.split('-');
+         return parts.length === 2 && parts[0] === key ? parseInt(parts[1], 10) : NaN;
+@@ -780,7 +817,7 @@ async function processGoal(
+           isHandoff
+         );
+ 
+-        const devSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
++        const devSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'dev');
+         let devOutput;
+         try {
+           devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
+@@ -791,7 +828,7 @@ async function processGoal(
+           const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+           const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+           d.store.endTurn(devTurnId, 'error', reason);
+-          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
++          const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev', {
+             isErrorOrTimeoutOrAbort: true,
+             taskId: ticket.id,
+             author: devAuthor,
+@@ -812,7 +849,7 @@ async function processGoal(
+         if (d.signal?.aborted) {
+           const reason = 'aborted';
+           d.store.endTurn(devTurnId, 'error', reason);
+-          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
++          const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev', {
+             isErrorOrTimeoutOrAbort: true,
+             taskId: ticket.id,
+             author: devAuthor,
+@@ -830,7 +867,7 @@ async function processGoal(
+         if (devOutput.timedOut) {
+           const reason = 'timeout';
+           d.store.endTurn(devTurnId, 'timeout', reason);
+-          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
++          const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev', {
+             isErrorOrTimeoutOrAbort: true,
+             taskId: ticket.id,
+             author: devAuthor,
+@@ -853,7 +890,7 @@ async function processGoal(
+         if (!hasAutoDenied && devOutput.exitCode !== 0) {
+           const reason = `exit_${devOutput.exitCode}`;
+           d.store.endTurn(devTurnId, 'error', reason);
+-          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
++          const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev', {
+             isErrorOrTimeoutOrAbort: true,
+             taskId: ticket.id,
+             author: devAuthor,
+@@ -868,7 +905,7 @@ async function processGoal(
+           return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+         }
+ 
+-        const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev');
++        const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev');
+         if (devGuard.modifiedProtectedBranch) {
+           d.store.endTurn(devTurnId, 'rejected', 'agent_modified_protected_branch');
+           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+@@ -912,6 +949,7 @@ async function processGoal(
+         if (devText.includes('BLOCKED')) {
+           d.store.endTurn(devTurnId, 'ok');
+           try {
++            restoreTicketFilesFromBase(d.repo, base);
+             commitAll(d.repo, `${ticket.id}: blocked`, devAuthor);
+           } catch {}
+           tasks[ticket.id] = 'blocked';
+@@ -1076,7 +1114,7 @@ async function processGoal(
+       const qcLogFile = join(d.logDir, `turn-${qcTurnId}.log`);
+       d.store.setTurnLog(qcTurnId, qcLogFile);
+       const qcPromptText = qcTicketPrompt(ticket, base, qcAgent);
+-      const qcSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
++      const qcSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'qc');
+ 
+       let qcOutput;
+       try {
+@@ -1088,7 +1126,7 @@ async function processGoal(
+         const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+         d.store.endTurn(qcTurnId, 'error', reason);
+-        const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
++        const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
+         if (qcGuard.modifiedProtectedBranch) {
+           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+         }
+@@ -1104,7 +1142,7 @@ async function processGoal(
+       if (qcOutput.timedOut || qcOutput.exitCode !== 0) {
+         const reason = qcOutput.timedOut ? 'timeout' : `exit_${qcOutput.exitCode}`;
+         d.store.endTurn(qcTurnId, qcOutput.timedOut ? 'timeout' : 'error', reason);
+-        const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
++        const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
+         if (qcGuard.modifiedProtectedBranch) {
+           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+         }
+@@ -1122,7 +1160,7 @@ async function processGoal(
+         number: ticket.number,
+       });
+ 
+-      const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc');
++      const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc');
+       if (
+         qcGuard.switchedBranch ||
+         qcGuard.headChanged ||
+@@ -1282,7 +1320,7 @@ async function processGoal(
+     goalTicketsAfter.map((t) => t.id),
+     auditAgent
+   );
+-  const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
++  const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'audit');
+ 
+   let auditOutput;
+   try {
+@@ -1293,7 +1331,7 @@ async function processGoal(
+     const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+     const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+     d.store.endTurn(auditTurnId, 'error', reason);
+-    const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
++    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+     if (auditGuard.modifiedProtectedBranch) {
+       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+     }
+@@ -1309,7 +1347,7 @@ async function processGoal(
+   if (d.signal?.aborted) {
+     const reason = 'aborted';
+     d.store.endTurn(auditTurnId, 'error', reason);
+-    const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
++    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+     if (auditGuard.modifiedProtectedBranch) {
+       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+     }
+@@ -1322,7 +1360,7 @@ async function processGoal(
+   if (auditOutput.timedOut || auditOutput.exitCode !== 0) {
+     const reason = auditOutput.timedOut ? 'timeout' : `exit_${auditOutput.exitCode}`;
+     d.store.endTurn(auditTurnId, auditOutput.timedOut ? 'timeout' : 'error', reason);
+-    const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
++    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+     if (auditGuard.modifiedProtectedBranch) {
+       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+     }
+@@ -1335,7 +1373,7 @@ async function processGoal(
+ 
+   let auditResult = parseAuditResult(auditOutput.lastMessage || auditOutput.output || '');
+ 
+-  const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit');
++  const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit');
+   if (
+     auditGuard.switchedBranch ||
+     auditGuard.headChanged ||
+@@ -1438,7 +1476,7 @@ async function processGoal(
+     hasOpenspec: existsSync(join(d.repo, 'openspec')),
+   });
+ 
+-  const pmFixSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
++  const pmFixSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
+   const recordedBeforeFix = recordExistingTickets(d.repo);
+   const prePmFixStatus = new Set(getWorkingTreeChanges(d.repo));
+ 
+@@ -1449,7 +1487,7 @@ async function processGoal(
+     const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+     const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+     d.store.endTurn(pmFixTurnId, 'error', reason);
+-    const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm', {
++    const pmFixGuard = guardStoredAgentTurn(d.store, d.repo, pmFixSnapshot, 'pm', {
+       isErrorOrTimeoutOrAbort: true,
+     });
+     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+@@ -1469,7 +1507,7 @@ async function processGoal(
+     const isAbort = Boolean(d.signal?.aborted);
+     const reason = isAbort ? 'aborted' : (pmFixOutput.timedOut ? 'timeout' : `exit_${pmFixOutput.exitCode}`);
+     d.store.endTurn(pmFixTurnId, isAbort || pmFixOutput.timedOut ? (isAbort ? 'error' : 'timeout') : 'error', reason);
+-    const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm', {
++    const pmFixGuard = guardStoredAgentTurn(d.store, d.repo, pmFixSnapshot, 'pm', {
+       isErrorOrTimeoutOrAbort: true,
+     });
+     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+@@ -1484,7 +1522,7 @@ async function processGoal(
+     }
+     return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+   }
+-  const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm');
++  const pmFixGuard = guardStoredAgentTurn(d.store, d.repo, pmFixSnapshot, 'pm');
+   d.store.endTurn(pmFixTurnId, 'ok');
+ 
+   if (pmFixGuard.modifiedProtectedBranch) {
+@@ -1515,7 +1553,7 @@ async function processGoal(
+ 
+   let allGoalTicketsNow: Ticket[] = [];
+   try {
+-    allGoalTicketsNow = loadTickets(d.repo, key, `G${goal.n}`);
++    allGoalTicketsNow = loadTickets(d.repo, key);
+   } catch (err: any) {
+     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+     return {
+@@ -1536,6 +1574,15 @@ async function processGoal(
+       notes: [`PM ticket error: No new tickets created by PM for goal G${goal.n}`],
+     };
+   }
++  if (newTickets.some((t) => t.goal !== `G${goal.n}`)) {
++    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
++    return {
++      status: 'needs_owner',
++      sessionId,
++      tasks,
++      notes: ['pm_ticket_wrong_goal'],
++    };
++  }
+ 
+   const numParts = newTickets.map((t) => {
+     const parts = t.id.split('-');
+@@ -1606,6 +1653,15 @@ export async function runSession(
+   goals: Array<string | { n: number }>,
+   optsOrApproved?: boolean | RunSessionOpts
+ ): Promise<SessionOutcome> {
++  if (recoverInterruptedTurn(d.store, d.repo)) {
++    return {
++      status: 'needs_owner',
++      sessionId: null,
++      tasks: {},
++      notes: ['recovered_interrupted_turn'],
++    };
++  }
++
+   const o: RunSessionOpts =
+     typeof optsOrApproved === 'boolean'
+       ? { approved: optsOrApproved }
+@@ -1652,6 +1708,28 @@ export async function runSession(
+     };
+   }
+ 
++  for (const item of goals) {
++    if (typeof item !== 'string') {
++      const existing = d.store.getGoal(d.repo, item.n);
++      if (!existing) {
++        return {
++          status: 'needs_owner',
++          sessionId: null,
++          tasks: {},
++          notes: [`Goal G${item.n} not found in project`],
++        };
++      }
++      if (existing.state === 'approved' || existing.state === 'merged') {
++        return {
++          status: 'needs_owner',
++          sessionId: null,
++          tasks: {},
++          notes: ['goal_already_merged'],
++        };
++      }
++    }
++  }
++
+   // 2. Resolve goals and create session
+   const resolvedGoals: Array<{ n: number; title: string; branch: string }> = [];
+   for (const item of goals) {
+@@ -1742,6 +1820,15 @@ export async function resumeSession(
+   d: SessionDeps,
+   sessionId: number
+ ): Promise<SessionOutcome> {
++  if (recoverInterruptedTurn(d.store, d.repo)) {
++    return {
++      status: 'needs_owner',
++      sessionId,
++      tasks: {},
++      notes: ['recovered_interrupted_turn'],
++    };
++  }
++
+   const forbidden = checkForbiddenEnv(d.env, d.cfg.login.forbidden_env);
+   if (forbidden.length > 0) {
+     return {
+diff --git a/src/server/host.ts b/src/server/host.ts
+index 65d63dd..2ff5dc6 100644
+--- a/src/server/host.ts
++++ b/src/server/host.ts
+@@ -7,7 +7,11 @@ import type { HostApi } from './http.ts';
+ import { runSession, resumeSession } from '../core/session.ts';
+ import { directPrompt } from '../core/prompts.ts';
+ import { git, commitAll } from '../git.ts';
+-import { snapshotTurn, guardAgentTurn } from '../core/guard.ts';
++import {
++  snapshotTurn,
++  guardStoredAgentTurn,
++  recoverInterruptedTurn,
++} from '../core/guard.ts';
+ import { acquireLock } from '../cli.ts';
+ import { inboxPath } from './inbox.ts';
+ import { approveGoal as approveGoalFn, type ApproveGoalResult } from '../ticket/goal.ts';
+@@ -53,6 +57,7 @@ export function createHost(d: HostDeps): HostApi & {
+   let currentTurnId: number | null = null;
+   let currentQueueItemId: number | null = null;
+   let currentProcessQueuePromise: Promise<void> | null = null;
++  let checkedInterruptedTurn = false;
+   const idleResolvers: Array<() => void> = [];
+ 
+   function notifyIfIdle(): void {
+@@ -123,6 +128,14 @@ export function createHost(d: HostDeps): HostApi & {
+       return;
+     }
+ 
++    if (!checkedInterruptedTurn) {
++      checkedInterruptedTurn = true;
++      const activeProject = d.store.getActiveProject();
++      if (activeProject && recoverInterruptedTurn(d.store, activeProject)) {
++        console.log('recovered_interrupted_turn');
++      }
++    }
++
+     const item = d.store.nextQueued();
+     if (!item) {
+       return;
+@@ -189,6 +202,25 @@ export function createHost(d: HostDeps): HostApi & {
+           return;
+         }
+ 
++        const goalN = goalMatch![1];
++
++        if (
++          item.to === 'dev' &&
++          d.store
++            .listTickets(activeProject, `G${goalN}`)
++            .some((ticket) =>
++              ticket.state === 'in_dev' ||
++              ticket.state === 'returned' ||
++              ticket.state === 'awaiting_qc'
++            )
++        ) {
++          d.store.endTurn(turnId, 'error', 'direct_cmd_ticket_in_progress');
++          d.store.recordHandoffFailure(sessionId, taskId, 'direct_cmd_ticket_in_progress');
++          d.store.setSessionStatus(sessionId, 'error');
++          d.store.setQueueStatus(item.id, 'cancelled');
++          return;
++        }
++
+         const dirtyCheck = git(activeProject, 'status', '--porcelain').trim();
+         if (dirtyCheck.length > 0) {
+           d.store.endTurn(turnId, 'error', 'dirty_tree');
+@@ -198,8 +230,6 @@ export function createHost(d: HostDeps): HostApi & {
+           return;
+         }
+ 
+-        const goalN = goalMatch![1];
+-
+         let gateFailedReason: string | null = null;
+         if (monitor && agent) {
+           try {
+@@ -219,7 +249,13 @@ export function createHost(d: HostDeps): HostApi & {
+           d.store.setQueueStatus(item.id, 'done');
+           turnResult = 'error';
+         } else {
+-          const snapshot = snapshotTurn(activeProject, currentBranch, protectedBranch);
++          const snapshot = snapshotTurn(
++            activeProject,
++            currentBranch,
++            protectedBranch,
++            d.store,
++            item.to
++          );
+           const author = { name: agent, email: `${agent}@btm.local` };
+ 
+           if (item.to === 'dev') {
+@@ -239,7 +275,7 @@ export function createHost(d: HostDeps): HostApi & {
+             if (runError) {
+               const reason = isAbort ? 'aborted' : (runError?.message || String(runError));
+               d.store.endTurn(turnId, 'error', reason);
+-              guardAgentTurn(activeProject, snapshot, 'dev', {
++              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
+                 isErrorOrTimeoutOrAbort: true,
+                 taskId,
+                 author,
+@@ -255,7 +291,7 @@ export function createHost(d: HostDeps): HostApi & {
+ 
+             if (isAbort) {
+               d.store.endTurn(turnId, 'error', 'aborted');
+-              guardAgentTurn(activeProject, snapshot, 'dev', {
++              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
+                 isErrorOrTimeoutOrAbort: true,
+                 taskId,
+                 author,
+@@ -270,7 +306,7 @@ export function createHost(d: HostDeps): HostApi & {
+ 
+             if (output!.timedOut) {
+               d.store.endTurn(turnId, 'timeout', 'timeout');
+-              guardAgentTurn(activeProject, snapshot, 'dev', {
++              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
+                 isErrorOrTimeoutOrAbort: true,
+                 taskId,
+                 author,
+@@ -281,7 +317,7 @@ export function createHost(d: HostDeps): HostApi & {
+             } else if (output!.exitCode !== 0) {
+               const reason = `exit_${output!.exitCode}`;
+               d.store.endTurn(turnId, 'error', reason);
+-              guardAgentTurn(activeProject, snapshot, 'dev', {
++              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
+                 isErrorOrTimeoutOrAbort: true,
+                 taskId,
+                 author,
+@@ -290,7 +326,7 @@ export function createHost(d: HostDeps): HostApi & {
+               d.store.setQueueStatus(item.id, 'done');
+               turnResult = 'error';
+             } else {
+-              const guardRes = guardAgentTurn(activeProject, snapshot, 'dev');
++              const guardRes = guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev');
+ 
+               if (guardRes.modifiedProtectedBranch) {
+                 d.store.endTurn(turnId, 'error', 'agent_modified_protected_branch');
+@@ -342,7 +378,7 @@ export function createHost(d: HostDeps): HostApi & {
+             if (runError) {
+               const reason = isAbort ? 'aborted' : (runError?.message || String(runError));
+               d.store.endTurn(turnId, 'error', reason);
+-              guardAgentTurn(activeProject, snapshot, 'qc', {
++              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
+                 isErrorOrTimeoutOrAbort: true,
+               });
+               d.store.setQueueStatus(item.id, isAbort ? 'cancelled' : 'done');
+@@ -355,7 +391,7 @@ export function createHost(d: HostDeps): HostApi & {
+ 
+             if (isAbort) {
+               d.store.endTurn(turnId, 'error', 'aborted');
+-              guardAgentTurn(activeProject, snapshot, 'qc', {
++              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
+                 isErrorOrTimeoutOrAbort: true,
+               });
+               d.store.setQueueStatus(item.id, 'cancelled');
+@@ -373,19 +409,19 @@ export function createHost(d: HostDeps): HostApi & {
+ 
+             if (output!.timedOut) {
+               d.store.endTurn(turnId, 'timeout', 'timeout');
+-              guardAgentTurn(activeProject, snapshot, 'qc', {
++              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
+                 isErrorOrTimeoutOrAbort: true,
+               });
+               turnResult = 'error';
+             } else if (output!.exitCode !== 0) {
+               const reason = `exit_${output!.exitCode}`;
+               d.store.endTurn(turnId, 'error', reason);
+-              guardAgentTurn(activeProject, snapshot, 'qc', {
++              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
+                 isErrorOrTimeoutOrAbort: true,
+               });
+               turnResult = 'error';
+             } else {
+-              const guardRes = guardAgentTurn(activeProject, snapshot, 'qc');
++              const guardRes = guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc');
+ 
+               if (guardRes.modifiedProtectedBranch) {
+                 d.store.endTurn(turnId, 'error', 'agent_modified_protected_branch');
+diff --git a/src/ticket/goal.ts b/src/ticket/goal.ts
+index 7c90d77..86793e8 100644
+--- a/src/ticket/goal.ts
++++ b/src/ticket/goal.ts
+@@ -106,6 +106,14 @@ export function approveGoal(
+       };
+     }
+ 
++    if (!goal.reviewed_sha?.trim()) {
++      return {
++        ok: false,
++        code: 'not_ready',
++        message: 'goal chưa có commit đã QC/audit',
++      };
++    }
++
+     const dirtyCheck = git(repo, 'status', '--porcelain').trim();
+     if (dirtyCheck.length > 0) {
+       return {
+@@ -137,7 +145,7 @@ export function approveGoal(
+       };
+     }
+ 
+-    if (goal.reviewed_sha && branchSha !== goal.reviewed_sha) {
++    if (branchSha !== goal.reviewed_sha) {
+       return {
+         ok: false,
+         code: 'not_ready',
+@@ -145,7 +153,7 @@ export function approveGoal(
+       };
+     }
+ 
+-    const mergeTarget = goal.reviewed_sha || branchSha;
++    const mergeTarget = goal.reviewed_sha;
+     store.setGoalState(repo, n, 'approved', by, 'owner approved');
+ 
+     let mergeSha: string;
+@@ -197,4 +205,3 @@ export function approveGoal(
+     releaseLock();
+   }
+ }
+-
+diff --git a/tests/goal.test.ts b/tests/goal.test.ts
+index bb9d7a0..e3bd437 100644
+--- a/tests/goal.test.ts
++++ b/tests/goal.test.ts
+@@ -285,6 +285,29 @@ describe('approveGoal', () => {
+     }
+   });
+ 
++  it('FIX-E: goal qc_done không có reviewed_sha → reject not_ready, không merge theo tên nhánh', () => {
++    const repo = tmpRepo({ 'README.md': '# Repo' });
++    const cfg = makeTestConfig(dataDir, { auditSeat: '' });
++    const created = store.createGoal(repo, 'Thieu reviewed sha');
++
++    git(repo, 'checkout', '-b', created.branch);
++    writeFileSync(join(repo, 'code.txt'), 'unreviewed code');
++    git(repo, 'add', 'code.txt');
++    execFileSync('git', [...AUTHOR, 'commit', '-m', 'GTM-0001: unreviewed'], { cwd: repo });
++    store.setGoalState(repo, created.n, 'qc_done', 'jenny', 'legacy row without sha', null);
++    const mainBefore = git(repo, 'rev-parse', 'refs/heads/main').trim();
++
++    const res = approveGoal(store, repo, cfg, created.n);
++
++    expect(res).toEqual({
++      ok: false,
++      code: 'not_ready',
++      message: 'goal chưa có commit đã QC/audit',
++    });
++    expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
++    expect(store.getGoal(repo, created.n)?.state).toBe('qc_done');
++  });
++
+   it('B2: merge bằng sha (reviewed_sha) thay vì branch name', () => {
+     const repo = tmpRepo({ 'README.md': '# Repo' });
+     const cfg = makeTestConfig(dataDir, { auditSeat: '' });
+@@ -335,6 +358,7 @@ describe('approveGoal', () => {
+     writeFileSync(join(repo, 'busy-fix.txt'), '1');
+     git(repo, 'add', 'busy-fix.txt');
+     execFileSync('git', [...AUTHOR, 'commit', '-m', 'GTM-0004: fix busy'], { cwd: repo });
++    store.setGoalState(repo, created.n, 'qc_done', 'jenny', 'qc pass', headSha(repo));
+ 
+     const res2 = approveGoal(store, repo, cfg, created.n);
+     expect(res2.ok).toBe(true);
+diff --git a/tests/host.test.ts b/tests/host.test.ts
+index 60a85ea..1633150 100644
+--- a/tests/host.test.ts
++++ b/tests/host.test.ts
+@@ -8,6 +8,7 @@ import { createHost as realCreateHost } from '../src/server/host.ts';
+ import { tmpRepo } from './helpers.ts';
+ import type { Runner, TurnOutput } from '../src/runner/run.ts';
+ import { directPrompt } from '../src/core/prompts.ts';
++import { snapshotTurn } from '../src/core/guard.ts';
+ import { git, headSha } from '../src/git.ts';
+ import * as gitModule from '../src/git.ts';
+ 
+@@ -1675,11 +1676,81 @@ done_when: ok
+       expect(headSha(repoDir)).toBe(mainHeadBefore);
+     });
+ 
++    it('FIX-E B4: dev trực tiếp bị huỷ khi ticket goal đang làm; qc trực tiếp vẫn được chạy', async () => {
++      git(repoDir, 'checkout', '-b', 'goal/G2-my-feature');
++      store.upsertTicket(repoDir, {
++        id: 'GTM-0001',
++        goal: 'G2',
++        number: 1,
++        of: 1,
++        title: 'Ticket đang làm',
++        type: 'feat',
++        size: 'S',
++        scope: ['sample.txt'],
++        acceptance: ['ok'],
++        done_when: 'done',
++        depends_on: [],
++        from_audit: false,
++      });
++
++      const mockRunner: Runner = vi.fn().mockResolvedValue({
++        exitCode: 0,
++        timedOut: false,
++        durationMs: 1,
++        output: 'ok',
++        lastMessage: 'ok',
++      });
++      const host = createHost({ cfg, store, runner: mockRunner, logDir, dataDir, env: {} });
++
++      for (const state of ['in_dev', 'returned', 'awaiting_qc'] as const) {
++        store.setTicketState(repoDir, 'GTM-0001', state, 'core', `state ${state}`);
++        const res = await host.command('dev', `dev command in ${state}`);
++        expect(res.ok).toBe(true);
++        await host.tick();
++        await host.whenIdle();
++
++        expect(store.listQueue(20).find((q) => q.id === res.id)?.status).toBe('cancelled');
++        const session = store.getLatestSession(undefined, repoDir)!;
++        const turns = store.listTurns(session.id);
++        expect(turns[0].error).toBe('direct_cmd_ticket_in_progress');
++      }
++
++      const qcRes = await host.command('qc', 'review ticket đang làm');
++      expect(qcRes.ok).toBe(true);
++      await host.tick();
++      await host.whenIdle();
++
++      expect(store.listQueue(20).find((q) => q.id === qcRes.id)?.status).toBe('done');
++      expect(mockRunner).toHaveBeenCalledTimes(1);
++    });
++
++    it('FIX-E B6: processQueue lần đầu khôi phục snapshot tồn đọng, xoá setting và log một dòng', async () => {
++      const mainBefore = git(repoDir, 'rev-parse', 'refs/heads/main').trim();
++      git(repoDir, 'checkout', '-b', 'goal/G3-recovery');
++      writeFileSync(join(repoDir, 'interrupted.txt'), 'partial');
++      git(repoDir, 'add', 'interrupted.txt');
++      git(repoDir, '-c', 'user.name=dev', '-c', 'user.email=dev@btm.local', 'commit', '-m', 'partial turn');
++
++      snapshotTurn(repoDir, 'goal/G3-recovery', 'main', store, 'dev');
++      git(repoDir, 'update-ref', 'refs/heads/main', headSha(repoDir));
++      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).not.toBe(mainBefore);
++
++      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
++      const host = createHost({ cfg, store, runner: vi.fn(), logDir, dataDir, env: {} });
++      await host.tick();
++
++      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
++      expect(store.getSetting(`turn_guard:${repoDir}`)).toBe('');
++      expect(logSpy).toHaveBeenCalledWith('recovered_interrupted_turn');
++    });
++
+     it('đang ở nhánh goal → chạy, commit đúng prefix G<n>: cmd <id>: …', async () => {
+       git(repoDir, 'checkout', '-b', 'goal/G2-my-feature');
+ 
+       const text = 'Sửa logic tính toán số dư';
+       const mockRunner: Runner = vi.fn().mockImplementation(async (_seat, _agent, _prompt, cwd) => {
++        const storedSnapshot = JSON.parse(store.getSetting(`turn_guard:${repoDir}`) || 'null');
++        expect(storedSnapshot?.seat).toBe('dev');
+         writeFileSync(join(cwd, 'sample.txt'), 'dev modified on goal branch\n');
+         return {
+           exitCode: 0,
+@@ -1711,6 +1782,7 @@ done_when: ok
+ 
+       const lastCommitMsg = git(repoDir, 'log', '-1', '--format=%s').trim();
+       expect(lastCommitMsg).toBe(`G2: cmd ${res.id}: ${text}`);
++      expect(store.getSetting(`turn_guard:${repoDir}`)).toBe('');
+     });
+ 
+     it('dev lệnh trực tiếp checkout main + commit → main được khôi phục, quay về nhánh goal', async () => {
+diff --git a/tests/session.test.ts b/tests/session.test.ts
+index 72cd4a6..50fa376 100644
+--- a/tests/session.test.ts
++++ b/tests/session.test.ts
+@@ -21,6 +21,7 @@ import {
+ } from '../src/core/prompts.ts';
+ import { createMonitor } from '../src/energy/monitor.ts';
+ import type { Ticket, TicketState } from '../src/ticket/ticket.ts';
++import { snapshotTurn } from '../src/core/guard.ts';
+ 
+ interface HandlerOutput {
+   exitCode?: number | null;
+@@ -1332,6 +1333,75 @@ describe('Goal & Ticket Session Coordinator', () => {
+     store.close();
+   });
+ 
++  it('FIX-E B5: Dev BLOCKED sửa ticket → khôi phục ticket từ base, chỉ commit phần còn lại với <ID>: blocked', async () => {
++    const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
++    const { deps, store } = makeDeps(repo);
++
++    const { runner } = createFakeRunner([
++      (_s, _a, _p, cwd) => {
++        writeTicketFile(cwd, {
++          id: 'GTM-0001',
++          goal: 'G1',
++          number: 1,
++          of: 1,
++          title: 'Original title',
++        });
++      },
++      (_s, _a, _p, cwd) => {
++        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
++        writeTicketFile(cwd, {
++          id: 'GTM-0001',
++          goal: 'G1',
++          number: 1,
++          of: 1,
++          title: 'Tampered title',
++        });
++        return { lastMessage: 'BLOCKED: owner input required' };
++      },
++    ]);
++    deps.runner = runner;
++
++    const outcome = await runSession(deps, ['Blocked ticket tamper'], { approved: true });
++
++    expect(outcome.status).toBe('needs_owner');
++    const ticketText = readFileSync(join(repo, 'team', 'tickets', 'GTM-0001.md'), 'utf8');
++    expect(ticketText).toContain('Original title');
++    expect(ticketText).not.toContain('Tampered title');
++    expect(readFileSync(join(repo, 'src', 'app.ts'), 'utf8').replace(/\r\n/g, '\n')).toBe(
++      'export const a = 1;\n'
++    );
++    expect(git(repo, 'log', '-1', '--format=%s').trim()).toBe('GTM-0001: blocked');
++    expect(git(repo, 'diff', 'HEAD~1', 'HEAD', '--', 'team/tickets').trim()).toBe('');
++
++    store.close();
++  });
++
++  it('FIX-E B9: runSession từ chối goal approved/merged, giữ nguyên state và không tạo session', async () => {
++    const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
++    const { deps, store } = makeDeps(repo);
++    const approved = store.createGoal(repo, 'Approved goal');
++    const merged = store.createGoal(repo, 'Merged goal');
++    store.setGoalState(repo, approved.n, 'approved', 'owner');
++    store.setGoalState(repo, merged.n, 'merged', 'owner');
++    const runner = vi.fn();
++    deps.runner = runner;
++
++    for (const goal of [approved, merged]) {
++      const before = store.getGoal(repo, goal.n)?.state;
++      const outcome = await runSession(deps, [{ n: goal.n }], { approved: true });
++      expect(outcome).toMatchObject({
++        status: 'needs_owner',
++        sessionId: null,
++        notes: ['goal_already_merged'],
++      });
++      expect(store.getGoal(repo, goal.n)?.state).toBe(before);
++    }
++    expect(store.getLatestSession(undefined, repo)).toBeNull();
++    expect(runner).not.toHaveBeenCalled();
++
++    store.close();
++  });
++
+   it('PM creates invalid ticket (TicketError) -> needs_owner', async () => {
+     const repo = tmpRepo({});
+     const { deps, store } = makeDeps(repo);
+@@ -3070,6 +3140,48 @@ Yêu cầu đóng note nhưng commit lỗi
+       store.close();
+     });
+ 
++    it('FIX-E B8: PM sau audit tạo ticket mới cho goal khác → pm_ticket_wrong_goal và dọn sạch', async () => {
++      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
++      const { deps, store } = getAuditDeps(repo, 'kai');
++      const { runner, calls } = createFakeRunner([
++        (_s, _a, _p, cwd) => {
++          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
++        },
++        (_s, agent, _p, cwd) => {
++          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
++          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
++        },
++        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
++        () => ({
++          lastMessage: JSON.stringify({
++            verdict: 'fail',
++            findings: [{ ticket: 'GTM-0001', severity: 'high', text: 'needs follow-up' }],
++          }),
++        }),
++        (_s, _a, _p, cwd) => {
++          writeTicketFile(cwd, {
++            id: 'GTM-0002',
++            goal: 'G2',
++            number: 1,
++            of: 1,
++            from_audit: true,
++          });
++        },
++      ]);
++      deps.runner = runner;
++
++      const outcome = await runSession(deps, ['Security Goal'], { approved: true });
++
++      expect(outcome.status).toBe('needs_owner');
++      expect(outcome.notes).toContain('pm_ticket_wrong_goal');
++      expect(calls).toHaveLength(5);
++      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0002.md'))).toBe(false);
++      expect(store.getTicketState(repo, 'GTM-0002')).toBeNull();
++      expect(store.nextTicketSeq(repo)).toBe(2);
++
++      store.close();
++    });
++
+     it('output audit rác → audit_output_invalid, needs_owner, không gọi PM', async () => {
+       const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+       const { deps, store } = getAuditDeps(repo, 'kai');
+@@ -3243,6 +3355,69 @@ Yêu cầu đóng note nhưng commit lỗi
+   });
+ 
+   describe('P4-FIX-A: git turn safety', () => {
++    it('FIX-E B6: snapshot được lưu trước runner và xoá sau khi guard hoàn tất', async () => {
++      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
++      const { deps, store } = makeDeps(repo);
++      const { runner } = createFakeRunner([
++        (_s, _a, _p, cwd) => {
++          const snapshot = JSON.parse(store.getSetting(`turn_guard:${repo}`) || 'null');
++          expect(snapshot?.seat).toBe('pm');
++          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
++          return { exitCode: 1 };
++        },
++      ]);
++      deps.runner = runner;
++
++      const outcome = await runSession(deps, ['Persist guard snapshot'], { approved: true });
++
++      expect(outcome.status).toBe('needs_owner');
++      expect(store.getSetting(`turn_guard:${repo}`)).toBe('');
++      store.close();
++    });
++
++    it('FIX-E B6: runSession và resumeSession khôi phục snapshot tồn đọng rồi trả recovered_interrupted_turn', async () => {
++      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
++      const { deps, store } = makeDeps(repo);
++      const goal = store.createGoal(repo, 'Interrupted goal');
++      const mainBefore = git(repo, 'rev-parse', 'refs/heads/main').trim();
++      git(repo, 'checkout', '-b', goal.branch);
++      writeFileSync(join(repo, 'partial.ts'), 'partial');
++      commitAll(repo, 'partial interrupted turn', { name: 'dev', email: 'dev@btm.local' });
++      const goalHead = headSha(repo);
++      deps.runner = vi.fn();
++
++      snapshotTurn(repo, goal.branch, 'main', store, 'dev');
++      git(repo, 'update-ref', 'refs/heads/main', goalHead);
++      const runOutcome = await runSession(deps, [{ n: goal.n }], { approved: true });
++
++      expect(runOutcome).toMatchObject({
++        status: 'needs_owner',
++        sessionId: null,
++        notes: ['recovered_interrupted_turn'],
++      });
++      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
++      expect(store.getSetting(`turn_guard:${repo}`)).toBe('');
++      expect(store.getGoal(repo, goal.n)?.state).toBe('open');
++
++      const sessionId = store.createSession([String(goal.n)], repo);
++      store.setSessionStatus(sessionId, 'needs_owner');
++      snapshotTurn(repo, goal.branch, 'main', store, 'dev');
++      git(repo, 'update-ref', 'refs/heads/main', goalHead);
++      const resumeOutcome = await resumeSession(deps, sessionId);
++
++      expect(resumeOutcome).toMatchObject({
++        status: 'needs_owner',
++        sessionId,
++        notes: ['recovered_interrupted_turn'],
++      });
++      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
++      expect(store.getSetting(`turn_guard:${repo}`)).toBe('');
++      expect(store.getSession(sessionId)?.status).toBe('needs_owner');
++      expect(deps.runner).not.toHaveBeenCalled();
++
++      store.close();
++    });
++
+     it('QC checkout main + sửa file + git commit → sau session rev-parse main == trước, HEAD = nhánh goal, verdict fail có lỗi agent_modified_protected_branch', async () => {
+       const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+       const { deps, store } = makeDeps(repo);
+@@ -3664,6 +3839,27 @@ Yêu cầu đóng note nhưng commit lỗi
+       store.close();
+     });
+ 
++    it('FIX-E B8: PM tạo file ticket mới cho goal khác → pm_ticket_wrong_goal và dọn sạch', async () => {
++      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
++      const { deps, store } = makeDeps(repo);
++      const { runner } = createFakeRunner([
++        (_s, _a, _p, cwd) => {
++          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G2', number: 1, of: 1 });
++        },
++      ]);
++      deps.runner = runner;
++
++      const outcome = await runSession(deps, ['Goal 1'], { approved: true });
++
++      expect(outcome.status).toBe('needs_owner');
++      expect(outcome.notes).toContain('pm_ticket_wrong_goal');
++      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0001.md'))).toBe(false);
++      expect(store.getTicketState(repo, 'GTM-0001')).toBeNull();
++      expect(store.nextTicketSeq(repo)).toBe(1);
++
++      store.close();
++    });
++
+     it('Coder từ lịch sử phiên trước → không được QC ticket đó (coder_cannot_qc_same_task)', async () => {
+       const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+       const { deps, store } = makeDeps(repo, {

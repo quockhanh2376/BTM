@@ -1,0 +1,167 @@
+2026-11-10T01:09:29.545497Z ERROR codex_models_manager::cache: failed to load models cache: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:12:59.023870Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:13:11.389319Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:17:02.800167Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:17:15.280257Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:17:20.403623Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:21:17.381072Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 1.9 seconds
+Output:
+[31mfailed to load config from D:\BotTaskManager\vitest.config.ts[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Build failed with 1 error:
+
+[plugin externalize-deps]
+Error: spawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at Object.execFile (node:child_process:352:17)
+    at exec (node:child_process:239:25)
+    at optimizeSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2483:2)
+    at windowsSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2469:3)
+    at getRealPath (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29619:36)
+    at tryResolveRealFileOrType (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29613:9)
+    at tryCleanFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29362:21)
+    at tryFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29355:14)
+    at aggregateBindingErrorsIntoJsError (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:50:18)
+    at unwrapBindingResult (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:20:128)
+    at #build (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/rolldown-DWd2aEL4.mjs:146:34)
+    at async bundleConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:38097:12)
+    at async bundleAndLoadConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37993:18)
+    at async loadConfigFromFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37954:42)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37555:22)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/index.Di8au7q4.js:9300:25)
+    at async createVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:13938:17)
+    at async prepareVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:14625:14) {
+  errors: [Getter/Setter]
+}
+
+
+
+
+2026-11-10T01:21:24.493098Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 1.8 seconds
+Output:
+[31mfailed to load config from D:\BotTaskManager\vitest.config.ts[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Build failed with 1 error:
+
+[plugin externalize-deps]
+Error: spawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at Object.execFile (node:child_process:352:17)
+    at exec (node:child_process:239:25)
+    at optimizeSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2483:2)
+    at windowsSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2469:3)
+    at getRealPath (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29619:36)
+    at tryResolveRealFileOrType (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29613:9)
+    at tryCleanFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29362:21)
+    at tryFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29355:14)
+    at aggregateBindingErrorsIntoJsError (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:50:18)
+    at unwrapBindingResult (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:20:128)
+    at #build (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/rolldown-DWd2aEL4.mjs:146:34)
+    at async bundleConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:38097:12)
+    at async bundleAndLoadConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37993:18)
+    at async loadConfigFromFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37954:42)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37555:22)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/index.Di8au7q4.js:9300:25)
+    at async createVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:13938:17)
+    at async prepareVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:14625:14) {
+  errors: [Getter/Setter]
+}
+
+
+
+
+2026-11-10T01:21:28.917167Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 1.5 seconds
+Output:
+tests/host.test.ts(1734,57): error TS2554: Expected 2-3 arguments, but got 5.
+tests/session.test.ts(3389,47): error TS2554: Expected 2-3 arguments, but got 5.
+tests/session.test.ts(3404,47): error TS2554: Expected 2-3 arguments, but got 5.
+
+2026-11-10T01:22:09.023262Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:22:32.742528Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:22:40.888766Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:22:48.547805Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:22:56.833365Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:23:08.973226Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:23:12.461451Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:23:21.252451Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:23:24.018850Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:25:50.812781Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 1.7 seconds
+Output:
+[31mfailed to load config from D:\BotTaskManager\vitest.config.ts[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Build failed with 1 error:
+
+[plugin externalize-deps]
+Error: spawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at Object.execFile (node:child_process:352:17)
+    at exec (node:child_process:239:25)
+    at optimizeSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2483:2)
+    at windowsSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2469:3)
+    at getRealPath (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29619:36)
+    at tryResolveRealFileOrType (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29613:9)
+    at tryCleanFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29362:21)
+    at tryFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29355:14)
+    at aggregateBindingErrorsIntoJsError (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:50:18)
+    at unwrapBindingResult (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:20:128)
+    at #build (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/rolldown-DWd2aEL4.mjs:146:34)
+    at async bundleConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:38097:12)
+    at async bundleAndLoadConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37993:18)
+    at async loadConfigFromFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37954:42)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37555:22)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/index.Di8au7q4.js:9300:25)
+    at async createVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:13938:17)
+    at async prepareVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:14625:14) {
+  errors: [Getter/Setter]
+}
+
+
+
+
+2026-11-10T01:27:32.780878Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 139 column 5
+2026-11-10T01:29:21.508401Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 1.6 seconds
+Output:
+[31mfailed to load config from D:\BotTaskManager\vitest.config.ts[39m
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: Build failed with 1 error:
+
+[plugin externalize-deps]
+Error: spawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at Object.execFile (node:child_process:352:17)
+    at exec (node:child_process:239:25)
+    at optimizeSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2483:2)
+    at windowsSafeRealPathSync (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:2469:3)
+    at getRealPath (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29619:36)
+    at tryResolveRealFileOrType (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29613:9)
+    at tryCleanFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29362:21)
+    at tryFsResolve (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:29355:14)
+    at aggregateBindingErrorsIntoJsError (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:50:18)
+    at unwrapBindingResult (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/error-BJ9uQLIS.mjs:20:128)
+    at #build (file:///D:/BotTaskManager/node_modules/rolldown/dist/shared/rolldown-DWd2aEL4.mjs:146:34)
+    at async bundleConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:38097:12)
+    at async bundleAndLoadConfigFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37993:18)
+    at async loadConfigFromFile (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37954:42)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vite/dist/node/chunks/node.js:37555:22)
+    at async resolveConfig (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/index.Di8au7q4.js:9300:25)
+    at async createVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:13938:17)
+    at async prepareVitest (file:///D:/BotTaskManager/node_modules/vitest/dist/chunks/cli-api.COfZo8lK.js:14625:14) {
+  errors: [Getter/Setter]
+}
+
+
+
+

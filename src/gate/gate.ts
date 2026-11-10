@@ -1,8 +1,8 @@
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import type { TaskCard } from '../task/card.ts';
-import { changedFiles } from '../git.ts';
+import type { Ticket } from '../ticket/ticket.ts';
+import { changedFiles, git } from '../git.ts';
 
 export interface GateResult {
   ok: boolean;
@@ -26,9 +26,56 @@ export function outsideScope(changed: string[], scope: string[]): string[] {
   return Array.from(new Set(bad));
 }
 
+export function commitsMissingTicketId(repo: string, base: string, id: string): string[] {
+  const out = git(repo, 'log', '--format=%H%x00%s', `${base}..HEAD`);
+  if (!out || !out.trim()) {
+    return [];
+  }
+
+  const expectedPrefix = `${id}: `;
+  const missing: string[] = [];
+
+  const lines = out.trim().split(/\r?\n/);
+  for (const line of lines) {
+    if (!line) continue;
+    const nullIdx = line.indexOf('\0');
+    if (nullIdx === -1) continue;
+    const sha = line.slice(0, nullIdx);
+    const subject = line.slice(nullIdx + 1);
+    if (!subject.startsWith(expectedPrefix)) {
+      missing.push(sha);
+    }
+  }
+
+  return missing;
+}
+
+export function reportHeaderOk(repo: string, t: Ticket): boolean {
+  const reportPath = join(repo, 'team', 'reports', `${t.id}-dev.md`);
+  if (!existsSync(reportPath)) {
+    return false;
+  }
+
+  let content: string;
+  try {
+    content = readFileSync(reportPath, 'utf8');
+  } catch {
+    return false;
+  }
+
+  const lines = content.split(/\r?\n/);
+  const firstNonEmpty = lines.find((l) => l.trim().length > 0);
+  if (!firstNonEmpty) {
+    return false;
+  }
+
+  const expectedPrefix = `${t.id} · ${t.goal}#${t.number}/${t.of} · `;
+  return firstNonEmpty.trimStart().startsWith(expectedPrefix);
+}
+
 export function runGate(
   repo: string,
-  card: TaskCard,
+  ticket: Ticket,
   base: string,
   cmds: { build: string; lint: string; test: string },
   optsOrTimeout?: number | GateOptions,
@@ -60,15 +107,20 @@ export function runGate(
     reasons.push('empty_diff');
   }
 
+  // 1b. mọi thay đổi trong team/tickets/ từ base..HEAD → ticket_tampered (kể cả khi scope có liệt kê)
+  if (changed.some((file) => file.startsWith('team/tickets/'))) {
+    reasons.push('ticket_tampered');
+  }
+
   // 2. file ngoài scope (luôn cho phép team/reports/) → out_of_scope:<file>
-  const allowedScope = [...card.scope, 'team/reports/'];
+  const allowedScope = [...ticket.scope, 'team/reports/'];
   const outFiles = outsideScope(changed, allowedScope);
   for (const file of outFiles) {
     reasons.push(`out_of_scope:${file}`);
   }
 
   // 3. thiếu team/reports/<id>-dev.md → missing_report
-  const reportPath = join(repo, 'team', 'reports', `${card.id}-dev.md`);
+  const reportPath = join(repo, 'team', 'reports', `${ticket.id}-dev.md`);
   let hasReport = false;
   try {
     hasReport = existsSync(reportPath) && statSync(reportPath).isFile();
@@ -81,12 +133,17 @@ export function runGate(
     try {
       const content = readFileSync(reportPath, 'utf8');
       const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
-      if (lines.length > 5) {
+      const headerOk = reportHeaderOk(repo, ticket);
+      const bodyLines = headerOk ? lines.slice(1) : lines;
+      if (bodyLines.length > 5) {
         reasons.push('report_too_long');
       }
       if (requireReportSchema) {
+        if (!headerOk) {
+          reasons.push('report_header_invalid');
+        }
         const trimmed = content.trim();
-        const isOk = trimmed === 'OK';
+        const isOk = trimmed === 'OK' || /(?:^|\n)\s*OK\s*$/.test(trimmed);
         const hasValidHeading = /(?:^|\n)(?:##\s+(?:Bug|Cần sửa|Cần xác nhận)|#\s+Báo cáo Dev|-\s+(?:Bug|Cần sửa|Cần xác nhận):)/m.test(content);
         if (!isOk && !hasValidHeading) {
           reasons.push('bad_report');
@@ -94,6 +151,13 @@ export function runGate(
       }
     } catch {
       reasons.push('bad_report');
+    }
+  }
+
+  if (requireReportSchema) {
+    const missingCommits = commitsMissingTicketId(repo, base, ticket.id);
+    if (missingCommits.length > 0) {
+      reasons.push('commit_missing_ticket_id');
     }
   }
 

@@ -131,7 +131,7 @@ Luật: task vừa một lượt; quá nhiều tiêu chí hoặc nhiều module 
 2. Giới hạn lượt mỗi phiên (Core đếm).
 3. Timeout mỗi lượt, dừng cả nhóm tiến trình.
 4. Tối đa N vòng sửa mỗi task.
-5. Nút **Dừng khẩn cấp**: dừng agent đang chạy, xóa hàng đợi, khóa phiên.
+5. Nút **Dừng**: dừng agent đang chạy, xóa hàng đợi, khóa phiên.
 6. Commit Git trước mỗi lượt của Dev.
 7. User Linux riêng, quyền ghi chỉ trong thư mục projects.
 8. GitHub: fine-grained token chỉ cho repo project; Dev push nhánh task + mở PR; QC chỉ đọc/comment; `main` được bảo vệ (bắt buộc PR + test đạt). Token không bao giờ nằm trong repo.
@@ -189,7 +189,7 @@ btm/                          # repo của BTM
 
 ## 14. Dashboard v1.0
 
-Thanh phiên (project active, phiên, lượt đã dùng, ai đang giữ lượt) · tiến độ mục tiêu · thẻ từng ghế (trạng thái, task, thời gian, dòng output cuối, Energy, đèn đăng nhập) · bảng task 5 cột · nhật ký PM · khung lệnh (chọn PM/Dev/QC) · nút Dừng khẩn cấp · trang Tài khoản · nút chuyển giao diện sáng/tối (mặc định theo hệ điều hành, nhớ lựa chọn trên trình duyệt).
+Thanh phiên (project active, phiên, lượt đã dùng, ai đang giữ lượt) · tiến độ mục tiêu · thẻ từng ghế (trạng thái, task, thời gian, dòng output cuối, Energy, đèn đăng nhập) · bảng task 5 cột · nhật ký PM · khung lệnh (chọn PM/Dev/QC) · nút Dừng · trang Tài khoản · nút chuyển giao diện sáng/tối (mặc định theo hệ điều hành, nhớ lựa chọn trên trình duyệt).
 
 ## 15. Lộ trình
 

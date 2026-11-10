@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { git, gitBuffer } from '../git.ts';
 
 const VALID_INBOX_NAME = /^N-\d+(\.(md|png|jpg|webp))?$/;
 
@@ -68,12 +68,9 @@ export function readInboxFile(project: string, name: string): Buffer | null {
   } catch {}
   const rel = `team/inbox/${name}`;
   try {
-    const sha = execFileSync('git', ['log', '--all', '-1', '--format=%H', '--', rel], {
-      cwd: project,
-      encoding: 'utf8',
-    }).trim();
+    const sha = git(project, 'log', '--all', '-1', '--format=%H', '--', rel).trim();
     if (!sha) return null;
-    return execFileSync('git', ['show', `${sha}:${rel}`], { cwd: project, maxBuffer: 20 * 1024 * 1024 });
+    return gitBuffer(project, 'show', `${sha}:${rel}`);
   } catch {
     return null;
   }

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { initProject } from '../src/project/init.ts';
-import { pmPrompt } from '../src/core/prompts.ts';
+import { pmTicketPrompt } from '../src/core/prompts.ts';
 import { main, serve, acquireLock } from '../src/cli.ts';
 import { git, headSha, commitAll } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
@@ -39,13 +39,15 @@ describe('Project Init (initProject)', () => {
   });
 
   it('tạo đúng cây thư mục + 1 commit', () => {
-    const projectPath = initProject(tmpRoot, 'moon-project', repoTemplates);
+    const projectPath = initProject(tmpRoot, 'moon-project', repoTemplates, { key: 'GTM' });
 
     expect(projectPath).toBe(join(tmpRoot, 'moon-project'));
     expect(existsSync(projectPath)).toBe(true);
 
     // Kiểm tra cây thư mục
-    expect(existsSync(join(projectPath, 'team', 'tasks'))).toBe(true);
+    expect(existsSync(join(projectPath, 'team', 'tickets'))).toBe(true);
+    expect(existsSync(join(projectPath, 'team', 'goals'))).toBe(true);
+    expect(existsSync(join(projectPath, 'team', 'tasks'))).toBe(false);
     expect(existsSync(join(projectPath, 'team', 'prompts'))).toBe(true);
     expect(existsSync(join(projectPath, 'team', 'reports'))).toBe(true);
     expect(existsSync(join(projectPath, 'team', 'templates'))).toBe(true);
@@ -53,6 +55,10 @@ describe('Project Init (initProject)', () => {
     expect(existsSync(join(projectPath, 'docs'))).toBe(true);
 
     // Kiểm tra file
+    const projectYamlPath = join(projectPath, 'team', 'project.yaml');
+    expect(existsSync(projectYamlPath)).toBe(true);
+    expect(readFileSync(projectYamlPath, 'utf8')).toBe('key: GTM\n');
+
     const reportPath = join(projectPath, 'team', 'templates', 'report.md');
     expect(existsSync(reportPath)).toBe(true);
     const expectedReport = readFileSync(join(repoTemplates, 'report.md'), 'utf8');
@@ -70,32 +76,41 @@ describe('Project Init (initProject)', () => {
     expect(log[0]).toContain('init');
   });
 
+  it('key sai /^[A-Z]{2,5}$/ → ném trước khi tạo thư mục', () => {
+    expect(() => initProject(tmpRoot, 'fail-key-lower', repoTemplates, { key: 'gtm' })).toThrow(/project key/i);
+    expect(() => initProject(tmpRoot, 'fail-key-short', repoTemplates, { key: 'A' })).toThrow(/project key/i);
+    expect(() => initProject(tmpRoot, 'fail-key-long', repoTemplates, { key: 'TOOLONG' })).toThrow(/project key/i);
+    expect(() => initProject(tmpRoot, 'fail-key-special', repoTemplates, { key: 'G-1' })).toThrow(/project key/i);
+    expect(existsSync(join(tmpRoot, 'fail-key-lower'))).toBe(false);
+    expect(existsSync(join(tmpRoot, 'fail-key-short'))).toBe(false);
+  });
+
   it('tên Go To Moon → throw', () => {
     expect(() => {
-      initProject(tmpRoot, 'Go To Moon', repoTemplates);
+      initProject(tmpRoot, 'Go To Moon', repoTemplates, { key: 'GTM' });
     }).toThrow(/project name/i);
   });
 
   it('tên không hợp lệ khác (kí tự hoa, gạch dưới, rỗng, đường dẫn) → throw', () => {
-    expect(() => initProject(tmpRoot, 'Moon', repoTemplates)).toThrow();
-    expect(() => initProject(tmpRoot, 'moon_project', repoTemplates)).toThrow();
-    expect(() => initProject(tmpRoot, 'moon/sub', repoTemplates)).toThrow();
-    expect(() => initProject(tmpRoot, '', repoTemplates)).toThrow();
-    expect(() => initProject(tmpRoot, '..', repoTemplates)).toThrow();
+    expect(() => initProject(tmpRoot, 'Moon', repoTemplates, { key: 'GTM' })).toThrow();
+    expect(() => initProject(tmpRoot, 'moon_project', repoTemplates, { key: 'GTM' })).toThrow();
+    expect(() => initProject(tmpRoot, 'moon/sub', repoTemplates, { key: 'GTM' })).toThrow();
+    expect(() => initProject(tmpRoot, '', repoTemplates, { key: 'GTM' })).toThrow();
+    expect(() => initProject(tmpRoot, '..', repoTemplates, { key: 'GTM' })).toThrow();
   });
 
   it('gọi lần 2 → throw', () => {
-    initProject(tmpRoot, 'moon-project', repoTemplates);
+    initProject(tmpRoot, 'moon-project', repoTemplates, { key: 'GTM' });
 
     expect(() => {
-      initProject(tmpRoot, 'moon-project', repoTemplates);
+      initProject(tmpRoot, 'moon-project', repoTemplates, { key: 'GTM' });
     }).toThrow(/already exists/i);
   });
 
   it('template không tồn tại → throw trước khi tạo thư mục', () => {
     const nonExistentTemplate = join(tmpRoot, 'no-such-templates');
     expect(() => {
-      initProject(tmpRoot, 'moon-template-fail', nonExistentTemplate);
+      initProject(tmpRoot, 'moon-template-fail', nonExistentTemplate, { key: 'GTM' });
     }).toThrow(/template file not found/i);
 
     expect(existsSync(join(tmpRoot, 'moon-template-fail'))).toBe(false);
@@ -108,7 +123,7 @@ describe('Project Init (initProject)', () => {
 
     try {
       expect(() => {
-        initProject(tmpRoot, 'moon-cleanup-fail', repoTemplates);
+        initProject(tmpRoot, 'moon-cleanup-fail', repoTemplates, { key: 'GTM' });
       }).toThrow('Simulated git error');
 
       expect(existsSync(join(tmpRoot, 'moon-cleanup-fail'))).toBe(false);
@@ -124,6 +139,7 @@ describe('Project Init (initProject)', () => {
     });
 
     const projectPath = initProject(tmpRoot, 'moon-openspec-ok', repoTemplates, {
+      key: 'GTM',
       runOpenspec: fakeRunOpenspec,
     });
 
@@ -147,6 +163,7 @@ describe('Project Init (initProject)', () => {
     });
 
     const projectPath = initProject(tmpRoot, 'moon-openspec-err', repoTemplates, {
+      key: 'GTM',
       runOpenspec: fakeRunOpenspec,
     });
 
@@ -167,15 +184,15 @@ describe('Project Init (initProject)', () => {
   });
 });
 
-describe('pmPrompt OpenSpec', () => {
-  it('pmPrompt có/không có dòng OpenSpec theo hasOpenspec', () => {
-    const withoutOpenspec = pmPrompt(['Mục tiêu 1']);
+describe('pmTicketPrompt OpenSpec', () => {
+  it('pmTicketPrompt có/không có dòng OpenSpec theo hasOpenspec', () => {
+    const withoutOpenspec = pmTicketPrompt({ n: 1, title: 'Mục tiêu 1' }, 'GTM', 'GTM-0001');
     expect(withoutOpenspec).not.toContain('openspec');
 
-    const withFalse = pmPrompt(['Mục tiêu 1'], undefined, false);
+    const withFalse = pmTicketPrompt({ n: 1, title: 'Mục tiêu 1' }, 'GTM', 'GTM-0001', { hasOpenspec: false });
     expect(withFalse).not.toContain('openspec');
 
-    const withTrue = pmPrompt(['Mục tiêu 1'], undefined, true);
+    const withTrue = pmTicketPrompt({ n: 1, title: 'Mục tiêu 1' }, 'GTM', 'GTM-0001', { hasOpenspec: true });
     expect(withTrue).toContain('openspec/changes/<tên>');
     expect(withTrue).toContain('openspec_change: <tên>');
     expect(withTrue).toMatch(/đề xuất thay đổi bằng openspec/i);
@@ -295,8 +312,8 @@ runner:
     vi.restoreAllMocks();
   });
 
-  it('btm init <name> tạo project và đặt active_project trong SQLite', async () => {
-    const exitCode = await main(['init', 'project-apollo', '--config', configPath]);
+  it('btm init <name> --key <KEY> tạo project và đặt active_project trong SQLite', async () => {
+    const exitCode = await main(['init', 'project-apollo', '--key', 'GTM', '--config', configPath]);
     expect(exitCode).toBe(0);
 
     const store = openStore(join(dataDir, 'btm.db'));
@@ -304,7 +321,41 @@ runner:
     expect(active).toBe(join(tmpRoot, 'project-apollo'));
     store.close();
 
-    expect(existsSync(join(tmpRoot, 'project-apollo', 'team', 'tasks'))).toBe(true);
+    expect(existsSync(join(tmpRoot, 'project-apollo', 'team', 'tickets'))).toBe(true);
+    expect(existsSync(join(tmpRoot, 'project-apollo', 'team', 'goals'))).toBe(true);
+    expect(existsSync(join(tmpRoot, 'project-apollo', 'team', 'tasks'))).toBe(false);
+    expect(existsSync(join(tmpRoot, 'project-apollo', 'team', 'project.yaml'))).toBe(true);
+    expect(readFileSync(join(tmpRoot, 'project-apollo', 'team', 'project.yaml'), 'utf8')).toBe('key: GTM\n');
+  });
+
+  it('btm init moon --key GTM → có team/project.yaml (key: GTM), team/tickets/, team/goals/, không có team/tasks/', async () => {
+    const exitCode = await main(['init', 'moon', '--key', 'GTM', '--config', configPath]);
+    expect(exitCode).toBe(0);
+
+    const proj = join(tmpRoot, 'moon');
+    expect(existsSync(join(proj, 'team', 'project.yaml'))).toBe(true);
+    expect(readFileSync(join(proj, 'team', 'project.yaml'), 'utf8')).toBe('key: GTM\n');
+    expect(existsSync(join(proj, 'team', 'tickets'))).toBe(true);
+    expect(existsSync(join(proj, 'team', 'goals'))).toBe(true);
+    expect(existsSync(join(proj, 'team', 'tasks'))).toBe(false);
+  });
+
+  it('btm init thiếu --key hoặc --key gtm/--key TOOLONG → exit 1, không tạo thư mục', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const exit1 = await main(['init', 'moon-no-key', '--config', configPath]);
+    expect(exit1).toBe(1);
+    expect(existsSync(join(tmpRoot, 'moon-no-key'))).toBe(false);
+
+    const exit2 = await main(['init', 'moon-lower-key', '--key', 'gtm', '--config', configPath]);
+    expect(exit2).toBe(1);
+    expect(existsSync(join(tmpRoot, 'moon-lower-key'))).toBe(false);
+
+    const exit3 = await main(['init', 'moon-long-key', '--key', 'TOOLONG', '--config', configPath]);
+    expect(exit3).toBe(1);
+    expect(existsSync(join(tmpRoot, 'moon-long-key'))).toBe(false);
+
+    errSpy.mockRestore();
   });
 
   it('btm run khi chưa có active project thì in SessionOutcome refused và exit 2', async () => {
@@ -320,7 +371,7 @@ runner:
   });
 
   it('btm run chạy session thành công, in JSON SessionOutcome và exit code tương ứng', async () => {
-    await main(['init', 'project-gemini', '--config', configPath]);
+    await main(['init', 'project-gemini', '--key', 'GTM', '--config', configPath]);
 
     const fakeRunSession = vi.fn().mockResolvedValue({
       status: 'awaiting_approval',
@@ -344,7 +395,7 @@ runner:
   });
 
   it('btm run exit 1 khi status là needs_owner', async () => {
-    await main(['init', 'project-mercury', '--config', configPath]);
+    await main(['init', 'project-mercury', '--key', 'GTM', '--config', configPath]);
 
     const fakeRunSession = vi.fn().mockResolvedValue({
       status: 'needs_owner',
@@ -363,7 +414,7 @@ runner:
   });
 
   it('btm status hiển thị active project, session gần nhất và số lượt theo ghế', async () => {
-    await main(['init', 'project-saturn', '--config', configPath]);
+    await main(['init', 'project-saturn', '--key', 'GTM', '--config', configPath]);
 
     const store = openStore(join(dataDir, 'btm.db'));
     const sId = store.createSession(['Goal saturn']);
@@ -404,7 +455,7 @@ runner:
   });
 
   it('run không có --goal → in lỗi exit 1, không tạo session', async () => {
-    await main(['init', 'project-no-goal', '--config', configPath]);
+    await main(['init', 'project-no-goal', '--key', 'GTM', '--config', configPath]);
     const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const exitCode = await main(['run', '--config', configPath]);
     expect(exitCode).toBe(1);
@@ -413,7 +464,7 @@ runner:
   });
 
   it('run --approved không có --goal và không có session awaiting_approval → lỗi exit 1', async () => {
-    await main(['init', 'project-resume-none', '--config', configPath]);
+    await main(['init', 'project-resume-none', '--key', 'GTM', '--config', configPath]);
     const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const exitCode = await main(['run', '--approved', '--config', configPath]);
     expect(exitCode).toBe(1);
@@ -422,7 +473,7 @@ runner:
   });
 
   it('run --approved không có --goal và có session awaiting_approval → resume session mới nhất', async () => {
-    await main(['init', 'project-resume-ok', '--config', configPath]);
+    await main(['init', 'project-resume-ok', '--key', 'GTM', '--config', configPath]);
     const projectPath = join(tmpRoot, 'project-resume-ok');
     const store = openStore(join(dataDir, 'btm.db'));
     const s1 = store.createSession(['Goal 1'], projectPath);
@@ -455,7 +506,7 @@ runner:
   });
 
   it('A chờ duyệt, active là B → run --approved báo lỗi exit 1, session A vẫn awaiting_approval', async () => {
-    await main(['init', 'project-a', '--config', configPath]);
+    await main(['init', 'project-a', '--key', 'GTM', '--config', configPath]);
     const projectAPath = join(tmpRoot, 'project-a');
 
     const store = openStore(join(dataDir, 'btm.db'));
@@ -463,7 +514,7 @@ runner:
     store.setSessionStatus(sessionA, 'awaiting_approval');
     store.close();
 
-    await main(['init', 'project-b', '--config', configPath]);
+    await main(['init', 'project-b', '--key', 'GTM', '--config', configPath]);
 
     const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const exitCode = await main(['run', '--approved', '--config', configPath]);
@@ -480,7 +531,7 @@ runner:
   it('checkForbiddenEnv trước tiên: init với env cấm → exit 2', async () => {
     const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const exitCode = await main(
-      ['init', 'project-env-fail', '--config', configPath],
+      ['init', 'project-env-fail', '--key', 'GTM', '--config', configPath],
       { ANTHROPIC_API_KEY: 'sk-ant-test' }
     );
     expect(exitCode).toBe(2);
@@ -489,7 +540,7 @@ runner:
   });
 
   it('checkForbiddenEnv trước tiên: run với env cấm → exit 2, không tạo session', async () => {
-    await main(['init', 'project-run-env', '--config', configPath]);
+    await main(['init', 'project-run-env', '--key', 'GTM', '--config', configPath]);
     const fakeRunSession = vi.fn();
     const consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const exitCode = await main(
@@ -513,7 +564,7 @@ runner:
   });
 
   it('store.close() được gọi trong finally khi session run throw error', async () => {
-    await main(['init', 'project-finally', '--config', configPath]);
+    await main(['init', 'project-finally', '--key', 'GTM', '--config', configPath]);
     let closeCalled = false;
     const origOpenStore = storeModule.openStore;
     const openStoreSpy = vi.spyOn(storeModule, 'openStore').mockImplementation((path: string) => {
@@ -540,7 +591,7 @@ runner:
   });
 
   it('btm run bị abort bởi AbortController → endTurn error, session status stopped, exit 130', async () => {
-    await main(['init', 'project-abort-test', '--config', configPath]);
+    await main(['init', 'project-abort-test', '--key', 'GTM', '--config', configPath]);
     const projectPath = join(tmpRoot, 'project-abort-test');
 
     const ac = new AbortController();
@@ -579,7 +630,7 @@ runner:
   });
 
   it('btm run khóa liên tiến trình: khi lock tồn tại và pid còn sống → in lỗi, exit 1', async () => {
-    await main(['init', 'project-lock-alive', '--config', configPath]);
+    await main(['init', 'project-lock-alive', '--key', 'GTM', '--config', configPath]);
     const lockPath = join(dataDir, 'btm.lock');
     // Ghi PID của tiến trình hiện tại (chắc chắn còn sống)
     writeFileSync(lockPath, String(process.pid));
@@ -601,7 +652,7 @@ runner:
   });
 
   it('btm run khóa liên tiến trình: khi lock tồn tại nhưng pid đã chết → ghi đè và xóa trong finally', async () => {
-    await main(['init', 'project-lock-dead', '--config', configPath]);
+    await main(['init', 'project-lock-dead', '--key', 'GTM', '--config', configPath]);
     const lockPath = join(dataDir, 'btm.lock');
     // PID giả định không tồn tại (chết)
     writeFileSync(lockPath, '99999999');
@@ -629,7 +680,7 @@ runner:
   });
 
   it('btm run khóa liên tiến trình: test hai lần lấy khóa liên tiếp', async () => {
-    await main(['init', 'project-lock-two-times', '--config', configPath]);
+    await main(['init', 'project-lock-two-times', '--key', 'GTM', '--config', configPath]);
     const lockPath = join(dataDir, 'btm.lock');
 
     const fakeRunSession = vi.fn().mockResolvedValue({
@@ -925,7 +976,8 @@ runner:
       return origServerClose(cb);
     };
 
-    const projPath = initProject(tmpRoot, 'slow-proj', repoTemplates);
+    const projPath = initProject(tmpRoot, 'slow-proj', repoTemplates, { key: 'GTM' });
+    git(projPath, 'checkout', '-b', 'goal/G1-slow');
     capturedStore.setActiveProject(projPath);
 
     // Kích hoạt 1 lệnh Dev giả
