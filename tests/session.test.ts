@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
 import { loadConfig, type Config, type Seat } from '../src/config.ts';
-import { openStore, effectiveSeats, type Store } from '../src/store/db.ts';
+import { openStore, effectiveSeats, resolveSeats, type Store } from '../src/store/db.ts';
 import { tmpRepo } from './helpers.ts';
 import { git, commitAll, headSha } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
@@ -1113,32 +1113,23 @@ describe('Goal & Ticket Session Coordinator', () => {
     store.close();
   });
 
-  it('effectiveSeats ignores override if agent not in cfg.agents or can_sit does not contain seat, and logs', () => {
+  it('effectiveSeats ignores override if agent not in cfg.agents or can_sit does not contain seat, and warns', () => {
     const repo = tmpRepo({});
     const { store, cfg } = makeDeps(repo);
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     store.setSetting('seat:dev', 'unknown_agent');
-    const eff1 = effectiveSeats(cfg, store);
-    expect(eff1.dev).toBe(cfg.seats.dev);
-    expect(logSpy).toHaveBeenCalled();
-
-    logSpy.mockClear();
+    expect(effectiveSeats(cfg, store).dev).toBe(cfg.seats.dev);
+    expect(resolveSeats(cfg, store).warnings.join(' ')).toContain('unknown_agent');
 
     store.setSetting('seat:dev', 'elon');
-    const eff2 = effectiveSeats(cfg, store);
-    expect(eff2.dev).toBe(cfg.seats.dev);
-    expect(logSpy).toHaveBeenCalled();
-
-    logSpy.mockClear();
+    expect(effectiveSeats(cfg, store).dev).toBe(cfg.seats.dev);
+    expect(resolveSeats(cfg, store).warnings.join(' ')).toContain('"elon"');
 
     for (const dangerous of ['__proto__', 'constructor', 'toString']) {
       store.setSetting('seat:dev', dangerous);
-      const eff3 = effectiveSeats(cfg, store);
-      expect(eff3.dev).toBe(cfg.seats.dev);
+      expect(effectiveSeats(cfg, store).dev).toBe(cfg.seats.dev);
     }
 
-    logSpy.mockRestore();
     store.close();
   });
 

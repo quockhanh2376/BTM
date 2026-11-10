@@ -390,7 +390,7 @@ async function processGoal(
   const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
   const gateFn = d.gate ?? (d.monitor ? d.monitor.gate.bind(d.monitor) : undefined);
 
-  const pmAgent = effectiveSeats(d.cfg, d.store).pm;
+  const pmAgent = effectiveSeats(d.cfg, d.store, d.repo).pm;
   const pmAuthor = authorForAgent(pmAgent);
 
   const baseBranch = d.cfg.git.protected_branch || 'main';
@@ -843,7 +843,7 @@ async function processGoal(
           notes: ['Session aborted'],
         };
       }
-      const seats = effectiveSeats(d.cfg, d.store);
+      const seats = effectiveSeats(d.cfg, d.store, d.repo);
       const devAgent = Object.hasOwn(seats, 'dev') ? seats.dev : d.cfg.seats.dev;
       const devAuthor = authorForAgent(devAgent);
 
@@ -1462,7 +1462,7 @@ async function processGoal(
     break;
   }
 
-  const auditAgent = effectiveSeats(d.cfg, d.store).audit || d.cfg.seats.audit;
+  const auditAgent = effectiveSeats(d.cfg, d.store, d.repo).audit || d.cfg.seats.audit;
   if (!auditAgent) {
     writeGoalSummaryAndCommit(d.repo, goal, goalTicketsAfter, d.store);
     const reviewedSha = git(d.repo, 'rev-parse', `refs/heads/${goal.branch}`).trim();
@@ -2073,7 +2073,7 @@ export async function runSession(
   try {
     const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
     if (refreshFn && d.cfg.energy.read_on.includes('session_open')) {
-      const sittingAgents = Array.from(new Set(Object.values(effectiveSeats(d.cfg, d.store))));
+      const sittingAgents = Array.from(new Set(Object.values(effectiveSeats(d.cfg, d.store, d.repo))));
       try {
         await refreshFn(sittingAgents);
       } catch {}
@@ -2176,7 +2176,7 @@ export async function resumeSession(
   try {
     const refreshFn = d.refresh ?? (d.monitor ? d.monitor.refresh.bind(d.monitor) : undefined);
     if (refreshFn && d.cfg.energy.read_on.includes('session_open')) {
-      const sittingAgents = Array.from(new Set(Object.values(effectiveSeats(d.cfg, d.store))));
+      const sittingAgents = Array.from(new Set(Object.values(effectiveSeats(d.cfg, d.store, d.repo))));
       try {
         await refreshFn(sittingAgents);
       } catch {}

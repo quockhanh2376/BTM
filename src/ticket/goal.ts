@@ -93,7 +93,7 @@ export function approveGoal(
       };
     }
 
-    const auditAgent = (effectiveSeats(cfg, store).audit || cfg.seats?.audit || '').trim();
+    const auditAgent = (effectiveSeats(cfg, store, repo).audit || cfg.seats?.audit || '').trim();
     const hasAudit = auditAgent.length > 0;
     const isReady = hasAudit
       ? goal.state === 'audit_passed'

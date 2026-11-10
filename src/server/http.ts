@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, lstat
 import { join, relative, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import type { Config, Seat } from '../config.ts';
-import { effectiveSeats, type Store } from '../store/db.ts';
+import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
 import { commitAll } from '../git.ts';
 import { inboxPath, detectImage, readInboxFile } from './inbox.ts';
@@ -600,7 +600,7 @@ export function createServer(o: {
             }
           } else {
             const current = effectiveSeats(o.cfg, o.store)[seat as Seat];
-            o.store.setSetting(`seat:${seat}`, agent);
+            o.store.setSetting(seatSettingKey(o.store.getActiveProject(), seat as Seat), agent);
             console.log(`Đổi ghế ${seat}: ${current} → ${agent}`);
           }
           sendJson(res, 200, { ok: true, seat, agent });
