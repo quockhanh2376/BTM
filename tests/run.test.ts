@@ -304,7 +304,7 @@ describe('Runner Run', () => {
         mockCodex,
         `#!/bin/sh
 # codex exec --sandbox read-only -o outFile prompt
-outFile="$5"
+outFile=$(while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { echo "$2"; break; }; shift; done)
 echo '{"verdict":"pass","bugs":[],"fix":[],"confirm":[]}' > "$outFile"
 echo "codex stdout line"
 `
@@ -346,7 +346,7 @@ echo "codex stdout line"
         mockCodex,
         `#!/bin/sh
 echo "$@" > "${capturedArgsFile}"
-outFile="$5"
+outFile=$(while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { echo "$2"; break; }; shift; done)
 echo '{"verdict":"pass"}' > "$outFile"
 `
       );
