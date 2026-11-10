@@ -50,6 +50,7 @@ set -euo pipefail
 real="$(realpath -e -- "$1")"; shift 2
 case "$real/" in /srv/agent-projects/?*/) ;; *) echo "cwd ngoài /srv/agent-projects: $real" >&2; exit 2;; esac
 cd "$real"
+umask 022   # bundle do worker tạo phải đọc được bởi BTM (user agent)
 keep=()
 for v in CLAUDE_CONFIG_DIR CODEX_HOME AGY_ACCOUNT ANTIGRAVITY_GEMINI_DIR; do
   [ -n "${!v:-}" ] && keep+=("$v=${!v}")
