@@ -38,6 +38,21 @@ describe('Config', () => {
     expect(config.runner.agy_allow_commands).toContain('npx vitest');
   });
 
+  it('P5-T1: agent có model + effort; mặc định effort medium; model/effort lạ hoặc id không hợp user Linux → lỗi', () => {
+    const ok = loadConfig(writeTestConfig((raw) => {
+      raw.agents.kai = { tool: 'antigravity-cli', command: 'agy', can_sit: ['audit'], model: 'gemini-3.8-flash-high' };
+    }));
+    expect(ok.agents.kai.model).toBe('gemini-3.8-flash-high');
+    expect(ok.agents.kai.effort).toBeUndefined(); // mặc định medium ở agentEffort (Task 2)
+    expect(ok.agents.elon.model).toBeUndefined();
+    expect(() => loadConfig(writeTestConfig((raw) => { raw.agents.elon.model = 'a;rm -rf /'; }))).toThrow(ConfigError);
+    expect(() => loadConfig(writeTestConfig((raw) => { raw.agents.elon.effort = 'ultra'; }))).toThrow(ConfigError);
+    expect(() => loadConfig(writeTestConfig((raw) => {
+      raw.host.worker_prefix = 'btm-';
+      raw.agents['Kai!'] = { tool: 'codex-cli', command: 'codex', can_sit: ['qc'] };
+    }))).toThrow(ConfigError);
+  });
+
   it('rejects auto_schedule true', () => {
     const configFile = writeTestConfig((raw) => {
       raw.session.auto_schedule = true;

@@ -80,7 +80,7 @@ export async function serve(
   const dbPath = join(cfg.host.data_dir, 'btm.db');
   const store = openStore(dbPath);
 
-  const runner = effectiveDeps?.runner ?? makeRunner(cfg);
+  const runner = effectiveDeps?.runner ?? makeRunner(cfg, undefined, undefined, undefined, undefined, store);
   const hostFactory = effectiveDeps?.createHost ?? createHost;
   const serverFactory = effectiveDeps?.createServer ?? createServer;
 
@@ -579,7 +579,7 @@ Options:
             }
 
             activeSessionId = latestAwaiting.id;
-            const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal);
+            const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal, undefined, undefined, undefined, store);
             const resumeFn = effectiveDeps?.resumeSession ?? resumeSession;
 
             const outcome = await resumeFn(
@@ -616,7 +616,7 @@ Options:
             return exitCode;
           }
 
-          const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal);
+          const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal, undefined, undefined, undefined, store);
           const sessionFn = effectiveDeps?.runSession ?? runSession;
 
           const outcome = await sessionFn(

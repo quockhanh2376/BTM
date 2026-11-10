@@ -56,11 +56,20 @@ export const SeatsSchema = z.object({
   audit: z.string().default(''),
 }).strict();
 
+export const EffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+export type Effort = z.infer<typeof EffortSchema>;
+// Model đi thẳng vào argv của CLI: chỉ chữ/số và . _ : -
+export const ModelSchema = z.string().regex(/^[A-Za-z0-9._:-]{1,80}$/);
+
 export const AgentConfigSchema = z.object({
   tool: ToolSchema,
   command: z.string(),
   needs_pty: z.boolean().optional(),
   can_sit: z.array(SeatSchema).nonempty(),
+  /** Không đặt → model mặc định của CLI (không truyền cờ model). */
+  model: ModelSchema.optional(),
+  /** Không đặt → medium (agentEffort). */
+  effort: EffortSchema.optional(),
 }).strict();
 
 export const RulesSchema = z.object({
@@ -131,6 +140,14 @@ const BaseConfigSchema = z.object({
 }).strict();
 
 export const ConfigSchema = BaseConfigSchema.superRefine((cfg, ctx) => {
+  // Cách ly: agent id thành tên user Linux <worker_prefix><id>.
+  if (cfg.host.worker_prefix) {
+    for (const id of Object.keys(cfg.agents)) {
+      if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(`${cfg.host.worker_prefix}${id}`)) {
+        ctx.addIssue({ code: 'custom', message: `Agent id '${id}' is not a valid Linux user name suffix`, path: ['agents', id] });
+      }
+    }
+  }
   const seatKeys: Seat[] = ['pm', 'dev', 'qc'];
   if (cfg.seats.audit) {
     seatKeys.push('audit');
