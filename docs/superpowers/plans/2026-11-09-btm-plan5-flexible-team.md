@@ -143,3 +143,15 @@
 ## Để sau
 
 Thêm/sửa agent ngay trên dashboard (hiện sửa `btm.config.yaml`); nhiều agent chạy song song (v2.0). Giao diện song ngữ Anh/Việt (nút EN/VI, nhớ lựa chọn trên trình duyệt) – anh Zon 2026-11-10, làm ở plan sau; từ giờ chuỗi giao diện mới gom về một chỗ để dễ dịch.
+
+Sao lưu/khôi phục tài khoản Antigravity (anh Zon 2026-11-10, làm khi app ổn định):
+- Script `deploy/agy-accounts.sh`, gồm các lệnh:
+  - `export`: ghi file JSON trần `[{email, refresh_token}]`, giống mẫu anh đang lưu;
+  - `import <file>`;
+  - `use <email>`;
+  - `list`: chỉ in email.
+- Ghi đăng nhập vào home của `btm-jacky` với quyền 600, rồi chạy `agy models` để kiểm.
+- Bước 0: tìm chỗ agy lưu đăng nhập (chỉ xem tên khoá, không in giá trị) và xác nhận chỉ cần refresh token là đủ.
+- Không in token, không đưa token vào tham số dòng lệnh.
+- `.gitignore` chặn `*accounts*.json*`; quét bí mật trước khi push bắt cả `"refresh_token"`.
+- Sau đó nối vào luật thay ghế: hết hạn mức thì chuyển sang tài khoản agy kế tiếp, hết cả thì chuyển sang agent khác.
