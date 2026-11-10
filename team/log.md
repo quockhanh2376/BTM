@@ -125,3 +125,10 @@
 - Commit 99da565 + 2 commit sau trên plan4-5-isolation; VM 716/716 ×3.
 - Review 2: `team/reviews/P45-review-2.md`. Đã sửa H1 H2 M3 M4 cùng vài lỗi Low. M1 M2 là giới hạn đã ghi (Plan 5 / plan sau).
 - Tiếp: chạy prep trên VM → Zon đăng nhập 3 CLI (mỗi user 1 CLI) → Task 6 switch (cần Zon đồng ý restart).
+- Prep mới đã chạy trên VM (admzon): 3 user btm-elon/jacky/jenny, CLI ở /opt/btm-cli (root sở hữu), cron/at bị chặn.
+- Kiểm thật trên VM:
+  - worker không đọc được btm.db, home của agent hay home của agent khác; không ghi được CLI hay checkout tin cậy; không vào được workspace của agent khác;
+  - killall dọn được nohup/setsid;
+  - sync → commit → import end-to-end dưới user thật OK; main không bị đổi; file tin cậy 640 btm-read.
+- Sửa killall: kill -1 giết cả sudo cha → đổi sang pgrep theo real uid.
+- Chờ Zon: đăng nhập 3 CLI (mỗi user 1 CLI), rồi Task 6 switch + restart.
