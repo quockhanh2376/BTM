@@ -148,3 +148,15 @@
   - symlink bị chặn;
   - FIFO không treo.
 - Tiếp: Plan 5.
+
+## 2026-11-10 – Plan 5 code xong (Cheki, Zon duyệt plan + để Cheki code)
+- Nhánh `plan5-flexible-team`:
+  - Task 1–5, 7, 8, 6;
+  - review 1 (`team/reviews/P5-review-1.md`): đã sửa H1 H2 M1 M2 L1 L3.
+- VM 738/738 ×3.
+- Kiểm reset thật trên VM:
+  - xoá được cấu hình độc kể cả sau `chmod`;
+  - bỏ MCP server cài thêm;
+  - đăng nhập 3 CLI vẫn ổn.
+- Task 7 còn thiếu (ghi trong plan): chạy lại lượt khi lỗi hạn mức giữa lượt; `seats_backup` theo project.
+- agy lưu đăng nhập ở `~/.gemini/antigravity-cli/antigravity-oauth-token` (chỉ xem tên file), nên phần sao lưu JSON làm được.

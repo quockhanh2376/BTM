@@ -131,6 +131,14 @@
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5:** Commit `feat: seat failover when energy runs out, stop when all exhausted (P5 Task 7)`.
 
+**Trạng thái Task 7 (Cheki 2026-11-10):**
+- Đã làm: thay ghế trước lượt theo Energy và đăng nhập, áp luật cứng cho cả người ngồi thay; hết cả thì `needs_owner` với `all_agents_exhausted` kèm lý do từng người; dashboard có nhãn "ngồi thay".
+- Chưa làm:
+  - lỗi hạn mức giữa lượt chưa tự chạy lại (lượt báo lỗi, anh bấm Tiếp tục thì BTM chọn lại người);
+  - `seats_backup` theo project;
+  - dừng/khoá phiên như nút Dừng;
+  - giờ hồi sớm nhất.
+
 ### Task 8: Dọn cấu hình CLI của agent trước mỗi lượt (review P45 M1)
 
 Cùng một agent đổi ghế (vd jenny Dev ticket A → QC ticket B) không được mang theo cấu hình mình tự sửa lúc làm Dev.
