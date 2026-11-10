@@ -20,3 +20,7 @@ Luật: **1 API key ↔ đúng 1 agent, 1 agent ↔ tối đa 1 key**, không ba
 - `forbidden_env` đổi nghĩa: cấm trong env chung của service; chỉ Core được tiêm key cho đúng agent.
 - Energy của agent dùng key = chi tiêu / ngân sách anh đặt.
 - Cần xác minh khi làm: Z.ai chạy qua Claude Code (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` của Z.ai)?; Gemini API key chạy bằng CLI nào (agy có nhận key không).
+
+### Thay ghế khi hết Energy (anh Zon 2026-11-10)
+Agent hết hạn mức → agent dự phòng (Codex, Grok, …) ngồi thay ghế đó; hết cả → **Dừng** phiên. Thay mục 4 "không tự đổi" cho phần **agent** (vẫn không xoay vòng tài khoản của cùng một agent). Luật cứng coder ≠ QC/Audit vẫn áp cho người thay. Plan 5 Task 7.
+Nút "Dừng khẩn cấp" đổi tên thành **"Dừng"**. Song ngữ EN/VI: để sau.

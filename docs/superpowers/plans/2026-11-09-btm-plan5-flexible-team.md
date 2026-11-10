@@ -18,7 +18,7 @@
 
 - Vẫn **không API key**: `login.forbidden_env` áp dụng cho cả env của từng agent; `account_env` chỉ nhận khoá trong danh sách trắng `CLAUDE_CONFIG_DIR, CODEX_HOME, AGY_ACCOUNT, ANTIGRAVITY_GEMINI_DIR`; giá trị đường dẫn phải là tuyệt đối và không nằm trong `host.projects_root`.
 - Không bao giờ đọc/in/lưu nội dung credential trong các thư mục tài khoản (như Kế hoạch 3).
-- `rules.auto_switch_accounts: false` giữ nguyên – Core không tự đổi tài khoản/agent khi hết Energy.
+- `rules.auto_switch_accounts: false` giữ nguyên (không xoay vòng tài khoản của CÙNG một agent). Thay **agent** khi hết Energy theo danh sách dự phòng là Task 7 (anh Zon 2026-11-10); hết cả → Dừng.
 - Luật cứng giữ nguyên với đội hình mới: coder ≠ QC của ticket đó; coder ≠ audit của goal; một agent được kiêm nhiều ghế còn lại (vd PM + Audit, PM + QC).
 - Đổi đội hình khi đang có phiên/lượt chạy → từ chối (409), như Kế hoạch 3.
 - Test không gọi CLI thật; `npx vitest run` không tăng fail; `npx tsc --noEmit` sạch.
@@ -117,8 +117,25 @@
 - `docs/team-setup.md` (≤ 1 trang): thêm tài khoản mới cho từng công cụ (lệnh đăng nhập dưới user `agent` với env riêng), gắn agent vào ghế, đội hình theo project, luật kiêm nhiệm được/không được.
 - [ ] **Step 1:** `loadConfig(btm.config.yaml)` vẫn hợp lệ (test có sẵn). **Step 2:** Commit `docs: flexible team setup (P5 Task 6)`.
 
+### Task 7: Thay ghế khi hết Energy, hết cả thì Dừng
+
+**Yêu cầu anh Zon (2026-11-10):** agent ngồi ghế hết hạn mức → agent khác (Codex, Grok, …) ngồi thay; tất cả đều hết → Dừng.
+
+**Files:** Modify `src/config.ts`, `src/store/db.ts`, `src/core/session.ts`, `src/server/snapshot.ts`, `web/index.html`; tests `tests/config.test.ts`, `tests/session.test.ts`, `tests/web.test.ts`.
+
+**Interfaces – Consumes:** Task 3 (Energy theo agent), Task 4 (`effectiveSeats`). **Produces:**
+- Config `seats_backup: { <seat>: [agentId, …] }` (mặc định `{}`; theo project ghi đè được trong `team/project.yaml` `seats_backup:`); mỗi id phải có ghế trong `can_sit`.
+- `pickSeatAgent(cfg, store, project, seat, energy): { agent: string; substitute: boolean } | null` – người chính còn Energy → người chính; không thì người đầu tiên trong `seats_backup` còn Energy, đăng nhập ok và **không vi phạm luật cứng** (coder ≠ QC ticket, coder ≠ audit goal); không ai → `null`.
+- Lượt bị lỗi hạn mức (vd agy `RESOURCE_EXHAUSTED`/"quota reached", codex/claude báo hết usage) → đánh dấu agent hết Energy tới giờ hồi, chạy lại lượt đó với người thay (không tính thêm 1 vòng sửa).
+- `null` → phiên **Dừng** (như nút Dừng: khoá phiên, không xoá việc dở), `needs_owner` note `all_agents_exhausted` kèm giờ hồi sớm nhất.
+- Mỗi lần thay ghi turn note `seat_substitute:<seat>:<from>-><to>`; dashboard hiện nhãn "thay <tên>" trên thẻ ghế.
+
+- [ ] **Step 1: Test:** Dev chính hết Energy, backup codex còn → lượt dev chạy bằng codex, note thay ghế; lỗi quota giữa lượt → chạy lại bằng backup; backup là coder của ticket → không được ngồi QC, thử người kế; mọi người hết → phiên dừng `all_agents_exhausted`, không chạy thêm lượt; người chính hồi Energy → lượt sau quay về người chính.
+- [ ] **Step 2–4:** FAIL → implement → PASS.
+- [ ] **Step 5:** Commit `feat: seat failover when energy runs out, stop when all exhausted (P5 Task 7)`.
+
 ---
 
 ## Để sau
 
-Thêm/sửa agent ngay trên dashboard (hiện sửa `btm.config.yaml`); tự đề xuất người thay khi một agent hết Energy (v2.x); nhiều agent chạy song song (v2.0).
+Thêm/sửa agent ngay trên dashboard (hiện sửa `btm.config.yaml`); nhiều agent chạy song song (v2.0). Giao diện song ngữ Anh/Việt (nút EN/VI, nhớ lựa chọn trên trình duyệt) – anh Zon 2026-11-10, làm ở plan sau; từ giờ chuỗi giao diện mới gom về một chỗ để dễ dịch.

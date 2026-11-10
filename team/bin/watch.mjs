@@ -23,8 +23,24 @@ function describe(u) {
   return null;
 }
 
+// Codex (`codex exec --json`): thread.started / item.started|completed / turn.completed|failed.
+function handleCodex(j) {
+  if (j.type === 'thread.started') { console.log(`\n=== ${hhmm()} BẮT ĐẦU (codex) ${basename(file)}`); return; }
+  if (j.type === 'turn.completed' || j.type === 'turn.failed') {
+    console.log(`=== ${hhmm()} KẾT THÚC · ${j.type === 'turn.completed' ? 'SUCCESS' : 'ERROR ' + short(j.error?.message, 200)}\n`);
+    return;
+  }
+  const it = j.item; if (!it) return;
+  const done = j.type === 'item.completed';
+  if (it.type === 'agent_message' && done) console.log(`  💬 ${short(it.text, 300)}`);
+  else if (it.type === 'command_execution') console.log(`${hhmm()}  ${done ? `✓ (exit ${it.exit_code})` : '▶'} ${short(it.command, 110)}`);
+  else if (it.type === 'file_change' && done) console.log(`${hhmm()}  ✎ ${(it.changes ?? []).map((c) => `${c.kind} ${rel(c.path)}`).join(', ')}`);
+  else if (it.type === 'error' && done) console.log(`${hhmm()}  ⚠ ${short(it.message, 150)}`);
+}
+
 function handle(line) {
   let j; try { j = JSON.parse(line); } catch { return; }
+  if (j.type) return handleCodex(j);
   if (j.event === 'init') { console.log(`\n=== ${hhmm()} BẮT ĐẦU ${basename(file)}`); return; }
   if (j.event === 'result') {
     if (text.trim()) console.log(`  💬 ${short(text, 300)}`); text = '';
