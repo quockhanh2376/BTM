@@ -285,6 +285,29 @@ describe('approveGoal', () => {
     }
   });
 
+  it('FIX-E: goal qc_done không có reviewed_sha → reject not_ready, không merge theo tên nhánh', () => {
+    const repo = tmpRepo({ 'README.md': '# Repo' });
+    const cfg = makeTestConfig(dataDir, { auditSeat: '' });
+    const created = store.createGoal(repo, 'Thieu reviewed sha');
+
+    git(repo, 'checkout', '-b', created.branch);
+    writeFileSync(join(repo, 'code.txt'), 'unreviewed code');
+    git(repo, 'add', 'code.txt');
+    execFileSync('git', [...AUTHOR, 'commit', '-m', 'GTM-0001: unreviewed'], { cwd: repo });
+    store.setGoalState(repo, created.n, 'qc_done', 'jenny', 'legacy row without sha', null);
+    const mainBefore = git(repo, 'rev-parse', 'refs/heads/main').trim();
+
+    const res = approveGoal(store, repo, cfg, created.n);
+
+    expect(res).toEqual({
+      ok: false,
+      code: 'not_ready',
+      message: 'goal chưa có commit đã QC/audit',
+    });
+    expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
+    expect(store.getGoal(repo, created.n)?.state).toBe('qc_done');
+  });
+
   it('B2: merge bằng sha (reviewed_sha) thay vì branch name', () => {
     const repo = tmpRepo({ 'README.md': '# Repo' });
     const cfg = makeTestConfig(dataDir, { auditSeat: '' });
@@ -335,6 +358,7 @@ describe('approveGoal', () => {
     writeFileSync(join(repo, 'busy-fix.txt'), '1');
     git(repo, 'add', 'busy-fix.txt');
     execFileSync('git', [...AUTHOR, 'commit', '-m', 'GTM-0004: fix busy'], { cwd: repo });
+    store.setGoalState(repo, created.n, 'qc_done', 'jenny', 'qc pass', headSha(repo));
 
     const res2 = approveGoal(store, repo, cfg, created.n);
     expect(res2.ok).toBe(true);

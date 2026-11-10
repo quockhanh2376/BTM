@@ -17,6 +17,8 @@ import {
   type GuardTurnResult,
   snapshotTurn,
   guardAgentTurn,
+  guardStoredAgentTurn,
+  recoverInterruptedTurn,
 } from './guard.ts';
 
 export {
@@ -291,6 +293,30 @@ function cleanupPmWorkingTree(repo: string, recorded: RecordedTickets, prePmStat
   }
 }
 
+function restoreTicketFilesFromBase(repo: string, base: string): void {
+  const changedTickets = getWorkingTreeChanges(repo).filter((f) => f.startsWith('team/tickets/'));
+  if (changedTickets.length === 0) {
+    return;
+  }
+
+  const baseFiles = new Set(
+    git(repo, 'ls-tree', '-r', '--name-only', base, 'team/tickets')
+      .split(/\r?\n/)
+      .filter(Boolean)
+  );
+  git(repo, 'reset', base, '--', 'team/tickets');
+  if (baseFiles.size > 0) {
+    git(repo, 'checkout', base, '--', 'team/tickets');
+  }
+  for (const file of changedTickets) {
+    if (!baseFiles.has(file)) {
+      try {
+        rmSync(join(repo, file), { force: true });
+      } catch {}
+    }
+  }
+}
+
 function pmModifiedExistingTickets(repo: string, recorded: RecordedTickets): boolean {
   const ticketsDir = join(repo, 'team', 'tickets');
   for (const [f, oldContent] of recorded.contents.entries()) {
@@ -484,7 +510,7 @@ async function processGoal(
       notes: promptNotes,
       hasOpenspec,
     });
-    const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
+    const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
     const recordedBeforePm = recordExistingTickets(d.repo);
     const prePmStatus = new Set(getWorkingTreeChanges(d.repo));
 
@@ -495,7 +521,7 @@ async function processGoal(
       const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
       const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
       d.store.endTurn(pmTurnId, 'error', reason);
-      const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm', {
+      const pmGuard = guardStoredAgentTurn(d.store, d.repo, pmSnapshot, 'pm', {
         isErrorOrTimeoutOrAbort: true,
       });
       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
@@ -515,7 +541,7 @@ async function processGoal(
       const isAbort = Boolean(d.signal?.aborted);
       const reason = isAbort ? 'aborted' : (pmOutput.timedOut ? 'timeout' : `exit_${pmOutput.exitCode}`);
       d.store.endTurn(pmTurnId, isAbort || pmOutput.timedOut ? (isAbort ? 'error' : 'timeout') : 'error', reason);
-      const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm', {
+      const pmGuard = guardStoredAgentTurn(d.store, d.repo, pmSnapshot, 'pm', {
         isErrorOrTimeoutOrAbort: true,
       });
       cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
@@ -530,7 +556,7 @@ async function processGoal(
       }
       return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
     }
-    const pmGuard = guardAgentTurn(d.repo, pmSnapshot, 'pm');
+    const pmGuard = guardStoredAgentTurn(d.store, d.repo, pmSnapshot, 'pm');
     d.store.endTurn(pmTurnId, 'ok');
 
     if (pmGuard.modifiedProtectedBranch) {
@@ -561,9 +587,20 @@ async function processGoal(
 
     let tickets: Ticket[] = [];
     try {
-      tickets = loadTickets(d.repo, key, `G${goal.n}`);
+      tickets = loadTickets(d.repo, key).filter(
+        (t) => !recordedBeforePm.files.has(`${t.id}.md`)
+      );
       if (tickets.length === 0) {
         throw new TicketError(`No tickets created by PM for goal G${goal.n}`);
+      }
+      if (tickets.some((t) => t.goal !== `G${goal.n}`)) {
+        cleanupPmWorkingTree(d.repo, recordedBeforePm, prePmStatus);
+        return {
+          status: 'needs_owner',
+          sessionId,
+          tasks,
+          notes: ['pm_ticket_wrong_goal'],
+        };
       }
       const numParts = tickets.map((t) => {
         const parts = t.id.split('-');
@@ -780,7 +817,7 @@ async function processGoal(
           isHandoff
         );
 
-        const devSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
+        const devSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'dev');
         let devOutput;
         try {
           devOutput = await d.runner('dev', devAgent, devPromptText, d.repo, devLogFile, {
@@ -791,7 +828,7 @@ async function processGoal(
           const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
           const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
           d.store.endTurn(devTurnId, 'error', reason);
-          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
+          const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev', {
             isErrorOrTimeoutOrAbort: true,
             taskId: ticket.id,
             author: devAuthor,
@@ -812,7 +849,7 @@ async function processGoal(
         if (d.signal?.aborted) {
           const reason = 'aborted';
           d.store.endTurn(devTurnId, 'error', reason);
-          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
+          const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev', {
             isErrorOrTimeoutOrAbort: true,
             taskId: ticket.id,
             author: devAuthor,
@@ -830,7 +867,7 @@ async function processGoal(
         if (devOutput.timedOut) {
           const reason = 'timeout';
           d.store.endTurn(devTurnId, 'timeout', reason);
-          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
+          const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev', {
             isErrorOrTimeoutOrAbort: true,
             taskId: ticket.id,
             author: devAuthor,
@@ -853,7 +890,7 @@ async function processGoal(
         if (!hasAutoDenied && devOutput.exitCode !== 0) {
           const reason = `exit_${devOutput.exitCode}`;
           d.store.endTurn(devTurnId, 'error', reason);
-          const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev', {
+          const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev', {
             isErrorOrTimeoutOrAbort: true,
             taskId: ticket.id,
             author: devAuthor,
@@ -868,7 +905,7 @@ async function processGoal(
           return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
         }
 
-        const devGuard = guardAgentTurn(d.repo, devSnapshot, 'dev');
+        const devGuard = guardStoredAgentTurn(d.store, d.repo, devSnapshot, 'dev');
         if (devGuard.modifiedProtectedBranch) {
           d.store.endTurn(devTurnId, 'rejected', 'agent_modified_protected_branch');
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
@@ -912,6 +949,7 @@ async function processGoal(
         if (devText.includes('BLOCKED')) {
           d.store.endTurn(devTurnId, 'ok');
           try {
+            restoreTicketFilesFromBase(d.repo, base);
             commitAll(d.repo, `${ticket.id}: blocked`, devAuthor);
           } catch {}
           tasks[ticket.id] = 'blocked';
@@ -1076,7 +1114,7 @@ async function processGoal(
       const qcLogFile = join(d.logDir, `turn-${qcTurnId}.log`);
       d.store.setTurnLog(qcTurnId, qcLogFile);
       const qcPromptText = qcTicketPrompt(ticket, base, qcAgent);
-      const qcSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
+      const qcSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'qc');
 
       let qcOutput;
       try {
@@ -1088,7 +1126,7 @@ async function processGoal(
         const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
         const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
         d.store.endTurn(qcTurnId, 'error', reason);
-        const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
+        const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
         if (qcGuard.modifiedProtectedBranch) {
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
         }
@@ -1104,7 +1142,7 @@ async function processGoal(
       if (qcOutput.timedOut || qcOutput.exitCode !== 0) {
         const reason = qcOutput.timedOut ? 'timeout' : `exit_${qcOutput.exitCode}`;
         d.store.endTurn(qcTurnId, qcOutput.timedOut ? 'timeout' : 'error', reason);
-        const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
+        const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc', { isErrorOrTimeoutOrAbort: true });
         if (qcGuard.modifiedProtectedBranch) {
           return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
         }
@@ -1122,7 +1160,7 @@ async function processGoal(
         number: ticket.number,
       });
 
-      const qcGuard = guardAgentTurn(d.repo, qcSnapshot, 'qc');
+      const qcGuard = guardStoredAgentTurn(d.store, d.repo, qcSnapshot, 'qc');
       if (
         qcGuard.switchedBranch ||
         qcGuard.headChanged ||
@@ -1282,7 +1320,7 @@ async function processGoal(
     goalTicketsAfter.map((t) => t.id),
     auditAgent
   );
-  const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
+  const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'audit');
 
   let auditOutput;
   try {
@@ -1293,7 +1331,7 @@ async function processGoal(
     const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
     const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
     d.store.endTurn(auditTurnId, 'error', reason);
-    const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
     if (auditGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
@@ -1309,7 +1347,7 @@ async function processGoal(
   if (d.signal?.aborted) {
     const reason = 'aborted';
     d.store.endTurn(auditTurnId, 'error', reason);
-    const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
     if (auditGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
@@ -1322,7 +1360,7 @@ async function processGoal(
   if (auditOutput.timedOut || auditOutput.exitCode !== 0) {
     const reason = auditOutput.timedOut ? 'timeout' : `exit_${auditOutput.exitCode}`;
     d.store.endTurn(auditTurnId, auditOutput.timedOut ? 'timeout' : 'error', reason);
-    const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
     if (auditGuard.modifiedProtectedBranch) {
       return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
     }
@@ -1335,7 +1373,7 @@ async function processGoal(
 
   let auditResult = parseAuditResult(auditOutput.lastMessage || auditOutput.output || '');
 
-  const auditGuard = guardAgentTurn(d.repo, auditSnapshot, 'audit');
+  const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit');
   if (
     auditGuard.switchedBranch ||
     auditGuard.headChanged ||
@@ -1438,7 +1476,7 @@ async function processGoal(
     hasOpenspec: existsSync(join(d.repo, 'openspec')),
   });
 
-  const pmFixSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch);
+  const pmFixSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
   const recordedBeforeFix = recordExistingTickets(d.repo);
   const prePmFixStatus = new Set(getWorkingTreeChanges(d.repo));
 
@@ -1449,7 +1487,7 @@ async function processGoal(
     const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
     const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
     d.store.endTurn(pmFixTurnId, 'error', reason);
-    const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm', {
+    const pmFixGuard = guardStoredAgentTurn(d.store, d.repo, pmFixSnapshot, 'pm', {
       isErrorOrTimeoutOrAbort: true,
     });
     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
@@ -1469,7 +1507,7 @@ async function processGoal(
     const isAbort = Boolean(d.signal?.aborted);
     const reason = isAbort ? 'aborted' : (pmFixOutput.timedOut ? 'timeout' : `exit_${pmFixOutput.exitCode}`);
     d.store.endTurn(pmFixTurnId, isAbort || pmFixOutput.timedOut ? (isAbort ? 'error' : 'timeout') : 'error', reason);
-    const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm', {
+    const pmFixGuard = guardStoredAgentTurn(d.store, d.repo, pmFixSnapshot, 'pm', {
       isErrorOrTimeoutOrAbort: true,
     });
     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
@@ -1484,7 +1522,7 @@ async function processGoal(
     }
     return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
   }
-  const pmFixGuard = guardAgentTurn(d.repo, pmFixSnapshot, 'pm');
+  const pmFixGuard = guardStoredAgentTurn(d.store, d.repo, pmFixSnapshot, 'pm');
   d.store.endTurn(pmFixTurnId, 'ok');
 
   if (pmFixGuard.modifiedProtectedBranch) {
@@ -1515,7 +1553,7 @@ async function processGoal(
 
   let allGoalTicketsNow: Ticket[] = [];
   try {
-    allGoalTicketsNow = loadTickets(d.repo, key, `G${goal.n}`);
+    allGoalTicketsNow = loadTickets(d.repo, key);
   } catch (err: any) {
     cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
     return {
@@ -1534,6 +1572,15 @@ async function processGoal(
       sessionId,
       tasks,
       notes: [`PM ticket error: No new tickets created by PM for goal G${goal.n}`],
+    };
+  }
+  if (newTickets.some((t) => t.goal !== `G${goal.n}`)) {
+    cleanupPmWorkingTree(d.repo, recordedBeforeFix, prePmFixStatus);
+    return {
+      status: 'needs_owner',
+      sessionId,
+      tasks,
+      notes: ['pm_ticket_wrong_goal'],
     };
   }
 
@@ -1606,6 +1653,15 @@ export async function runSession(
   goals: Array<string | { n: number }>,
   optsOrApproved?: boolean | RunSessionOpts
 ): Promise<SessionOutcome> {
+  if (recoverInterruptedTurn(d.store, d.repo)) {
+    return {
+      status: 'needs_owner',
+      sessionId: null,
+      tasks: {},
+      notes: ['recovered_interrupted_turn'],
+    };
+  }
+
   const o: RunSessionOpts =
     typeof optsOrApproved === 'boolean'
       ? { approved: optsOrApproved }
@@ -1650,6 +1706,28 @@ export async function runSession(
       tasks: {},
       notes: [`Cannot read project key: ${err?.message || String(err)}`],
     };
+  }
+
+  for (const item of goals) {
+    if (typeof item !== 'string') {
+      const existing = d.store.getGoal(d.repo, item.n);
+      if (!existing) {
+        return {
+          status: 'needs_owner',
+          sessionId: null,
+          tasks: {},
+          notes: [`Goal G${item.n} not found in project`],
+        };
+      }
+      if (existing.state === 'approved' || existing.state === 'merged') {
+        return {
+          status: 'needs_owner',
+          sessionId: null,
+          tasks: {},
+          notes: ['goal_already_merged'],
+        };
+      }
+    }
   }
 
   // 2. Resolve goals and create session
@@ -1742,6 +1820,15 @@ export async function resumeSession(
   d: SessionDeps,
   sessionId: number
 ): Promise<SessionOutcome> {
+  if (recoverInterruptedTurn(d.store, d.repo)) {
+    return {
+      status: 'needs_owner',
+      sessionId,
+      tasks: {},
+      notes: ['recovered_interrupted_turn'],
+    };
+  }
+
   const forbidden = checkForbiddenEnv(d.env, d.cfg.login.forbidden_env);
   if (forbidden.length > 0) {
     return {

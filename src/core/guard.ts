@@ -1,5 +1,6 @@
 import type { Seat } from '../config.ts';
 import { git, headSha, commitAll } from '../git.ts';
+import type { Store } from '../store/db.ts';
 
 export interface TurnGuardSnapshot {
   goalBranch: string;
@@ -7,6 +8,7 @@ export interface TurnGuardSnapshot {
   protectedBranch: string;
   protectedHead: string;
   otherGoalBranches?: Record<string, string>;
+  seat?: Seat;
 }
 
 export interface GuardTurnResult {
@@ -17,7 +19,17 @@ export interface GuardTurnResult {
   modifiedOtherGoal?: boolean;
 }
 
-export function snapshotTurn(repo: string, goalBranch: string, protectedBranch?: string): TurnGuardSnapshot {
+function turnGuardKey(repo: string): string {
+  return `turn_guard:${repo}`;
+}
+
+export function snapshotTurn(
+  repo: string,
+  goalBranch: string,
+  protectedBranch?: string,
+  store?: Pick<Store, 'setSetting'>,
+  seat?: Seat
+): TurnGuardSnapshot {
   const prot = protectedBranch || 'main';
   const protRef = prot.startsWith('refs/heads/') ? prot : `refs/heads/${prot}`;
   let protectedHead = '';
@@ -43,13 +55,52 @@ export function snapshotTurn(repo: string, goalBranch: string, protectedBranch?:
     }
   } catch {}
 
-  return {
+  const snapshot: TurnGuardSnapshot = {
     goalBranch,
     preHead: headSha(repo),
     protectedBranch: prot,
     protectedHead,
     otherGoalBranches,
   };
+  if (seat) {
+    snapshot.seat = seat;
+  }
+  if (store && seat) {
+    store.setSetting(turnGuardKey(repo), JSON.stringify(snapshot));
+  }
+  return snapshot;
+}
+
+export function guardStoredAgentTurn(
+  store: Pick<Store, 'setSetting'>,
+  repo: string,
+  snapshot: TurnGuardSnapshot,
+  seat: Seat,
+  options?: Parameters<typeof guardAgentTurn>[3]
+): GuardTurnResult {
+  try {
+    return guardAgentTurn(repo, snapshot, seat, options);
+  } finally {
+    store.setSetting(turnGuardKey(repo), '');
+  }
+}
+
+export function recoverInterruptedTurn(
+  store: Pick<Store, 'getSetting' | 'setSetting'>,
+  repo: string
+): GuardTurnResult | null {
+  const raw = store.getSetting(turnGuardKey(repo));
+  if (!raw) {
+    return null;
+  }
+
+  const snapshot = JSON.parse(raw) as TurnGuardSnapshot;
+  const seat = snapshot.seat;
+  if (!seat || !['pm', 'dev', 'qc', 'audit'].includes(seat)) {
+    store.setSetting(turnGuardKey(repo), '');
+    throw new Error('Invalid persisted turn guard snapshot');
+  }
+  return guardStoredAgentTurn(store, repo, snapshot, seat);
 }
 
 export function guardAgentTurn(

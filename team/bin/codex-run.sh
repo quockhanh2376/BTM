@@ -27,7 +27,7 @@ set +e
 # Sandbox Windows "elevated" (mặc định máy này) đòi UAC mỗi lệnh → lỗi 1223; "unelevated" không cần admin.
 # workspace-write: chỉ ghi trong repo, không mạng. Không bao giờ --dangerously-bypass-*.
 # Test ghi repo tạm vào %TEMP% → cho ghi thêm thư mục đó.
-timeout "${tmin}m" codex exec -m "${CODEX_MODEL:-gpt-5.6-sol}" -c model_reasoning_effort="\"${CODEX_EFFORT:-high}\"" -c windows.sandbox="\"unelevated\"" -s workspace-write -C "$repo" --add-dir "$(cygpath -w "${TEMP:-/tmp}")" --json -o "$out.last.md" - <<< "$prompt" \
+timeout "${tmin}m" codex exec -m "${CODEX_MODEL:-gpt-5.6-sol}" -c model_reasoning_effort="\"${CODEX_EFFORT:-medium}\"" -c windows.sandbox="\"unelevated\"" -s workspace-write -C "$repo" --add-dir "$(cygpath -w "${TEMP:-/tmp}")" --json -o "$out.last.md" - <<< "$prompt" \
   > "$out.stream.jsonl" 2> "$out.err"
 rc=$?
 set -e

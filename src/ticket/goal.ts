@@ -106,6 +106,14 @@ export function approveGoal(
       };
     }
 
+    if (!goal.reviewed_sha?.trim()) {
+      return {
+        ok: false,
+        code: 'not_ready',
+        message: 'goal chưa có commit đã QC/audit',
+      };
+    }
+
     const dirtyCheck = git(repo, 'status', '--porcelain').trim();
     if (dirtyCheck.length > 0) {
       return {
@@ -137,7 +145,7 @@ export function approveGoal(
       };
     }
 
-    if (goal.reviewed_sha && branchSha !== goal.reviewed_sha) {
+    if (branchSha !== goal.reviewed_sha) {
       return {
         ok: false,
         code: 'not_ready',
@@ -145,7 +153,7 @@ export function approveGoal(
       };
     }
 
-    const mergeTarget = goal.reviewed_sha || branchSha;
+    const mergeTarget = goal.reviewed_sha;
     store.setGoalState(repo, n, 'approved', by, 'owner approved');
 
     let mergeSha: string;
@@ -197,4 +205,3 @@ export function approveGoal(
     releaseLock();
   }
 }
-

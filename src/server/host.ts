@@ -7,7 +7,11 @@ import type { HostApi } from './http.ts';
 import { runSession, resumeSession } from '../core/session.ts';
 import { directPrompt } from '../core/prompts.ts';
 import { git, commitAll } from '../git.ts';
-import { snapshotTurn, guardAgentTurn } from '../core/guard.ts';
+import {
+  snapshotTurn,
+  guardStoredAgentTurn,
+  recoverInterruptedTurn,
+} from '../core/guard.ts';
 import { acquireLock } from '../cli.ts';
 import { inboxPath } from './inbox.ts';
 import { approveGoal as approveGoalFn, type ApproveGoalResult } from '../ticket/goal.ts';
@@ -53,6 +57,7 @@ export function createHost(d: HostDeps): HostApi & {
   let currentTurnId: number | null = null;
   let currentQueueItemId: number | null = null;
   let currentProcessQueuePromise: Promise<void> | null = null;
+  let checkedInterruptedTurn = false;
   const idleResolvers: Array<() => void> = [];
 
   function notifyIfIdle(): void {
@@ -123,6 +128,14 @@ export function createHost(d: HostDeps): HostApi & {
       return;
     }
 
+    if (!checkedInterruptedTurn) {
+      checkedInterruptedTurn = true;
+      const activeProject = d.store.getActiveProject();
+      if (activeProject && recoverInterruptedTurn(d.store, activeProject)) {
+        console.log('recovered_interrupted_turn');
+      }
+    }
+
     const item = d.store.nextQueued();
     if (!item) {
       return;
@@ -189,6 +202,25 @@ export function createHost(d: HostDeps): HostApi & {
           return;
         }
 
+        const goalN = goalMatch![1];
+
+        if (
+          item.to === 'dev' &&
+          d.store
+            .listTickets(activeProject, `G${goalN}`)
+            .some((ticket) =>
+              ticket.state === 'in_dev' ||
+              ticket.state === 'returned' ||
+              ticket.state === 'awaiting_qc'
+            )
+        ) {
+          d.store.endTurn(turnId, 'error', 'direct_cmd_ticket_in_progress');
+          d.store.recordHandoffFailure(sessionId, taskId, 'direct_cmd_ticket_in_progress');
+          d.store.setSessionStatus(sessionId, 'error');
+          d.store.setQueueStatus(item.id, 'cancelled');
+          return;
+        }
+
         const dirtyCheck = git(activeProject, 'status', '--porcelain').trim();
         if (dirtyCheck.length > 0) {
           d.store.endTurn(turnId, 'error', 'dirty_tree');
@@ -197,8 +229,6 @@ export function createHost(d: HostDeps): HostApi & {
           d.store.setQueueStatus(item.id, 'cancelled');
           return;
         }
-
-        const goalN = goalMatch![1];
 
         let gateFailedReason: string | null = null;
         if (monitor && agent) {
@@ -219,7 +249,13 @@ export function createHost(d: HostDeps): HostApi & {
           d.store.setQueueStatus(item.id, 'done');
           turnResult = 'error';
         } else {
-          const snapshot = snapshotTurn(activeProject, currentBranch, protectedBranch);
+          const snapshot = snapshotTurn(
+            activeProject,
+            currentBranch,
+            protectedBranch,
+            d.store,
+            item.to
+          );
           const author = { name: agent, email: `${agent}@btm.local` };
 
           if (item.to === 'dev') {
@@ -239,7 +275,7 @@ export function createHost(d: HostDeps): HostApi & {
             if (runError) {
               const reason = isAbort ? 'aborted' : (runError?.message || String(runError));
               d.store.endTurn(turnId, 'error', reason);
-              guardAgentTurn(activeProject, snapshot, 'dev', {
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
                 isErrorOrTimeoutOrAbort: true,
                 taskId,
                 author,
@@ -255,7 +291,7 @@ export function createHost(d: HostDeps): HostApi & {
 
             if (isAbort) {
               d.store.endTurn(turnId, 'error', 'aborted');
-              guardAgentTurn(activeProject, snapshot, 'dev', {
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
                 isErrorOrTimeoutOrAbort: true,
                 taskId,
                 author,
@@ -270,7 +306,7 @@ export function createHost(d: HostDeps): HostApi & {
 
             if (output!.timedOut) {
               d.store.endTurn(turnId, 'timeout', 'timeout');
-              guardAgentTurn(activeProject, snapshot, 'dev', {
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
                 isErrorOrTimeoutOrAbort: true,
                 taskId,
                 author,
@@ -281,7 +317,7 @@ export function createHost(d: HostDeps): HostApi & {
             } else if (output!.exitCode !== 0) {
               const reason = `exit_${output!.exitCode}`;
               d.store.endTurn(turnId, 'error', reason);
-              guardAgentTurn(activeProject, snapshot, 'dev', {
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
                 isErrorOrTimeoutOrAbort: true,
                 taskId,
                 author,
@@ -290,7 +326,7 @@ export function createHost(d: HostDeps): HostApi & {
               d.store.setQueueStatus(item.id, 'done');
               turnResult = 'error';
             } else {
-              const guardRes = guardAgentTurn(activeProject, snapshot, 'dev');
+              const guardRes = guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev');
 
               if (guardRes.modifiedProtectedBranch) {
                 d.store.endTurn(turnId, 'error', 'agent_modified_protected_branch');
@@ -342,7 +378,7 @@ export function createHost(d: HostDeps): HostApi & {
             if (runError) {
               const reason = isAbort ? 'aborted' : (runError?.message || String(runError));
               d.store.endTurn(turnId, 'error', reason);
-              guardAgentTurn(activeProject, snapshot, 'qc', {
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
                 isErrorOrTimeoutOrAbort: true,
               });
               d.store.setQueueStatus(item.id, isAbort ? 'cancelled' : 'done');
@@ -355,7 +391,7 @@ export function createHost(d: HostDeps): HostApi & {
 
             if (isAbort) {
               d.store.endTurn(turnId, 'error', 'aborted');
-              guardAgentTurn(activeProject, snapshot, 'qc', {
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
                 isErrorOrTimeoutOrAbort: true,
               });
               d.store.setQueueStatus(item.id, 'cancelled');
@@ -373,19 +409,19 @@ export function createHost(d: HostDeps): HostApi & {
 
             if (output!.timedOut) {
               d.store.endTurn(turnId, 'timeout', 'timeout');
-              guardAgentTurn(activeProject, snapshot, 'qc', {
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
                 isErrorOrTimeoutOrAbort: true,
               });
               turnResult = 'error';
             } else if (output!.exitCode !== 0) {
               const reason = `exit_${output!.exitCode}`;
               d.store.endTurn(turnId, 'error', reason);
-              guardAgentTurn(activeProject, snapshot, 'qc', {
+              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
                 isErrorOrTimeoutOrAbort: true,
               });
               turnResult = 'error';
             } else {
-              const guardRes = guardAgentTurn(activeProject, snapshot, 'qc');
+              const guardRes = guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc');
 
               if (guardRes.modifiedProtectedBranch) {
                 d.store.endTurn(turnId, 'error', 'agent_modified_protected_branch');

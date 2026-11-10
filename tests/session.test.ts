@@ -21,6 +21,7 @@ import {
 } from '../src/core/prompts.ts';
 import { createMonitor } from '../src/energy/monitor.ts';
 import type { Ticket, TicketState } from '../src/ticket/ticket.ts';
+import { snapshotTurn } from '../src/core/guard.ts';
 
 interface HandlerOutput {
   exitCode?: number | null;
@@ -1328,6 +1329,75 @@ describe('Goal & Ticket Session Coordinator', () => {
 
     expect(outcome.status).toBe('needs_owner');
     expect(outcome.tasks['GTM-0001']).toBe('blocked');
+
+    store.close();
+  });
+
+  it('FIX-E B5: Dev BLOCKED sửa ticket → khôi phục ticket từ base, chỉ commit phần còn lại với <ID>: blocked', async () => {
+    const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+    const { deps, store } = makeDeps(repo);
+
+    const { runner } = createFakeRunner([
+      (_s, _a, _p, cwd) => {
+        writeTicketFile(cwd, {
+          id: 'GTM-0001',
+          goal: 'G1',
+          number: 1,
+          of: 1,
+          title: 'Original title',
+        });
+      },
+      (_s, _a, _p, cwd) => {
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+        writeTicketFile(cwd, {
+          id: 'GTM-0001',
+          goal: 'G1',
+          number: 1,
+          of: 1,
+          title: 'Tampered title',
+        });
+        return { lastMessage: 'BLOCKED: owner input required' };
+      },
+    ]);
+    deps.runner = runner;
+
+    const outcome = await runSession(deps, ['Blocked ticket tamper'], { approved: true });
+
+    expect(outcome.status).toBe('needs_owner');
+    const ticketText = readFileSync(join(repo, 'team', 'tickets', 'GTM-0001.md'), 'utf8');
+    expect(ticketText).toContain('Original title');
+    expect(ticketText).not.toContain('Tampered title');
+    expect(readFileSync(join(repo, 'src', 'app.ts'), 'utf8').replace(/\r\n/g, '\n')).toBe(
+      'export const a = 1;\n'
+    );
+    expect(git(repo, 'log', '-1', '--format=%s').trim()).toBe('GTM-0001: blocked');
+    expect(git(repo, 'diff', 'HEAD~1', 'HEAD', '--', 'team/tickets').trim()).toBe('');
+
+    store.close();
+  });
+
+  it('FIX-E B9: runSession từ chối goal approved/merged, giữ nguyên state và không tạo session', async () => {
+    const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+    const { deps, store } = makeDeps(repo);
+    const approved = store.createGoal(repo, 'Approved goal');
+    const merged = store.createGoal(repo, 'Merged goal');
+    store.setGoalState(repo, approved.n, 'approved', 'owner');
+    store.setGoalState(repo, merged.n, 'merged', 'owner');
+    const runner = vi.fn();
+    deps.runner = runner;
+
+    for (const goal of [approved, merged]) {
+      const before = store.getGoal(repo, goal.n)?.state;
+      const outcome = await runSession(deps, [{ n: goal.n }], { approved: true });
+      expect(outcome).toMatchObject({
+        status: 'needs_owner',
+        sessionId: null,
+        notes: ['goal_already_merged'],
+      });
+      expect(store.getGoal(repo, goal.n)?.state).toBe(before);
+    }
+    expect(store.getLatestSession(undefined, repo)).toBeNull();
+    expect(runner).not.toHaveBeenCalled();
 
     store.close();
   });
@@ -3070,6 +3140,48 @@ Yêu cầu đóng note nhưng commit lỗi
       store.close();
     });
 
+    it('FIX-E B8: PM sau audit tạo ticket mới cho goal khác → pm_ticket_wrong_goal và dọn sạch', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = getAuditDeps(repo, 'kai');
+      const { runner, calls } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+        },
+        (_s, agent, _p, cwd) => {
+          writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+          writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        },
+        () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+        () => ({
+          lastMessage: JSON.stringify({
+            verdict: 'fail',
+            findings: [{ ticket: 'GTM-0001', severity: 'high', text: 'needs follow-up' }],
+          }),
+        }),
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, {
+            id: 'GTM-0002',
+            goal: 'G2',
+            number: 1,
+            of: 1,
+            from_audit: true,
+          });
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Security Goal'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('pm_ticket_wrong_goal');
+      expect(calls).toHaveLength(5);
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0002.md'))).toBe(false);
+      expect(store.getTicketState(repo, 'GTM-0002')).toBeNull();
+      expect(store.nextTicketSeq(repo)).toBe(2);
+
+      store.close();
+    });
+
     it('output audit rác → audit_output_invalid, needs_owner, không gọi PM', async () => {
       const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
       const { deps, store } = getAuditDeps(repo, 'kai');
@@ -3243,6 +3355,69 @@ Yêu cầu đóng note nhưng commit lỗi
   });
 
   describe('P4-FIX-A: git turn safety', () => {
+    it('FIX-E B6: snapshot được lưu trước runner và xoá sau khi guard hoàn tất', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          const snapshot = JSON.parse(store.getSetting(`turn_guard:${repo}`) || 'null');
+          expect(snapshot?.seat).toBe('pm');
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+          return { exitCode: 1 };
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Persist guard snapshot'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(store.getSetting(`turn_guard:${repo}`)).toBe('');
+      store.close();
+    });
+
+    it('FIX-E B6: runSession và resumeSession khôi phục snapshot tồn đọng rồi trả recovered_interrupted_turn', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const goal = store.createGoal(repo, 'Interrupted goal');
+      const mainBefore = git(repo, 'rev-parse', 'refs/heads/main').trim();
+      git(repo, 'checkout', '-b', goal.branch);
+      writeFileSync(join(repo, 'partial.ts'), 'partial');
+      commitAll(repo, 'partial interrupted turn', { name: 'dev', email: 'dev@btm.local' });
+      const goalHead = headSha(repo);
+      deps.runner = vi.fn();
+
+      snapshotTurn(repo, goal.branch, 'main', store, 'dev');
+      git(repo, 'update-ref', 'refs/heads/main', goalHead);
+      const runOutcome = await runSession(deps, [{ n: goal.n }], { approved: true });
+
+      expect(runOutcome).toMatchObject({
+        status: 'needs_owner',
+        sessionId: null,
+        notes: ['recovered_interrupted_turn'],
+      });
+      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
+      expect(store.getSetting(`turn_guard:${repo}`)).toBe('');
+      expect(store.getGoal(repo, goal.n)?.state).toBe('open');
+
+      const sessionId = store.createSession([String(goal.n)], repo);
+      store.setSessionStatus(sessionId, 'needs_owner');
+      snapshotTurn(repo, goal.branch, 'main', store, 'dev');
+      git(repo, 'update-ref', 'refs/heads/main', goalHead);
+      const resumeOutcome = await resumeSession(deps, sessionId);
+
+      expect(resumeOutcome).toMatchObject({
+        status: 'needs_owner',
+        sessionId,
+        notes: ['recovered_interrupted_turn'],
+      });
+      expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
+      expect(store.getSetting(`turn_guard:${repo}`)).toBe('');
+      expect(store.getSession(sessionId)?.status).toBe('needs_owner');
+      expect(deps.runner).not.toHaveBeenCalled();
+
+      store.close();
+    });
+
     it('QC checkout main + sửa file + git commit → sau session rev-parse main == trước, HEAD = nhánh goal, verdict fail có lỗi agent_modified_protected_branch', async () => {
       const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
       const { deps, store } = makeDeps(repo);
@@ -3660,6 +3835,27 @@ Yêu cầu đóng note nhưng commit lỗi
       // Counter không bị bump lên 3 hay 4, vẫn là 1
       expect(store.nextTicketSeq(repo)).toBe(1);
       expect(store.getTicketState(repo, 'GTM-0001')).toBeNull();
+
+      store.close();
+    });
+
+    it('FIX-E B8: PM tạo file ticket mới cho goal khác → pm_ticket_wrong_goal và dọn sạch', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = makeDeps(repo);
+      const { runner } = createFakeRunner([
+        (_s, _a, _p, cwd) => {
+          writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G2', number: 1, of: 1 });
+        },
+      ]);
+      deps.runner = runner;
+
+      const outcome = await runSession(deps, ['Goal 1'], { approved: true });
+
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('pm_ticket_wrong_goal');
+      expect(existsSync(join(repo, 'team', 'tickets', 'GTM-0001.md'))).toBe(false);
+      expect(store.getTicketState(repo, 'GTM-0001')).toBeNull();
+      expect(store.nextTicketSeq(repo)).toBe(1);
 
       store.close();
     });

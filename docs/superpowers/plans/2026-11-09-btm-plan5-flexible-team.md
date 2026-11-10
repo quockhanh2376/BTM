@@ -14,6 +14,8 @@
 
 **Đã kiểm tra trước (2026-11-09):** `agy` hỗ trợ nhiều tài khoản đăng nhập cùng lúc, chọn bằng `AGY_ACCOUNT=<email>` (sai → lỗi "matches no signed-in account"); thư mục cấu hình riêng `ANTIGRAVITY_GEMINI_DIR`. Gemini CLI đã ngừng (06/2026) – Gemini chạy qua `agy --model gemini-…` (`agy models` có `gemini-3.8-*`). Claude: `CLAUDE_CONFIG_DIR`; Codex: `CODEX_HOME`.
 
+**Model + mức suy luận (anh Zon 2026-11-10):** chọn **theo agent** (không theo ghế). Mặc định: model mặc định của từng CLI (không truyền cờ model) + effort **medium**. Anh chọn tay trên dashboard (Task 5): ô model (danh sách thật của CLI: `agy models`, model Codex của tài khoản, danh sách Claude cố định theo bản cài) + ô effort (low/medium/high/xhigh/max; Codex chỉ low/medium/high). Lưu theo agent, áp từ lượt kế; đang có lượt chạy → 409. Model bị CLI từ chối → lượt lỗi, thẻ báo rõ, không tự đổi model.
+
 ## Global Constraints
 
 - Vẫn **không API key**: `login.forbidden_env` áp dụng cho cả env của từng agent; `account_env` chỉ nhận khoá trong danh sách trắng `CLAUDE_CONFIG_DIR, CODEX_HOME, AGY_ACCOUNT, ANTIGRAVITY_GEMINI_DIR`; giá trị đường dẫn phải là tuyệt đối và không nằm trong `host.projects_root`.
@@ -50,7 +52,7 @@
 **Files:** Modify `src/config.ts`; Create `src/agents/env.ts`; tests `tests/config.test.ts`, `tests/agent-env.test.ts`.
 
 **Interfaces – Produces:**
-- `AgentConfigSchema` thêm `model?: string` (`/^[A-Za-z0-9._:-]{1,80}$/`), `account_env?: Record<'CLAUDE_CONFIG_DIR'|'CODEX_HOME'|'AGY_ACCOUNT'|'ANTIGRAVITY_GEMINI_DIR', string>`.
+- `AgentConfigSchema` thêm `model?: string` (`/^[A-Za-z0-9._:-]{1,80}$/`), `effort?: 'low'|'medium'|'high'|'xhigh'|'max'` (mặc định `medium`), `account_env?: Record<'CLAUDE_CONFIG_DIR'|'CODEX_HOME'|'AGY_ACCOUNT'|'ANTIGRAVITY_GEMINI_DIR', string>`.
 - `ACCOUNT_ENV_KEYS` (danh sách trắng); khoá theo công cụ: claude-code → `CLAUDE_CONFIG_DIR`; codex-cli → `CODEX_HOME`; antigravity-cli → `AGY_ACCOUNT`, `ANTIGRAVITY_GEMINI_DIR`.
 - `agentEnv(cfg: Config, agentId: string, base: NodeJS.ProcessEnv): NodeJS.ProcessEnv` = base đã xoá mọi khoá `login.forbidden_env` + `account_env` của agent.
 
@@ -64,6 +66,8 @@
 
 **Interfaces – Consumes:** Task 1. **Produces:** `ArgvOpts` thêm `model?: string`; Runner nhận `env` = `agentEnv(...)` cho mỗi lượt.
 - claude-code: `--model <m>`; codex-cli: `-m <m>`; antigravity-cli: `--model <m>` (trong chuỗi lệnh agy, giữ quoting hiện có). Không có `model` → không thêm cờ.
+- Effort: claude-code `--effort <e>`; antigravity-cli `--effort <e>`; codex-cli `-c model_reasoning_effort="<e>"` (xhigh/max → high). Luôn truyền (mặc định medium).
+- Model/effort chọn trên dashboard (setting `agent_model:<id>`, `agent_effort:<id>`) ghi đè config.
 - Mọi lượt (pm/dev/qc/audit + lệnh trực tiếp dashboard) chạy với env của agent đang ngồi ghế.
 
 - [ ] **Step 1: Test:** argv có/không `--model` theo từng công cụ; model có ký tự lạ bị chặn ở Task 1 nên argv không cần quote thêm; runner giả nhận đúng `env.AGY_ACCOUNT` của `kai` cho lượt audit và của `vic` cho lượt dev trong cùng phiên.

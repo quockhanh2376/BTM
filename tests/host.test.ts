@@ -8,6 +8,7 @@ import { createHost as realCreateHost } from '../src/server/host.ts';
 import { tmpRepo } from './helpers.ts';
 import type { Runner, TurnOutput } from '../src/runner/run.ts';
 import { directPrompt } from '../src/core/prompts.ts';
+import { snapshotTurn } from '../src/core/guard.ts';
 import { git, headSha } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
 
@@ -1675,11 +1676,81 @@ done_when: ok
       expect(headSha(repoDir)).toBe(mainHeadBefore);
     });
 
+    it('FIX-E B4: dev trực tiếp bị huỷ khi ticket goal đang làm; qc trực tiếp vẫn được chạy', async () => {
+      git(repoDir, 'checkout', '-b', 'goal/G2-my-feature');
+      store.upsertTicket(repoDir, {
+        id: 'GTM-0001',
+        goal: 'G2',
+        number: 1,
+        of: 1,
+        title: 'Ticket đang làm',
+        type: 'feat',
+        size: 'S',
+        scope: ['sample.txt'],
+        acceptance: ['ok'],
+        done_when: 'done',
+        depends_on: [],
+        from_audit: false,
+      });
+
+      const mockRunner: Runner = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 1,
+        output: 'ok',
+        lastMessage: 'ok',
+      });
+      const host = createHost({ cfg, store, runner: mockRunner, logDir, dataDir, env: {} });
+
+      for (const state of ['in_dev', 'returned', 'awaiting_qc'] as const) {
+        store.setTicketState(repoDir, 'GTM-0001', state, 'core', `state ${state}`);
+        const res = await host.command('dev', `dev command in ${state}`);
+        expect(res.ok).toBe(true);
+        await host.tick();
+        await host.whenIdle();
+
+        expect(store.listQueue(20).find((q) => q.id === res.id)?.status).toBe('cancelled');
+        const session = store.getLatestSession(undefined, repoDir)!;
+        const turns = store.listTurns(session.id);
+        expect(turns[0].error).toBe('direct_cmd_ticket_in_progress');
+      }
+
+      const qcRes = await host.command('qc', 'review ticket đang làm');
+      expect(qcRes.ok).toBe(true);
+      await host.tick();
+      await host.whenIdle();
+
+      expect(store.listQueue(20).find((q) => q.id === qcRes.id)?.status).toBe('done');
+      expect(mockRunner).toHaveBeenCalledTimes(1);
+    });
+
+    it('FIX-E B6: processQueue lần đầu khôi phục snapshot tồn đọng, xoá setting và log một dòng', async () => {
+      const mainBefore = git(repoDir, 'rev-parse', 'refs/heads/main').trim();
+      git(repoDir, 'checkout', '-b', 'goal/G3-recovery');
+      writeFileSync(join(repoDir, 'interrupted.txt'), 'partial');
+      git(repoDir, 'add', 'interrupted.txt');
+      git(repoDir, '-c', 'user.name=dev', '-c', 'user.email=dev@btm.local', 'commit', '-m', 'partial turn');
+
+      snapshotTurn(repoDir, 'goal/G3-recovery', 'main', store, 'dev');
+      git(repoDir, 'update-ref', 'refs/heads/main', headSha(repoDir));
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).not.toBe(mainBefore);
+
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const host = createHost({ cfg, store, runner: vi.fn(), logDir, dataDir, env: {} });
+      await host.tick();
+
+      expect(git(repoDir, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
+      expect(store.getSetting(`turn_guard:${repoDir}`)).toBe('');
+      expect(logSpy).toHaveBeenCalledWith('recovered_interrupted_turn');
+    });
+
     it('đang ở nhánh goal → chạy, commit đúng prefix G<n>: cmd <id>: …', async () => {
       git(repoDir, 'checkout', '-b', 'goal/G2-my-feature');
 
       const text = 'Sửa logic tính toán số dư';
       const mockRunner: Runner = vi.fn().mockImplementation(async (_seat, _agent, _prompt, cwd) => {
+        const storedSnapshot = JSON.parse(store.getSetting(`turn_guard:${repoDir}`) || 'null');
+        expect(storedSnapshot?.seat).toBe('dev');
         writeFileSync(join(cwd, 'sample.txt'), 'dev modified on goal branch\n');
         return {
           exitCode: 0,
@@ -1711,6 +1782,7 @@ done_when: ok
 
       const lastCommitMsg = git(repoDir, 'log', '-1', '--format=%s').trim();
       expect(lastCommitMsg).toBe(`G2: cmd ${res.id}: ${text}`);
+      expect(store.getSetting(`turn_guard:${repoDir}`)).toBe('');
     });
 
     it('dev lệnh trực tiếp checkout main + commit → main được khôi phục, quay về nhánh goal', async () => {
