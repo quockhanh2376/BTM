@@ -589,3 +589,19 @@ describe('checkLogin', () => {
     });
   });
 });
+
+describe('P5-T3: agent chưa có user Linux', () => {
+  const cfg = loadConfig('btm.config.yaml');
+  const iso = { ...cfg, host: { ...cfg.host, worker_prefix: 'btm-' } } as Config;
+  const res = (output: string): ProcResult => ({ exitCode: 1, timedOut: false, durationMs: 1, output });
+  it('sudo báo không có user → relogin kèm lệnh tạo user; agent có user → kiểm như thường', async () => {
+    const missing = await checkLogin('kai', 'codex-cli', { run: async () => res("sudo: user 'btm-kai' not found"), env: {}, cfg: iso, now: () => new Date() });
+    expect(missing.state).toBe('relogin');
+    expect(missing.detail).toContain('btm-kai');
+    expect(missing.detail).toContain('BTM_AGENTS="kai"');
+    const run = vi.fn(async (argv: string[]) => (argv[0] === 'true' ? res('') : { ...res('Logged in using ChatGPT'), exitCode: 0 }));
+    const ok = await checkLogin('jenny', 'codex-cli', { run, env: {}, cfg: iso, now: () => new Date() });
+    expect(ok.state).not.toBe('relogin');
+    expect(run.mock.calls[0]![0]).toEqual(['true']);
+  });
+});

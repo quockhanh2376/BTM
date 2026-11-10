@@ -110,6 +110,23 @@ export async function checkLogin(
     };
   }
 
+  // 1b. Cách ly: agent chưa có user Linux / chưa được sudo cho phép → không chạy được CLI nào.
+  const prefix = deps.cfg?.host?.worker_prefix;
+  if (prefix) {
+    try {
+      const probe = await runWithTimeout(deps.run, ['true']);
+      if (/sudo: .*(not found|unknown user)|is not allowed to (execute|run)/i.test(probe.output)) {
+        return {
+          agent,
+          state: 'relogin',
+          detail: `Chưa có user ${prefix}${agent} – chạy: sudo BTM_AGENTS="${agent}" bash deploy/isolation-setup.sh prep, rồi đăng nhập CLI dưới user đó`,
+        };
+      }
+    } catch {
+      // kiểm tiếp như thường; lỗi thật sẽ hiện ở bước dưới
+    }
+  }
+
   // 2. claude-code
   if (tool === 'claude-code') {
     try {
