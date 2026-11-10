@@ -12,6 +12,14 @@
 
 **Spec:** `team/reviews/P4-review-4.md` (D1 D2 D5) + quyết định anh Zon 2026-11-10 (team/log.md) + `docs/spec.md` §2, §4.
 
+## Đổi thiết kế (Cheki, 2026-11-10, sau Task 4a)
+
+Repo tin cậy là **bản checkout thường** (không bare) do BTM sở hữu: `/srv/btm-repos/<project>`. Đây là "project" trong store; mọi logic Plan 4 (session, guard, gate kiểm git, commit của BTM, approve) chạy NGUYÊN như cũ trên nó. Agent không bao giờ chạy trong đó.
+- **Runner** (bật isolation): trước lượt, worker đồng bộ workspace `<projects_root>/<tên>` về đúng nhánh + sha hiện tại của checkout tin cậy (`syncWorkspace`); agent chạy trong workspace; sau lượt (kể cả lỗi/timeout), worker `git add -A` + commit tạm `btm-turn` (--allow-empty) rồi đóng bundle đúng nhánh đó; BTM nhập bundle vào checkout tin cậy (`checkout -f -B <nhánh> <sha nhập>`), bỏ commit tạm bằng `reset --soft HEAD~1` → thay đổi của agent nằm trong checkout tin cậy như khi agent chạy trực tiếp, guard/gate/commitAll Plan 4 xử lý tiếp như cũ. Bundle hỏng/sai ref → lượt coi như lỗi (exitCode ≠ 0, lý do `bundle_invalid`/`bundle_wrong_ref` trong output).
+- **Gate**: lệnh build/lint/test chạy trong workspace dưới worker sau khi đồng bộ workspace về HEAD của checkout tin cậy; phần kiểm git của gate chạy trên checkout tin cậy như cũ.
+- `approveGoal`: dùng lại đường merge cũ trên checkout tin cậy (bỏ nhánh merge-tree bare của 4a).
+- Thay Task 4 bằng: 4b (trusted checkout + approve), 4c (runner + gate). Host lệnh trực tiếp đi qua runner nên tự có.
+
 ## Global Constraints
 
 - `btm-worker` KHÔNG ghi được: `/opt/btm`, `/var/lib/btm`, `/srv/btm-repos`, `/home/agent`. Đọc được `/srv/btm-repos` (nhóm `btm-read`, chỉ đọc) để lấy main.

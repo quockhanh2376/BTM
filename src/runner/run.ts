@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process';
-import { createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { chmodSync, createWriteStream, mkdirSync, mkdtempSync, readFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { buildArgv } from './argv.ts';
 import { workerKillAll, wrapForWorker } from '../isolation/worker.ts';
+import { importTurn, isIsolated, syncWorkspace, workspacePath, type TurnImport } from '../isolation/trusted.ts';
 
 export interface ProcResult {
   exitCode: number | null;
@@ -351,7 +353,11 @@ export function makeRunner(
   cfg: Config,
   defaultSignal?: AbortSignal,
   runProc: typeof runProcess = runProcess,
-  killAll: (cfg: Config) => void = workerKillAll
+  killAll: (cfg: Config) => void = workerKillAll,
+  isolation: { sync: (cfg: Config, checkout: string) => void; importTurn: (cfg: Config, checkout: string) => TurnImport } = {
+    sync: (c, k) => syncWorkspace(c, k),
+    importTurn: (c, k) => importTurn(c, k),
+  }
 ): Runner {
   return async (
     seat: Seat,
@@ -372,9 +378,18 @@ export function makeRunner(
 
     const absLogFile = resolve(logFile);
     mkdirSync(dirname(absLogFile), { recursive: true });
-    const outFile = absLogFile.endsWith('.log')
-      ? absLogFile.slice(0, -4) + '.out'
-      : `${absLogFile}.out`;
+    const isolated = isIsolated(cfg);
+    // Cách ly: worker không ghi được thư mục log của BTM → file kết quả của CLI nằm trong thư mục tạm 0733.
+    const outDir = isolated ? mkdtempSync(join(tmpdir(), 'btm-out-')) : null;
+    if (outDir) chmodSync(outDir, 0o733);
+    const outFile = outDir
+      ? join(outDir, 'last.out')
+      : absLogFile.endsWith('.log')
+        ? absLogFile.slice(0, -4) + '.out'
+        : `${absLogFile}.out`;
+    // cwd = checkout tin cậy; agent chạy trong workspace của worker.
+    const runCwd = isolated ? workspacePath(cfg, cwd) : cwd;
+    if (isolated) isolation.sync(cfg, cwd);
 
     const argv = buildArgv(agent.tool, prompt, {
       seat,
@@ -386,7 +401,7 @@ export function makeRunner(
 
     let result: ProcResult;
     try {
-      result = await runProc(wrapForWorker(cfg, argv, cwd), {
+      result = await runProc(wrapForWorker(cfg, argv, runCwd), {
         cwd,
         timeoutMs,
         logFile: absLogFile,
@@ -395,6 +410,11 @@ export function makeRunner(
       });
     } finally {
       killAll(cfg);
+    }
+    if (isolated) {
+      const imp = isolation.importTurn(cfg, cwd);
+      if (!imp.ok) result = { ...result, exitCode: result.exitCode || 1, output: `${result.output}
+[btm] ${imp.reason}` };
     }
 
     let lastMessage = '';
@@ -408,6 +428,7 @@ export function makeRunner(
     if (!lastMessage) {
       lastMessage = result.output.slice(-2000);
     }
+    if (outDir) rmSync(outDir, { recursive: true, force: true });
 
     return {
       ...result,

@@ -404,11 +404,24 @@ describe('P4.5-T2: runner dưới worker', () => {
       if (fail) throw new Error('boom');
       return { exitCode: 0, timedOut: false, durationMs: 1, output: 'ok' };
     }) as any;
-    const runner = makeRunner(cfg, undefined, fakeProc, () => killed.push(1));
+    const steps: string[] = [];
+    let importOk = true;
+    const iso = {
+      sync: () => { steps.push('sync'); },
+      importTurn: () => { steps.push('import'); return importOk ? { ok: true as const, changed: true } : { ok: false as const, reason: 'bundle_invalid' as const }; },
+    };
+    const runner = makeRunner(cfg, undefined, (async (argv: string[]) => { steps.push('run'); return fakeProc(argv); }) as any, () => { killed.push(1); steps.push('kill'); }, iso);
     const dir = mkdtempSync(join(tmpdir(), 'btm-w-'));
+    const ws = join(cfg.host.projects_root, require('node:path').basename(dir));
     await runner('dev', 'jacky', 'x', dir, join(dir, 'a.log'));
-    expect(seen[0].slice(0, 7)).toEqual(['sudo', '-n', '-u', 'btm-worker', '/usr/local/bin/btm-worker-exec', dir, '--']);
+    expect(seen[0].slice(0, 7)).toEqual(['sudo', '-n', '-u', 'btm-worker', '/usr/local/bin/btm-worker-exec', require('node:path').resolve(ws), '--']);
+    expect(steps).toEqual(['sync', 'run', 'kill', 'import']);
     expect(killed.length).toBe(1);
+    importOk = false;
+    const bad = await runner('dev', 'jacky', 'x', dir, join(dir, 'c.log'));
+    expect(bad.exitCode).toBe(1);
+    expect(bad.output).toContain('bundle_invalid');
+    killed.length = 0; killed.push(1);
     fail = true;
     await expect(runner('dev', 'jacky', 'x', dir, join(dir, 'b.log'))).rejects.toThrow('boom');
     expect(killed.length).toBe(2);

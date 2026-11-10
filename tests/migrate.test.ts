@@ -7,23 +7,9 @@ import { tmpRepo } from './helpers.ts';
 import { git, headSha } from '../src/git.ts';
 import { openStore } from '../src/store/db.ts';
 import { migrateProject } from '../src/project/migrate.ts';
-import { ensureTrustedRepo } from '../src/isolation/trusted.ts';
-import type { Config } from '../src/config.ts';
 import { acquireLock, main } from '../src/cli.ts';
 
 const AUTHOR = ['-c', 'user.name=test', '-c', 'user.email=test@btm.local'];
-
-describe('trusted repo migration', () => {
-  it('creates trusted bare repo and pins its main sha', () => {
-    const repo = tmpRepo({ 'README.md': '# Old Project' });
-    const root = mkdtempSync(join(tmpdir(), 'btm-trusted-migrate-'));
-    const cfg = { host: { worker_user: 'btm-worker', trusted_root: root } } as Config;
-    const result = migrateProject(repo, 'OLD', 'main', undefined, cfg);
-    expect(result.ok).toBe(true);
-    const trusted = ensureTrustedRepo(cfg, repo);
-    expect(git(trusted, 'rev-parse', 'refs/heads/main').trim()).toBe(git(repo, 'rev-parse', 'main').trim());
-  });
-});
 
 describe('migrateProject', () => {
   it('chuyển đổi project kiểu cũ: tạo project.yaml và .gitkeep trên main, giữ nguyên session/3 và team/tasks/', () => {

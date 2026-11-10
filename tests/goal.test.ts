@@ -8,7 +8,6 @@ import { git, headSha } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
 import { openStore, type Store } from '../src/store/db.ts';
 import { approveGoal } from '../src/ticket/goal.ts';
-import { ensureTrustedRepo } from '../src/isolation/trusted.ts';
 import { acquireLock, main } from '../src/cli.ts';
 import type { Config } from '../src/config.ts';
 
@@ -109,8 +108,6 @@ function makeTestConfig(dataDir: string, opts?: { auditSeat?: string }): Config 
       agy_allow_commands: ['git status', 'git diff'],
     },
   };
-
-
 }
 
 describe('approveGoal', () => {
@@ -857,56 +854,5 @@ runner:
     expect(exitApprove).toBe(1);
 
     errSpy.mockRestore();
-  });
-});
-
-describe('approveGoal trusted repository', () => {
-  it('merges reviewed commit into trusted main without changing workspace main', () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'btm-trusted-goal-'));
-    const store = openStore(join(dataDir, 'btm.db'));
-    const repo = tmpRepo({ 'file.txt': 'base\n' });
-    const trustedRoot = mkdtempSync(join(tmpdir(), 'btm-trusted-root-'));
-    const cfg = { host: { data_dir: dataDir, worker_user: 'btm-worker', trusted_root: trustedRoot }, seats: { audit: '' }, git: { protected_branch: 'main' } } as Config;
-    const trusted = ensureTrustedRepo(cfg, repo);
-    const goal = store.createGoal(repo, 'trusted merge');
-    git(repo, 'checkout', '-b', goal.branch);
-    writeFileSync(join(repo, 'feature.txt'), 'done');
-    git(repo, 'add', 'feature.txt');
-    execFileSync('git', [...AUTHOR, 'commit', '-m', 'GTM-0001: feature'], { cwd: repo });
-    const reviewed = headSha(repo);
-    git(trusted, 'fetch', repo, `${goal.branch}:${goal.branch}`);
-    store.setGoalState(repo, goal.n, 'qc_done', 'jenny', 'passed', reviewed);
-    const workspaceMain = git(repo, 'rev-parse', 'main').trim();
-    const result = approveGoal(store, repo, cfg, goal.n);
-    expect(result.ok).toBe(true);
-    const trustedMain = git(trusted, 'rev-parse', 'refs/heads/main').trim();
-    expect(git(trusted, 'rev-list', '--parents', '-n', '1', trustedMain).trim().split(/\s+/)).toHaveLength(3);
-    expect(git(repo, 'rev-parse', 'main').trim()).toBe(workspaceMain);
-    store.close();
-  });
-  it('xung đột khi merge trong repo tin cậy → từ chối, main tin cậy không đổi', () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'btm-trusted-goal-'));
-    const store = openStore(join(dataDir, 'btm.db'));
-    const repo = tmpRepo({ 'file.txt': 'base\n' });
-    const trustedRoot = mkdtempSync(join(tmpdir(), 'btm-trusted-root-'));
-    const cfg = { host: { data_dir: dataDir, worker_user: 'btm-worker', trusted_root: trustedRoot }, seats: { audit: '' }, git: { protected_branch: 'main' } } as Config;
-    const trusted = ensureTrustedRepo(cfg, repo);
-    const goal = store.createGoal(repo, 'conflict');
-    git(repo, 'checkout', '-b', goal.branch);
-    writeFileSync(join(repo, 'file.txt'), 'goal\n');
-    execFileSync('git', [...AUTHOR, 'commit', '-am', 'GTM-0001: goal side'], { cwd: repo });
-    const reviewed = headSha(repo);
-    git(trusted, 'fetch', repo, `${goal.branch}:${goal.branch}`);
-    git(repo, 'checkout', 'main');
-    writeFileSync(join(repo, 'file.txt'), 'main\n');
-    execFileSync('git', [...AUTHOR, 'commit', '-am', 'main side'], { cwd: repo });
-    git(trusted, 'fetch', repo, '+main:main');
-    const mainBefore = git(trusted, 'rev-parse', 'refs/heads/main').trim();
-    store.setSetting(`protected_sha:${repo}`, mainBefore);
-    store.setGoalState(repo, goal.n, 'qc_done', 'jenny', 'passed', reviewed);
-    const result = approveGoal(store, repo, cfg, goal.n);
-    expect(result.ok).toBe(false);
-    expect(git(trusted, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
-    store.close();
   });
 });

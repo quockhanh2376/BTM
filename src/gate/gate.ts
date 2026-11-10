@@ -5,6 +5,7 @@ import type { Ticket } from '../ticket/ticket.ts';
 import { changedFiles, git } from '../git.ts';
 import type { Config } from '../config.ts';
 import { workerKillAll, wrapForWorker } from '../isolation/worker.ts';
+import { isIsolated, syncWorkspace, workspacePath } from '../isolation/trusted.ts';
 
 export interface GateResult {
   ok: boolean;
@@ -16,6 +17,8 @@ export interface GateOptions {
   require_report_schema?: boolean;
   cfg?: Config;
   killAll?: (cfg: Config) => void;
+  /** Cách ly: đồng bộ workspace của worker về HEAD checkout tin cậy trước khi chạy lệnh (test thay được). */
+  sync?: (cfg: Config, checkout: string) => void;
 }
 
 function matchesScopeItem(file: string, item: string): boolean {
@@ -172,12 +175,25 @@ export function runGate(
     ['test', cmds?.test],
   ];
 
+  const gateCfg = optsOrTimeout && typeof optsOrTimeout === 'object' ? optsOrTimeout.cfg : undefined;
+  // Cách ly: lệnh gate (chạy code do Dev viết) chạy trong workspace của worker, không trong checkout tin cậy.
+  const isolatedGate = Boolean(gateCfg && isIsolated(gateCfg));
+  const cmdCwd = isolatedGate ? workspacePath(gateCfg!, repo) : repo;
+  if (isolatedGate && cmdList.some(([, c]) => c && c.trim() !== '')) {
+    try {
+      ((optsOrTimeout as GateOptions).sync ?? ((c, k) => syncWorkspace(c, k)))(gateCfg!, repo);
+    } catch {
+      reasons.push('gate_sync_failed');
+      return { ok: false, reasons };
+    }
+  }
+
   for (const [name, command] of cmdList) {
     if (command && command.trim() !== '') {
       let res: ReturnType<typeof spawnSync>;
       try {
         const argv = optsOrTimeout && typeof optsOrTimeout === 'object' && optsOrTimeout.cfg
-          ? wrapForWorker(optsOrTimeout.cfg, ['sh', '-c', command], repo)
+          ? wrapForWorker(optsOrTimeout.cfg, ['sh', '-c', command], cmdCwd)
           : ['sh', '-c', command];
         res = spawnSync(argv[0], argv.slice(1), {
           cwd: repo,

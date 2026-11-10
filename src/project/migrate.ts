@@ -4,8 +4,6 @@ import { git } from '../git.ts';
 import { readProjectKey } from '../ticket/goal.ts';
 import { protectedShaKey } from '../core/guard.ts';
 import { getOpenStores, type Store } from '../store/db.ts';
-import type { Config } from '../config.ts';
-import { ensureTrustedRepo } from '../isolation/trusted.ts';
 
 export interface MigrateProjectResult {
   ok: true;
@@ -16,13 +14,12 @@ export interface MigrateProjectResult {
 function pinProtectedSha(
   repo: string,
   protRef: string,
-  store?: Pick<Store, 'setSetting'>,
-  keyRepo = repo
+  store?: Pick<Store, 'setSetting'>
 ): void {
   try {
     const sha = git(repo, 'rev-parse', protRef).trim();
     if (!sha) return;
-    const key = protectedShaKey(keyRepo);
+    const key = protectedShaKey(repo);
     if (store) {
       store.setSetting(key, sha);
     }
@@ -38,8 +35,7 @@ export function migrateProject(
   repo: string,
   key: string,
   protectedBranch: string,
-  store?: Pick<Store, 'setSetting'>,
-  cfg?: Config
+  store?: Pick<Store, 'setSetting'>
 ): MigrateProjectResult {
   // 1. Validate key
   if (!key || typeof key !== 'string' || !/^[A-Z]{2,5}$/.test(key)) {
@@ -84,8 +80,7 @@ export function migrateProject(
     if (existsSync(projectYamlPath)) {
       const existingKey = readProjectKey(repo);
       if (existingKey === key) {
-        const trusted = cfg?.host.worker_user ? ensureTrustedRepo(cfg, repo) : repo;
-        pinProtectedSha(trusted, protRef, store, repo);
+        pinProtectedSha(repo, protRef, store);
         // Stay on protectedBranch
         return { ok: true, already: true, previousBranch };
       }
@@ -135,8 +130,7 @@ export function migrateProject(
       `migrate: project key ${key}`
     );
     committed = true;
-    const trusted = cfg?.host.worker_user ? ensureTrustedRepo(cfg, repo) : repo;
-    pinProtectedSha(trusted, protRef, store, repo);
+    pinProtectedSha(repo, protRef, store);
 
     // Stay on protectedBranch
     return { ok: true, already: false, previousBranch };

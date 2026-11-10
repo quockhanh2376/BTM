@@ -48,7 +48,7 @@ set -euo pipefail
 [ "$(id -un)" = btm-worker ] || { echo "phải chạy dưới btm-worker" >&2; exit 2; }
 [ $# -ge 3 ] && [ "$2" = "--" ] || { echo "dùng: btm-worker-exec <cwd> -- <lệnh…>" >&2; exit 2; }
 real="$(realpath -e -- "$1")"; shift 2
-case "$real/" in /srv/agent-projects/?*/) ;; *) echo "cwd ngoài /srv/agent-projects: $real" >&2; exit 2;; esac
+case "$real/" in /srv/agent-projects/|/srv/agent-projects/?*/) ;; *) echo "cwd ngoài /srv/agent-projects: $real" >&2; exit 2;; esac
 cd "$real"
 umask 022   # bundle do worker tạo phải đọc được bởi BTM (user agent)
 keep=()

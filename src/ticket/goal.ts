@@ -7,7 +7,6 @@ import type { Config } from '../config.ts';
 import { git, headSha } from '../git.ts';
 import { acquireLock } from '../cli.ts';
 import { protectedShaKey } from '../core/guard.ts';
-import { trustedRepoPath } from '../isolation/trusted.ts';
 
 export function slugify(title: string): string {
   if (!title) {
@@ -116,9 +115,7 @@ export function approveGoal(
       };
     }
 
-    const isolated = Boolean(cfg.host.worker_user);
-    const gitRepo = isolated ? trustedRepoPath(cfg, repo) : repo;
-    const dirtyCheck = isolated ? '' : git(repo, 'status', '--porcelain').trim();
+    const dirtyCheck = git(repo, 'status', '--porcelain').trim();
     if (dirtyCheck.length > 0) {
       return {
         ok: false,
@@ -127,8 +124,8 @@ export function approveGoal(
       };
     }
 
-    const currentBranch = isolated ? 'HEAD' : git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
-    const originalRef = currentBranch === 'HEAD' ? (isolated ? '' : headSha(repo)) : currentBranch;
+    const currentBranch = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+    const originalRef = currentBranch === 'HEAD' ? headSha(repo) : currentBranch;
     const previousState = goal.state;
     const protectedBranch = cfg.git?.protected_branch || 'main';
     const protectedRef = protectedBranch.startsWith('refs/heads/')
@@ -142,7 +139,7 @@ export function approveGoal(
     const pinnedSha = store.getSetting(pinKey)?.trim() || '';
     let currentProtectedSha = '';
     try {
-      currentProtectedSha = git(gitRepo, 'rev-parse', protectedRef).trim();
+      currentProtectedSha = git(repo, 'rev-parse', protectedRef).trim();
     } catch {}
 
     // Main đổi ngoài BTM (anh tự merge/pull): không tự kéo về – có thể xoá việc của anh. Anh chạy `btm main accept`.
@@ -160,7 +157,7 @@ export function approveGoal(
 
     let branchSha = '';
     try {
-      branchSha = git(gitRepo, 'rev-parse', goalRef).trim();
+      branchSha = git(repo, 'rev-parse', goalRef).trim();
     } catch {
       return {
         ok: false,
@@ -179,7 +176,7 @@ export function approveGoal(
 
     // C4: Goal có commit G<n>: cmd ngoài dải ticket → yêu cầu goal có audit (state === 'audit_passed')
     try {
-      const logOut = git(gitRepo, 'log', '--format=%H%x00%s', `${protectedRef}..${goal.reviewed_sha}`).trim();
+      const logOut = git(repo, 'log', '--format=%H%x00%s', `${protectedRef}..${goal.reviewed_sha}`).trim();
       if (logOut) {
         const commits = logOut
           .split(/\r?\n/)
@@ -200,7 +197,7 @@ export function approveGoal(
             const latestTicketCommit = commits.find((c) => c.subject.startsWith(`${t.id}:`));
             if (!latestTicketCommit) continue;
             try {
-              const rangeOut = git(gitRepo, 'log', '--format=%H', `${t.base_sha}..${latestTicketCommit.sha}`).trim();
+              const rangeOut = git(repo, 'log', '--format=%H', `${t.base_sha}..${latestTicketCommit.sha}`).trim();
               if (rangeOut) {
                 for (const sha of rangeOut.split(/\r?\n/)) {
                   if (sha.trim()) coveredShas.add(sha.trim());
@@ -231,33 +228,32 @@ export function approveGoal(
 
     let mergeSha: string;
     try {
-      if (isolated) {
-        const tree = git(gitRepo, 'merge-tree', '--write-tree', currentProtectedSha, mergeTarget).trim();
-        mergeSha = git(
-          gitRepo,
-          '-c', 'user.name=btm',
-          '-c', 'user.email=btm@btm.local',
-          'commit-tree', tree,
-          '-p', currentProtectedSha,
-          '-p', mergeTarget,
-          '-m', `merge G${n}: ${goal.title}`
-        ).trim();
-        git(gitRepo, 'update-ref', protectedRef, mergeSha, currentProtectedSha);
-      } else {
-        git(repo, 'checkout', protectedBranch);
-        const headRef = git(repo, 'symbolic-ref', 'HEAD').trim();
-        if (headRef !== protectedRef) {
-          throw new Error(`Checkout failed: HEAD is ${headRef}, expected ${protectedRef}`);
-        }
-        git(repo, '-c', `user.name=${by}`, '-c', `user.email=${by}@btm.local`, 'merge', '--no-ff', mergeTarget, '-m', `G${n}: ${goal.title}`);
-        mergeSha = headSha(repo);
+      git(repo, 'checkout', protectedBranch);
+      const headRef = git(repo, 'symbolic-ref', 'HEAD').trim();
+      if (headRef !== protectedRef) {
+        throw new Error(`Checkout failed: HEAD is ${headRef}, expected ${protectedRef}`);
       }
+      git(
+        repo,
+        '-c',
+        `user.name=${by}`,
+        '-c',
+        `user.email=${by}@btm.local`,
+        'merge',
+        '--no-ff',
+        mergeTarget,
+        '-m',
+        `G${n}: ${goal.title}`
+      );
+      mergeSha = headSha(repo);
       store.setSetting(pinKey, mergeSha);
     } catch (err: any) {
-      if (!isolated) {
-        try { git(repo, 'merge', '--abort'); } catch {}
-        try { git(repo, 'checkout', originalRef); } catch {}
-      }
+      try {
+        git(repo, 'merge', '--abort');
+      } catch {}
+      try {
+        git(repo, 'checkout', originalRef);
+      } catch {}
       store.setGoalState(repo, n, previousState, by, `merge conflict: ${err?.message || String(err)}`);
       return {
         ok: false,
@@ -268,9 +264,9 @@ export function approveGoal(
 
     store.setGoalState(repo, n, 'merged', by, 'merged');
 
-    if (!isolated) {
-      try { git(repo, 'checkout', originalRef); } catch {}
-    }
+    try {
+      git(repo, 'checkout', originalRef);
+    } catch {}
 
     return {
       ok: true,

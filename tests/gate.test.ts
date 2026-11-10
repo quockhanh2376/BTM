@@ -717,8 +717,10 @@ describe('P4.5-T2: gate dưới worker', () => {
     writeFileSync(join(repo, 'src', 'a.ts'), 'export const a = 2;');
     commitAll(repo, 'GTM-0001: x', { name: 'd', email: 'd@x' });
     const killed: number[] = [];
-    const cfg = { host: { worker_user: 'btm-worker' } } as any;
-    runGate(repo, makeCard(), base, { build: 'true', lint: '', test: 'true' } as any, { cfg, killAll: () => killed.push(1) });
+    const synced: string[] = [];
+    const cfg = { host: { worker_user: 'btm-worker', projects_root: '/srv/agent-projects' } } as any;
+    runGate(repo, makeCard(), base, { build: 'true', lint: '', test: 'true' } as any, { cfg, killAll: () => killed.push(1), sync: (_c, k) => synced.push(k) });
     expect(killed.length).toBe(2);
+    expect(synced).toEqual([repo]); // đồng bộ workspace 1 lần trước các lệnh
   });
 });

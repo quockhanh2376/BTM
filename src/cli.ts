@@ -12,6 +12,7 @@ import { initProject } from './project/init.ts';
 import { migrateProject } from './project/migrate.ts';
 import { runSession, resumeSession, type SessionOutcome } from './core/session.ts';
 import { protectedShaKey } from './core/guard.ts';
+import { ensureTrustedCheckout } from './isolation/trusted.ts';
 import { git } from './git.ts';
 import { approveGoal } from './ticket/goal.ts';
 import { makeRunner, type Runner } from './runner/run.ts';
@@ -362,6 +363,7 @@ Usage:
   btm goal list                                 List goals for active project
   btm goal approve G<n>                         Approve and merge goal into main
   btm main accept                               Accept and re-pin current main branch SHA
+  btm isolate                                   Create trusted checkout of active project and switch to it (needs host.worker_user)
   btm serve                                     Start dashboard HTTP server and host
 
 Options:
@@ -376,7 +378,7 @@ Options:
     return 0;
   }
 
-  if (['init', 'run', 'status', 'serve', 'goal', 'migrate', 'main'].includes(command)) {
+  if (['init', 'run', 'status', 'serve', 'goal', 'migrate', 'main', 'isolate'].includes(command)) {
     let cfg;
     try {
       cfg = loadConfig(configPath);
@@ -412,7 +414,7 @@ Options:
         const btmRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
         const templatesFrom = join(btmRoot, 'team', 'templates');
 
-        const projectPath = initProject(cfg.host.projects_root, name, templatesFrom, { key, cfg });
+        const projectPath = initProject(cfg.host.projects_root, name, templatesFrom, { key });
         const dbPath = join(cfg.host.data_dir, 'btm.db');
         const store = openStore(dbPath);
         try {
@@ -846,7 +848,7 @@ Options:
           }
 
           const protectedBranch = cfg.git?.protected_branch || 'main';
-          const res = migrateProject(activeProject, key, protectedBranch, store, cfg);
+          const res = migrateProject(activeProject, key, protectedBranch, store);
           if (res.already) {
             console.log(
               `Project already migrated with key "${key}". Đã chuyển sang ${protectedBranch}; nhánh cũ ${res.previousBranch} giữ nguyên.`
@@ -867,6 +869,40 @@ Options:
         return 1;
       } finally {
         releaseLock?.();
+      }
+    }
+
+    if (command === 'isolate') {
+      if (!cfg.host.worker_user || !cfg.host.trusted_root) {
+        console.error('Error: host.worker_user và host.trusted_root phải được đặt trong config.');
+        process.exitCode = 1;
+        return 1;
+      }
+      const store = openStore(join(cfg.host.data_dir, 'btm.db'));
+      try {
+        const active = store.getActiveProject();
+        if (!active) {
+          console.error('Error: No active project set.');
+          process.exitCode = 1;
+          return 1;
+        }
+        if (resolve(active).startsWith(resolve(cfg.host.trusted_root))) {
+          console.log(`Already isolated: ${active}`);
+          return 0;
+        }
+        const trusted = ensureTrustedCheckout(cfg, active);
+        const protectedBranch = cfg.git?.protected_branch || 'main';
+        const mainSha = git(trusted, 'rev-parse', `refs/heads/${protectedBranch}`).trim();
+        store.setSetting(protectedShaKey(trusted), mainSha);
+        store.setActiveProject(trusted);
+        console.log(`Isolated: active project ${active} → ${trusted} (main ${mainSha})`);
+        return 0;
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+        return 1;
+      } finally {
+        store.close();
       }
     }
 

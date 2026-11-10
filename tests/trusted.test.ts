@@ -1,97 +1,94 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { importGoalBundle, syncWorkspace, trustedRepoPath } from '../src/isolation/trusted.ts';
+import { importTurn, syncWorkspace, workspacePath } from '../src/isolation/trusted.ts';
 import type { Config } from '../src/config.ts';
 import type { ExecFn } from '../src/isolation/worker.ts';
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
+
+// exec giả: bỏ tiền tố sudo … btm-worker-exec <cwd> -- và chạy lệnh trực tiếp (không sudo thật).
+const direct: ExecFn = (file, args) => {
+  const argv = file === 'sudo' ? args.slice(args.indexOf('--') + 1) : [file, ...args];
+  return execFileSync(argv[0]!, argv.slice(1), { encoding: 'utf8', stdio: 'pipe' });
+};
 
 function setup() {
-  const root = mkdtempSync(join(tmpdir(), 'btm-trusted-'));
+  const root = mkdtempSync(join(tmpdir(), 'btm-iso-'));
   roots.push(root);
-  const workspace = join(root, 'workspace');
+  const projectsRoot = join(root, 'projects');
   const trustedRoot = join(root, 'trusted');
-  const config = { host: { trusted_root: trustedRoot } } as unknown as Config;
-  const trusted = trustedRepoPath(config, workspace);
-  const run = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
-  const exec: ExecFn = (file, args) => {
-    if (file === 'git') return execFileSync(file, args, { encoding: 'utf8', stdio: 'pipe' });
-    throw new Error(`Unexpected command ${file}`);
-  };
-  execFileSync('git', ['init', '-b', 'main', workspace], { stdio: 'ignore' });
-  run(workspace, 'config', 'user.name', 'test');
-  run(workspace, 'config', 'user.email', 'test@example.invalid');
-  writeFileSync(join(workspace, 'file.txt'), 'base\n');
-  run(workspace, 'add', '.'); run(workspace, 'commit', '-m', 'base');
-  execFileSync('git', ['clone', '--bare', '--no-local', workspace, trusted], { stdio: 'ignore' });
-  return { root, workspace, trusted, config, run, exec };
+  mkdirSync(projectsRoot); mkdirSync(trustedRoot);
+  const cfg = { host: { worker_user: 'btm-worker', projects_root: projectsRoot, trusted_root: trustedRoot } } as unknown as Config;
+  const checkout = join(trustedRoot, 'demo');
+  const g = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf8' }).trim();
+  execFileSync('git', ['init', '-q', '-b', 'main', checkout]);
+  writeFileSync(join(checkout, 'a.txt'), 'base\n');
+  g(checkout, 'add', '.'); g(checkout, 'commit', '-qm', 'base');
+  g(checkout, 'checkout', '-qb', 'goal/G1-x');
+  const ws = workspacePath(cfg, checkout);
+  return { cfg, checkout, ws, g };
 }
 
-describe('trusted repo bundle import', () => {
-  it('imports the one goal head at the incoming ref', () => {
+describe('P4.5: syncWorkspace + importTurn (checkout tin cậy)', () => {
+  it('sync tạo workspace lần đầu, đúng nhánh và sha của checkout; lượt sau ghi đè thay đổi của worker', () => {
     const c = setup();
-    c.run(c.workspace, 'checkout', '-b', 'goal/G1-work');
-    writeFileSync(join(c.workspace, 'file.txt'), 'goal\n');
-    c.run(c.workspace, 'commit', '-am', 'goal');
-    const expected = c.run(c.workspace, 'rev-parse', 'HEAD');
-    expect(importGoalBundle(c.config, c.workspace, { n: 1, branch: 'goal/G1-work' }, c.exec)).toEqual({ ok: true, sha: expected });
-    expect(c.run(c.trusted, 'rev-parse', 'refs/btm/incoming/G1')).toBe(expected);
+    syncWorkspace(c.cfg, c.checkout, direct);
+    expect(c.g(c.ws, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('goal/G1-x');
+    expect(c.g(c.ws, 'rev-parse', 'HEAD')).toBe(c.g(c.checkout, 'rev-parse', 'HEAD'));
+    writeFileSync(join(c.ws, 'a.txt'), 'worker\n');
+    c.g(c.ws, 'commit', '-qam', 'rác');
+    syncWorkspace(c.cfg, c.checkout, direct);
+    expect(readFileSync(join(c.ws, 'a.txt'), 'utf8').replace(/\r\n/g, '\n')).toBe('base\n');
   });
 
-  it('nhánh lạ trong workspace không lọt vào bundle (chỉ đóng gói đúng nhánh goal)', () => {
+  it('import: commit của agent + thay đổi chưa commit về checkout y như agent chạy trực tiếp; không còn commit tạm', () => {
     const c = setup();
-    c.run(c.workspace, 'checkout', '-b', 'goal/G1-work');
-    c.run(c.workspace, 'branch', 'extra');
-    expect(importGoalBundle(c.config, c.workspace, { n: 1, branch: 'goal/G1-work' }, c.exec).ok).toBe(true);
-    expect(() => c.run(c.trusted, 'rev-parse', '--verify', 'refs/heads/extra')).toThrow();
+    syncWorkspace(c.cfg, c.checkout, direct);
+    writeFileSync(join(c.ws, 'b.txt'), 'b\n');
+    c.g(c.ws, 'add', 'b.txt'); c.g(c.ws, 'commit', '-qm', 'GTM-0001: b');
+    writeFileSync(join(c.ws, 'a.txt'), 'changed\n');
+    const res = importTurn(c.cfg, c.checkout, direct);
+    expect(res).toEqual({ ok: true, changed: true });
+    expect(c.g(c.checkout, 'log', '-1', '--format=%s')).toBe('GTM-0001: b');
+    expect(readFileSync(join(c.checkout, 'a.txt'), 'utf8')).toBe('changed\n');
+    expect(c.g(c.checkout, 'status', '--porcelain')).toContain('a.txt');
+    expect(c.g(c.checkout, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('goal/G1-x');
   });
 
-  it('tên nhánh goal sai định dạng → bundle_wrong_ref, không chạy lệnh nào', () => {
+  it('agent sửa main, .git/config, tạo nhánh lạ trong workspace → checkout tin cậy không bị ảnh hưởng', () => {
     const c = setup();
-    const calls: string[] = [];
-    const spy: ExecFn = (f, a) => { calls.push(f); return ''; };
-    expect(importGoalBundle(c.config, c.workspace, { n: 1, branch: 'main' }, spy)).toEqual({ ok: false, reason: 'bundle_wrong_ref' });
-    expect(calls).toEqual([]);
+    const mainBefore = c.g(c.checkout, 'rev-parse', 'main');
+    const cfgBefore = readFileSync(join(c.checkout, '.git', 'config'), 'utf8');
+    syncWorkspace(c.cfg, c.checkout, direct);
+    c.g(c.ws, 'config', 'filter.x.clean', 'sh evil.sh');
+    c.g(c.ws, 'branch', '-f', 'main', 'HEAD');
+    c.g(c.ws, 'branch', 'evil');
+    c.g(c.ws, 'checkout', '-q', 'evil');
+    writeFileSync(join(c.ws, 'evil.txt'), 'x\n');
+    c.g(c.ws, 'add', '.'); c.g(c.ws, 'commit', '-qm', 'evil');
+    expect(importTurn(c.cfg, c.checkout, direct).ok).toBe(true);
+    expect(c.g(c.checkout, 'rev-parse', 'main')).toBe(mainBefore);
+    expect(readFileSync(join(c.checkout, '.git', 'config'), 'utf8')).toBe(cfgBefore);
+    expect(() => c.g(c.checkout, 'rev-parse', '--verify', '-q', 'refs/heads/evil')).toThrow();
+    expect(existsSync(join(c.checkout, 'evil.txt'))).toBe(false);
   });
 
-  it('rejects extra branch, replace, or tag refs without changing trusted refs', () => {
+  it('bundle rác → bundle_invalid, checkout không đổi', () => {
     const c = setup();
-    c.run(c.workspace, 'checkout', '-b', 'goal/G1-work');
-    c.run(c.workspace, 'branch', 'extra');
-    c.run(c.workspace, 'update-ref', 'refs/replace/example', c.run(c.workspace, 'rev-parse', 'HEAD'));
-    c.run(c.workspace, 'tag', 'extra-tag');
-    const before = c.run(c.trusted, 'show-ref');
-    const createAll: ExecFn = (file, args, options) => {
-      const createIndex = args.indexOf('create');
-      if (createIndex >= 0 && args[createIndex - 1] === 'bundle') {
-        const rewritten = [...args.slice(0, createIndex + 2), '--all'];
-        return execFileSync(file, rewritten, { encoding: 'buffer', stdio: options?.stdio ?? 'pipe' });
-      }
-      return execFileSync(file, args, { encoding: 'buffer', stdio: options?.stdio ?? 'pipe' });
+    syncWorkspace(c.cfg, c.checkout, direct);
+    const head = c.g(c.checkout, 'rev-parse', 'HEAD');
+    const garbage: ExecFn = (file, args) => {
+      const argv = args.slice(args.indexOf('--') + 1);
+      const i = argv.indexOf('create');
+      if (argv.includes('bundle') && i > 0) { writeFileSync(argv[i + 1]!, 'not a bundle'); return ''; }
+      return direct(file, args);
     };
-    expect(importGoalBundle(c.config, c.workspace, { n: 1, branch: 'goal/G1-work' }, createAll)).toEqual({ ok: false, reason: 'bundle_wrong_ref' });
-    expect(c.run(c.trusted, 'show-ref')).toBe(before);
-  });
-
-  it('rejects malformed bundle and restores workspace main from trusted main', () => {
-    const c = setup();
-    // worker ghi rác thay cho bundle
-    const garbage: ExecFn = (_f, args) => { writeFileSync(args[args.indexOf('create') + 1], 'not a bundle'); return ''; };
-    const trustedSha = c.run(c.trusted, 'rev-parse', 'refs/heads/main');
-    const before = c.run(c.trusted, 'show-ref');
-    expect(importGoalBundle(c.config, c.workspace, { n: 1, branch: 'goal/G1-work' }, garbage)).toEqual({ ok: false, reason: 'bundle_invalid' });
-    expect(c.run(c.trusted, 'show-ref')).toBe(before);
-    c.run(c.workspace, 'checkout', '-b', 'main-changed');
-    writeFileSync(join(c.workspace, 'file.txt'), 'changed\n');
-    c.run(c.workspace, 'commit', '-am', 'changed');
-    c.run(c.workspace, 'branch', '-f', 'main', 'HEAD');
-    expect(trustedRepoPath(c.config, c.workspace)).toBe(c.trusted);
-    syncWorkspace(c.config, c.workspace, 'main', trustedSha, c.exec);
-    expect(c.run(c.workspace, 'rev-parse', 'main')).toBe(trustedSha);
-    expect(c.run(c.workspace, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
+    expect(importTurn(c.cfg, c.checkout, garbage)).toEqual({ ok: false, reason: 'bundle_invalid' });
+    expect(c.g(c.checkout, 'rev-parse', 'HEAD')).toBe(head);
+    expect(c.g(c.checkout, 'status', '--porcelain')).toBe('');
   });
 });
