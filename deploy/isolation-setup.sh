@@ -86,13 +86,41 @@ EOF
 
   install_file /usr/local/bin/btm-worker-reset 755 <<'EOF'
 #!/bin/bash
-# Plan 5 Task 8: trước mỗi lượt, xoá cấu hình/hướng dẫn mà agent có thể tự cài vào home của mình (git, npm, CLI),
-# GIỮ file đăng nhập: ~/.claude/.credentials.json, ~/.claude.json, ~/.codex/auth.json,
-# ~/.gemini/antigravity-cli/antigravity-oauth-token, installation_id. rm không đi theo symlink.
+# Plan 5 Task 8: trước mỗi lượt (và trước gate), xoá cấu hình/hướng dẫn agent có thể tự cài vào home (git, npm,
+# shell, CLI, MCP), dựng lại file shell từ mẫu. GIỮ đăng nhập: ~/.claude/.credentials.json, ~/.codex/auth.json,
+# ~/.gemini/antigravity-cli/antigravity-oauth-token, installation_id; ~/.claude.json giữ nhưng bỏ mcpServers/allowedTools.
+# Xoá không được (agent chmod) → thoát 3, BTM huỷ lượt.
 set -u
 case "$(id -un)" in btm-*) ;; *) echo "phải chạy dưới user btm-<agent>" >&2; exit 2;; esac
 cd "$HOME" || exit 2
-rm -rf -- .gitconfig .config/git .npmrc .yarnrc .yarnrc.yml .bash_aliases   .claude/CLAUDE.md .claude/settings.json .claude/settings.local.json .claude/commands .claude/agents   .claude/hooks .claude/output-styles .claude/skills .claude/plugins   .codex/config.toml .codex/AGENTS.md .codex/AGENTS.override.md .codex/prompts .codex/rules   .gemini/GEMINI.md .gemini/settings.json .gemini/antigravity-cli/settings.json .gemini/config/mcp_config.json
+targets=(.gitconfig .config/git .npmrc .yarnrc .yarnrc.yml .bash_aliases .bash_profile .bash_login .bash_logout .local/bin
+  .claude/CLAUDE.md .claude/settings.json .claude/settings.local.json .claude/commands .claude/agents
+  .claude/hooks .claude/output-styles .claude/skills .claude/plugins .claude/projects
+  .codex/config.toml .codex/AGENTS.md .codex/AGENTS.override.md .codex/prompts .codex/rules .codex/skills .agents
+  .gemini/GEMINI.md .gemini/settings.json .gemini/extensions .gemini/commands
+  .gemini/antigravity-cli/settings.json .gemini/config/mcp_config.json)
+chmod -R u+rwX . 2>/dev/null
+rm -rf -- "${targets[@]}"
+for t in "${targets[@]}"; do [ -e "$t" ] || [ -L "$t" ] && { echo "không xoá được $t" >&2; exit 3; }; done
+cp /etc/skel/.bashrc .bashrc && cp /etc/skel/.profile .profile || exit 3
+echo 'export PATH=/opt/btm-cli/bin:$PATH DISABLE_AUTOUPDATER=1' | tee -a .bashrc >> .profile
+if [ -f .claude.json ]; then
+  python3 - <<'PY' || exit 3
+import json, os
+p = os.path.expanduser('~/.claude.json')
+d = json.load(open(p))
+d.pop('mcpServers', None)
+for v in (d.get('projects') or {}).values():
+    if isinstance(v, dict):
+        for k in ('mcpServers', 'allowedTools', 'enabledMcpjsonServers', 'mcpContextUris'):
+            v.pop(k, None)
+tmp = p + '.btm-tmp'
+with open(tmp, 'w') as f:
+    json.dump(d, f)
+os.chmod(tmp, 0o600)
+os.replace(tmp, p)
+PY
+fi
 exit 0
 EOF
 

@@ -46,6 +46,7 @@ describe('Config', () => {
     expect(ok.agents.kai.effort).toBeUndefined(); // mặc định medium ở agentEffort (Task 2)
     expect(ok.agents.elon.model).toBeUndefined();
     expect(() => loadConfig(writeTestConfig((raw) => { raw.agents.elon.model = 'a;rm -rf /'; }))).toThrow(ConfigError);
+    expect(() => loadConfig(writeTestConfig((raw) => { raw.agents.elon.model = '--dangerous'; }))).toThrow(ConfigError);
     expect(() => loadConfig(writeTestConfig((raw) => { raw.agents.elon.effort = 'ultra'; }))).toThrow(ConfigError);
     expect(() => loadConfig(writeTestConfig((raw) => {
       raw.host.worker_prefix = 'btm-';

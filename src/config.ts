@@ -59,7 +59,7 @@ export const SeatsSchema = z.object({
 export const EffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 export type Effort = z.infer<typeof EffortSchema>;
 // Model đi thẳng vào argv của CLI: chỉ chữ/số và . _ : -
-export const ModelSchema = z.string().regex(/^[A-Za-z0-9._:-]{1,80}$/);
+export const ModelSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/);
 
 export const AgentConfigSchema = z.object({
   tool: ToolSchema,

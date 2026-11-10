@@ -880,10 +880,11 @@ async function processGoal(
       const prevCoder = pastDevTurns.length > 0 ? pastDevTurns[pastDevTurns.length - 1].agent : null;
 
       const currentTicketState = d.store.getTicketState(d.repo, ticket.id)?.state ?? tasks[ticket.id];
-      const isHandoff =
+      // Tính sau khi chọn người ngồi (có thể là người dự phòng).
+      const isHandoffFor = (agent: string) =>
         (currentTicketState === 'returned' || currentTicketState === 'in_dev') &&
         prevCoder !== null &&
-        prevCoder !== devAgent;
+        prevCoder !== agent;
 
       if (!skipDevThisRound) {
         if (!base) {
@@ -916,7 +917,7 @@ async function processGoal(
           devAgent,
           fixNotes,
           d.cfg.runner.agy_allow_commands,
-          isHandoff
+          isHandoffFor(devAgent)
         );
 
         const devSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'dev');

@@ -721,11 +721,25 @@ describe('P4.5-T2: gate dưới worker', () => {
     const cfg = { host: { worker_prefix: 'btm-', projects_root: '/srv/agent-projects', work_root: '/srv/btm-work' } } as any;
     runGate(repo, makeCard(), base, { build: 'true', lint: '', test: 'true' } as any, {
       cfg, agentId: 'jacky', killAll: (_c, a) => killed.push(a), sync: (_c, a, k) => synced.push(`${a}:${k}`),
+      reset: (_c, a) => synced.push(`reset:${a}`),
     });
     expect(killed).toEqual(['jacky', 'jacky', 'jacky']); // trước sync + sau mỗi lệnh
-    expect(synced).toEqual([`jacky:${repo}`]); // đồng bộ workspace 1 lần trước các lệnh
-    const res = runGate(repo, makeCard(), base, { build: 'true', lint: '', test: '' } as any, { cfg, killAll: () => {}, sync: () => {} });
+    expect(synced).toEqual(['reset:jacky', `jacky:${repo}`]); // dọn cấu hình agent rồi đồng bộ 1 lần trước các lệnh
+    const res = runGate(repo, makeCard(), base, { build: 'true', lint: '', test: '' } as any, { cfg, killAll: () => {}, sync: () => {}, reset: () => {} });
     expect(res.reasons).toContain('gate_sync_failed');
   });
 
+});
+
+describe('P5 review: team/project.yaml', () => {
+  it('Dev sửa team/project.yaml (đổi ghế) → project_config_tampered dù scope có liệt kê', () => {
+    const repo = tmpRepo({ 'src/a.ts': 'export const a = 1;', 'team/project.yaml': 'key: GTM\n' });
+    const base = headSha(repo);
+    writeFileSync(join(repo, 'src', 'a.ts'), 'export const a = 2;');
+    writeFileSync(join(repo, 'team', 'project.yaml'), 'key: GTM\nseats:\n  qc: jacky\n');
+    commitAll(repo, 'GTM-0001: x', { name: 'd', email: 'd@x' });
+    const card = { ...makeCard(), scope: ['src/', 'team/project.yaml'] };
+    const res = runGate(repo, card as any, base, { build: '', lint: '', test: '' });
+    expect(res.reasons).toContain('project_config_tampered');
+  });
 });
