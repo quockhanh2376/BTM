@@ -114,3 +114,5 @@
 2026-11-10 13:56:10 · end codex(victor) · rc=0 · Cần xác nhận: `npx tsc --noEmit` sạch; `npx vitest run` chạy 3 lần đều dừng lúc nạp config do `spawn EPERM` (0 test chạy), chưa xác nhận được mốc 15 fail Windows.
 2026-11-10 14:24:45 · start codex(victor) · team/prompts/P4-FIXH-dev.md · team/runs/20261110-1424-codex-victor-P4-FIXH-dev.json
 2026-11-10 14:30:26 · end codex(victor) · rc=0 · Cần xác nhận: `npx tsc --noEmit` sạch. Cần xác nhận: `npx vitest run` dừng lúc nạp config do `spawn EPERM` (0 test chạy).
+2026-11-10 15:24:30 · start codex(victor) · team/prompts/P45-T2-dev.md · team/runs/20261110-1524-codex-victor-P45-T2-dev.json
+2026-11-10 15:32:29 · end codex(victor) · rc=0 · �o scope để truyền config. Đã đổi: `src/config.ts`, `src/isolation/worker.ts`, `src/runner/run.ts`, `src/gate/gate.ts`. Đã thêm: `tests/worker.test.ts` cho wrap/killall/schema; test chưa chạy được vì Vitest dừng với `spawn EPERM`. TypeScript: `npx tsc --noEmit` thành công.

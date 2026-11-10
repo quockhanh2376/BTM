@@ -1107,6 +1107,7 @@ async function processGoal(
           };
         }
         const gateResult = runGate(d.repo, ticket, base, d.cfg.gate.commands, {
+          cfg: d.cfg,
           timeoutMs,
           require_report_schema: d.cfg.gate.require_report_schema,
         });

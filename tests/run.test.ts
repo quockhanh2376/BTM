@@ -391,3 +391,27 @@ echo '{"verdict":"pass"}' > "$outFile"
     });
   });
 });
+
+describe('P4.5-T2: runner dưới worker', () => {
+  it('argv bọc sudo wrapper; killAll gọi cả khi lượt thành công lẫn khi runProc ném lỗi', async () => {
+    const base = loadConfig('btm.config.yaml');
+    const cfg = { ...base, host: { ...base.host, worker_user: 'btm-worker' } };
+    const seen: string[][] = [];
+    const killed: number[] = [];
+    let fail = false;
+    const fakeProc = (async (argv: string[]) => {
+      seen.push(argv);
+      if (fail) throw new Error('boom');
+      return { exitCode: 0, timedOut: false, durationMs: 1, output: 'ok' };
+    }) as any;
+    const runner = makeRunner(cfg, undefined, fakeProc, () => killed.push(1));
+    const dir = mkdtempSync(join(tmpdir(), 'btm-w-'));
+    await runner('dev', 'jacky', 'x', dir, join(dir, 'a.log'));
+    expect(seen[0].slice(0, 7)).toEqual(['sudo', '-n', '-u', 'btm-worker', '/usr/local/bin/btm-worker-exec', dir, '--']);
+    expect(killed.length).toBe(1);
+    fail = true;
+    await expect(runner('dev', 'jacky', 'x', dir, join(dir, 'b.log'))).rejects.toThrow('boom');
+    expect(killed.length).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

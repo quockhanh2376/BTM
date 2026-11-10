@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { Ticket } from '../ticket/ticket.ts';
 import { changedFiles, git } from '../git.ts';
+import type { Config } from '../config.ts';
+import { workerKillAll, wrapForWorker } from '../isolation/worker.ts';
 
 export interface GateResult {
   ok: boolean;
@@ -12,6 +14,8 @@ export interface GateResult {
 export interface GateOptions {
   timeoutMs?: number;
   require_report_schema?: boolean;
+  cfg?: Config;
+  killAll?: (cfg: Config) => void;
 }
 
 function matchesScopeItem(file: string, item: string): boolean {
@@ -170,11 +174,21 @@ export function runGate(
 
   for (const [name, command] of cmdList) {
     if (command && command.trim() !== '') {
-      const res = spawnSync('sh', ['-c', command], {
-        cwd: repo,
-        stdio: 'ignore',
-        timeout: timeoutMs && timeoutMs > 0 ? timeoutMs : undefined,
-      });
+      let res: ReturnType<typeof spawnSync>;
+      try {
+        const argv = optsOrTimeout && typeof optsOrTimeout === 'object' && optsOrTimeout.cfg
+          ? wrapForWorker(optsOrTimeout.cfg, ['sh', '-c', command], repo)
+          : ['sh', '-c', command];
+        res = spawnSync(argv[0], argv.slice(1), {
+          cwd: repo,
+          stdio: 'ignore',
+          timeout: timeoutMs && timeoutMs > 0 ? timeoutMs : undefined,
+        });
+      } finally {
+        if (optsOrTimeout && typeof optsOrTimeout === 'object' && optsOrTimeout.cfg) {
+          (optsOrTimeout.killAll ?? workerKillAll)(optsOrTimeout.cfg);
+        }
+      }
       if (res.error && (res.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
         reasons.push(`cmd_timeout:${name}`);
       } else if (res.status !== 0 || res.error) {

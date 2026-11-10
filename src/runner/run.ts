@@ -3,6 +3,7 @@ import { createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } f
 import { dirname, join, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { buildArgv } from './argv.ts';
+import { workerKillAll, wrapForWorker } from '../isolation/worker.ts';
 
 export interface ProcResult {
   exitCode: number | null;
@@ -349,7 +350,8 @@ export type Runner = (
 export function makeRunner(
   cfg: Config,
   defaultSignal?: AbortSignal,
-  runProc: typeof runProcess = runProcess
+  runProc: typeof runProcess = runProcess,
+  killAll: (cfg: Config) => void = workerKillAll
 ): Runner {
   return async (
     seat: Seat,
@@ -382,13 +384,18 @@ export function makeRunner(
       images: options?.images,
     });
 
-    const result = await runProc(argv, {
-      cwd,
-      timeoutMs,
-      logFile: absLogFile,
-      env: process.env,
-      signal: options?.signal ?? defaultSignal,
-    });
+    let result: ProcResult;
+    try {
+      result = await runProc(wrapForWorker(cfg, argv, cwd), {
+        cwd,
+        timeoutMs,
+        logFile: absLogFile,
+        env: process.env,
+        signal: options?.signal ?? defaultSignal,
+      });
+    } finally {
+      killAll(cfg);
+    }
 
     let lastMessage = '';
     if (existsSync(outFile)) {

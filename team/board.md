@@ -40,6 +40,8 @@
 | P4-FIX-F | V | XONG – Q OK, VM 683/683 ×3 | team/prompts/P4-FIXF-victor.md | team/reports/P4-FIXF-dev.md |
 | P4-FIX-G | V + Codex + Cheki | XONG – VM 692/692 ×3 | team/prompts/P4-FIXG-victor.md | team/reports/P4-FIXG-dev.md |
 | P4-FIX-H | Codex + Cheki | XONG – VM 697/697 | team/prompts/P4-FIXH-dev.md | team/reports/P4-FIXH-dev.md |
+| P45-T1 | Cheki | XONG – deploy/isolation-setup.sh prep, chờ Zon chạy | – | – |
+| P45-T2 | Codex + Cheki | XONG – VM 703/703 ×3 | team/prompts/P45-T2-dev.md | team/reports/P45-T2-dev.md |
 | P5 (đội hình linh hoạt) | V→Q | waiting (sau khi Plan 4 merge) | docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).

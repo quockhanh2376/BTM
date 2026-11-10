@@ -709,3 +709,16 @@ describe('runGate', () => {
     });
   });
 });
+
+describe('P4.5-T2: gate dưới worker', () => {
+  it('có worker_user → mỗi lệnh gate gọi killAll một lần', () => {
+    const repo = tmpRepo({ 'src/a.ts': 'export const a = 1;' });
+    const base = headSha(repo);
+    writeFileSync(join(repo, 'src', 'a.ts'), 'export const a = 2;');
+    commitAll(repo, 'GTM-0001: x', { name: 'd', email: 'd@x' });
+    const killed: number[] = [];
+    const cfg = { host: { worker_user: 'btm-worker' } } as any;
+    runGate(repo, makeCard(), base, { build: 'true', lint: '', test: 'true' } as any, { cfg, killAll: () => killed.push(1) });
+    expect(killed.length).toBe(2);
+  });
+});

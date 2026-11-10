@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { isAbsolute } from 'node:path';
 
 export type Seat = 'pm' | 'dev' | 'qc' | 'audit';
 export const SeatSchema = z.enum(['pm', 'dev', 'qc', 'audit']);
@@ -16,6 +17,8 @@ export const HostSchema = z.object({
     port: z.number().int(),
   }).strict(),
   data_dir: z.string(),
+  worker_user: z.string().regex(/^[a-z_][a-z0-9_-]{0,31}$/).optional(),
+  trusted_root: z.string().refine(isAbsolute, 'trusted_root must be an absolute path').optional(),
   ssh_hint: z.string().default('admzon@100.96.250.103'),
 }).strict();
 
