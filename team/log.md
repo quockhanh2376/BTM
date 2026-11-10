@@ -90,3 +90,5 @@
 - 2026-11-10 09:16 · Zon: model theo agent; mặc định = model mặc định của CLI + effort medium; chọn tay trên dashboard. Ghi vào Plan 5 (Task 1/2/5). Sau lượt FIXE2: agy-run.sh/codex-run.sh thêm --effort medium
 - 2026-11-10 09:40 · V · FIX-E (tiếp): Codex đã làm đủ 6 mục, V không sửa thêm; báo tsc sạch, 659/674 (15 fail Win). agy-run.sh thêm --effort medium (AGY_EFFORT). Giao Q review
 - 2026-11-10 09:50 · Q · FIX-E review OK. Cheki: local 659/674 (15 Win), VM 674/674 ×3. Commit. Bắt đầu review độc lập lần 3 toàn nhánh
+- 2026-11-10 09:55 · Commit 4798e93 (FIX-E), push. Review độc lập 3 chạy nền → team/reviews/P4-review-3.md. Giao V P4-UI1
+- 2026-11-10 10:30 · V · P4-UI1 OK. Cheki đo demo 2560px: thẻ ghế chỉ chiếm 3×306/2521px (auto-fill để trống cột) → sửa auto-fit, bỏ rule ≥2560 (bảng/nhật ký bị chia đều 50/50). Đo lại: thẻ 834px ×3, Energy thẳng đáy, bảng/nhật ký 1.5:1. Commit

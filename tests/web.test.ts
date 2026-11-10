@@ -210,7 +210,7 @@ describe('Web Dashboard (web/index.html)', () => {
 
   it('renders required layout components and Vietnamese texts', () => {
     expect(html).toContain('Bot Task Manager');
-    expect(html).toContain('Dừng khẩn cấp');
+    expect(html).toContain('Dừng');
     expect(html).toContain('Duyệt thẻ');
     expect(html).toContain('Mục tiêu phiên');
     expect(html).toContain('Energy: —');
@@ -1374,6 +1374,23 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(html).toContain('Tiếp tục phiên');
       expect(html).toContain('/api/resume');
       expect(html).toMatch(/status\s*===\s*['"]needs_owner['"]\s*\|\|\s*status\s*===\s*['"]stopped['"]/);
+    });
+  });
+
+  describe('P4-UI1: Nút "Dừng" + dashboard dày cho màn 27" 2K/4K', () => {
+    it('đổi chữ "Dừng khẩn cấp" thành "Dừng" trên nút #stop-btn, confirm và feedback, giữ nguyên id và btn-danger', () => {
+      expect(html).not.toContain('Dừng khẩn cấp');
+      expect(html).toMatch(/<button[^>]*id=["']stop-btn["'][^>]*class=["'][^"']*\bbtn-danger\b[^"']*["'][^>]*>\s*Dừng\s*<\/button>/);
+      expect(html).toMatch(/confirm\([^)]*Dừng\?/);
+      expect(html).toContain('Đã gửi lệnh Dừng');
+    });
+
+    it('bỏ max-width: 1400px của khung chính, dùng full width, thu gọn khoảng cách và dùng repeat(auto-fit, minmax(280px, 1fr))', () => {
+      expect(html).not.toContain('max-width: 1400px');
+      expect(html).toContain('auto-fit');
+      expect(html).toMatch(/\.seats-grid\s*\{[^}]*repeat\(\s*auto-fit\s*,\s*minmax\(\s*280px\s*,\s*1fr\s*\)\s*\)/);
+      expect(html).toMatch(/\.seat-footer\s*\{[^}]*margin-top:\s*auto/);
+      expect(html).toMatch(/@media\s*\(\s*max-width:\s*900px\s*\)/);
     });
   });
 

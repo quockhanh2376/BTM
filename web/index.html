@@ -115,12 +115,11 @@
     }
 
     .container {
-      max-width: 1400px;
       margin: 0 auto;
-      padding: 16px 20px 24px 20px;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 10px;
       box-sizing: border-box;
       width: 100%;
     }
@@ -129,7 +128,7 @@
       background-color: var(--card-bg);
       border-radius: 12px;
       border: 1px solid var(--border);
-      padding: 16px 20px;
+      padding: 10px;
       box-sizing: border-box;
     }
 
@@ -150,7 +149,7 @@
       flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 10px;
     }
 
     .brand-section {
@@ -347,18 +346,18 @@
     /* 3 Seat cards */
     .seats-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 10px;
     }
 
     .seat-card {
       background-color: var(--card-bg);
       border-radius: 12px;
       border: 1px solid var(--border);
-      padding: 16px 20px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
       box-sizing: border-box;
       transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
@@ -606,10 +605,10 @@
 
     /* Accounts Section */
     .accounts-section {
-      margin-top: 16px;
+      margin-top: 0;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 10px;
     }
 
     .accounts-section h2 {
@@ -622,15 +621,15 @@
     .accounts-list {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
     }
 
     .account-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      padding: 12px 16px;
+      gap: 10px;
+      padding: 10px;
       border-radius: 8px;
       background-color: var(--badge-bg);
       border: 1px solid var(--border);
@@ -696,7 +695,7 @@
     .board-and-log-layout {
       display: grid;
       grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.2fr);
-      gap: 16px;
+      gap: 10px;
       align-items: stretch;
     }
 
@@ -945,7 +944,7 @@
       border: 1px solid var(--border);
       border-top: none;
       border-radius: 0 0 12px 12px;
-      padding: 16px;
+      padding: 10px;
       box-sizing: border-box;
       width: 100%;
     }
@@ -1062,17 +1061,17 @@
     .goals-container {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 10px;
     }
 
     .goal-group-card {
       background-color: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 16px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
       box-sizing: border-box;
     }
 
@@ -1247,7 +1246,7 @@
     .cmd-section {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 10px;
     }
 
     .recipient-radios {
@@ -1362,20 +1361,20 @@
     .inbox-section {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .notes-list {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
     }
 
     .note-item {
       background-color: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 12px 16px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -1525,8 +1524,8 @@
       background-color: var(--badge-bg);
     }
 
-    /* Responsive adjustments for 960px, 600px, and 375px */
-    @media (max-width: 960px) {
+    /* Responsive adjustments for 900px, 600px, and 375px */
+    @media (max-width: 900px) {
       .seats-grid {
         grid-template-columns: 1fr;
       }
@@ -1537,11 +1536,11 @@
 
     @media (max-width: 600px) {
       .container {
-        padding: 12px;
-        gap: 16px;
+        padding: 8px 10px;
+        gap: 8px;
       }
       .card {
-        padding: 14px 16px;
+        padding: 10px;
       }
       .session-bar {
         flex-direction: column;
@@ -1587,7 +1586,7 @@
         </label>
         <button id="refresh-energy-btn" class="btn btn-secondary" type="button">Làm mới Energy</button>
         <button id="approve-btn" class="btn btn-primary" type="button" disabled title="Không có thẻ chờ duyệt">Duyệt thẻ</button>
-        <button id="stop-btn" class="btn btn-danger" type="button">Dừng khẩn cấp</button>
+        <button id="stop-btn" class="btn btn-danger" type="button">Dừng</button>
         <button id="theme-toggle" class="btn btn-icon" type="button" aria-label="Chuyển sáng/tối">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="5"></circle>
@@ -3528,7 +3527,7 @@
 
       if (stopBtn) {
         stopBtn.addEventListener('click', async function () {
-          if (!confirm('Bạn có chắc chắn muốn Dừng khẩn cấp? Agent đang chạy sẽ bị dừng và hàng đợi sẽ bị xóa.')) {
+          if (!confirm('Bạn có chắc chắn muốn Dừng? Agent đang chạy sẽ bị dừng và hàng đợi sẽ bị xóa.')) {
             return;
           }
           stopBtn.disabled = true;
@@ -3537,7 +3536,7 @@
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
-              showFeedback(topFeedback, 'Đã gửi lệnh Dừng khẩn cấp', false);
+              showFeedback(topFeedback, 'Đã gửi lệnh Dừng', false);
             }
           } catch (err) {
             showFeedback(topFeedback, err.message, true);
