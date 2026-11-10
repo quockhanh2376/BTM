@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import type { Config } from '../config.ts';
 
-export type ExecFn = (file: string, args: string[], options?: { stdio?: 'ignore' | 'pipe'; maxBuffer?: number }) => unknown;
+export type ExecFn = (file: string, args: string[], options?: { stdio?: 'ignore' | 'pipe'; maxBuffer?: number; timeout?: number; killSignal?: NodeJS.Signals }) => unknown;
 
 const USER_RE = /^[a-z_][a-z0-9_-]{0,31}$/;
 

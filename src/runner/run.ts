@@ -435,15 +435,17 @@ export function makeRunner(
     } finally {
       killAll(cfg, agentId);
     }
-    if (isolated) {
-      const imp = isolation.importTurn(cfg, agentId, cwd);
-      if (!imp.ok) result = { ...result, exitCode: result.exitCode || 1, output: `${result.output}
-[btm] ${imp.reason}` };
-    }
-
     let lastMessage = '';
     if (isolated) {
-      lastMessage = isolation.readOut(cfg, agentId);
+      try {
+        const imp = isolation.importTurn(cfg, agentId, cwd);
+        if (!imp.ok) result = { ...result, exitCode: result.exitCode || 1, output: `${result.output}
+[btm] ${imp.reason}` };
+        lastMessage = isolation.readOut(cfg, agentId);
+      } finally {
+        // import/readOut chạy lệnh dưới worker: dọn mọi tiến trình chúng có thể để lại.
+        killAll(cfg, agentId);
+      }
     } else if (existsSync(outFile)) {
       try {
         lastMessage = readFileSync(outFile, 'utf8');

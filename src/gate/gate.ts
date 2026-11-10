@@ -186,6 +186,7 @@ export function runGate(
   if (isolatedGate && hasCmds) {
     try {
       if (!gateAgent) throw new Error('gate agent missing');
+      (gateOpts!.killAll ?? workerKillAll)(gateCfg!, gateAgent);
       (gateOpts!.sync ?? ((c, a, k) => syncWorkspace(c, a, k)))(gateCfg!, gateAgent, repo);
     } catch {
       reasons.push('gate_sync_failed');

@@ -116,6 +116,19 @@ describe('P4.5: syncWorkspace + importTurn (checkout tin cậy, workspace riêng
     }
   });
 
+  it('import bỏ filter/attributes agent cài trong .git: add -A không chạy lệnh của agent', () => {
+    const c = setup();
+    syncWorkspace(c.cfg, 'elon', c.checkout, direct);
+    const marker = join(c.ws, '..', 'pwned');
+    c.g(c.ws, 'config', 'filter.x.clean', `touch "${marker.split('\\').join('/')}"; cat`);
+    mkdirSync(join(c.ws, '.git', 'info'), { recursive: true });
+    writeFileSync(join(c.ws, '.git', 'info', 'attributes'), '* filter=x\n');
+    writeFileSync(join(c.ws, 'b.txt'), 'b\n');
+    expect(importTurn(c.cfg, 'elon', c.checkout, direct).ok).toBe(true);
+    expect(existsSync(marker)).toBe(false);
+    expect(readFileSync(join(c.checkout, 'b.txt'), 'utf8')).toBe('b\n');
+  });
+
   it('bundle rác → bundle_invalid, checkout không đổi', () => {
     const c = setup();
     syncWorkspace(c.cfg, 'elon', c.checkout, direct);

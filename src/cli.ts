@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs, { openSync, writeSync, closeSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, linkSync } from 'node:fs';
 import type http from 'node:http';
@@ -888,7 +888,7 @@ Options:
           process.exitCode = 1;
           return 1;
         }
-        if (resolve(active).startsWith(resolve(cfg.host.trusted_root))) {
+        if (resolve(active).startsWith(resolve(cfg.host.trusted_root) + sep)) {
           console.log(`Already isolated: ${active}`);
           return 0;
         }

@@ -39,6 +39,11 @@ prep() {
     id "$u" >/dev/null 2>&1 || run useradd -m -s /bin/bash "$u"
     run usermod -aG "$GR,$GW" "$u"
     run chmod 700 "/home/$u"
+    # Không cho cron/at/linger: tiến trình không sống sót qua killall sau lượt.
+    for f in /etc/cron.deny /etc/at.deny; do
+      grep -qsx "$u" "$f" || { [ "$DRY" = 1 ] && echo "+ thêm $u vào $f" || echo "$u" >> "$f"; }
+    done
+    run loginctl disable-linger "$u"
     run install -d -o "$u" -g "$u" -m 700 "$WORK/$u"
     local line="export PATH=$CLI/bin:\$PATH DISABLE_AUTOUPDATER=1"
     for f in .profile .bashrc; do
@@ -65,13 +70,13 @@ EOF
 
   install_file /usr/local/bin/btm-worker-killall 755 <<'EOF'
 #!/bin/bash
-# Giết mọi tiến trình của user gọi (kill -1 bỏ qua chính nó); lặp để bắt cả tiến trình vừa fork. Luôn thoát 0.
+# Giết mọi tiến trình của user gọi (kill -1 bỏ qua chính nó); lặp để bắt cả tiến trình vừa fork.
 case "$(id -un)" in btm-*) ;; *) echo "phải chạy dưới user btm-<agent>" >&2; exit 2;; esac
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   kill -KILL -- -1 2>/dev/null || exit 0
   sleep 0.1
 done
-exit 0
+exit 3   # vẫn còn tiến trình sau 10 lần → BTM báo lỗi
 EOF
 
   # sudoers: agent chỉ được chạy đúng 2 wrapper dưới user thuộc nhóm btm-workers, không mật khẩu, không giữ env.

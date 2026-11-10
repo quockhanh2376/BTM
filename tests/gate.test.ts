@@ -722,7 +722,7 @@ describe('P4.5-T2: gate dưới worker', () => {
     runGate(repo, makeCard(), base, { build: 'true', lint: '', test: 'true' } as any, {
       cfg, agentId: 'jacky', killAll: (_c, a) => killed.push(a), sync: (_c, a, k) => synced.push(`${a}:${k}`),
     });
-    expect(killed).toEqual(['jacky', 'jacky']);
+    expect(killed).toEqual(['jacky', 'jacky', 'jacky']); // trước sync + sau mỗi lệnh
     expect(synced).toEqual([`jacky:${repo}`]); // đồng bộ workspace 1 lần trước các lệnh
     const res = runGate(repo, makeCard(), base, { build: 'true', lint: '', test: '' } as any, { cfg, killAll: () => {}, sync: () => {} });
     expect(res.reasons).toContain('gate_sync_failed');

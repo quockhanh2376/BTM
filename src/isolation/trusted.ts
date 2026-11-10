@@ -20,14 +20,17 @@ export type TurnImport =
   | { ok: true; changed: boolean }
   | { ok: false; reason: 'bundle_invalid' | 'bundle_wrong_ref' | 'bundle_unsafe' | 'sync_failed' };
 
-function runWorker(cfg: Config, agentId: string, cwd: string, argv: string[], exec: ExecFn): Buffer {
+// Mọi lệnh dưới worker có hạn giờ: lệnh treo (filter git, FIFO…) không được khoá event loop của BTM.
+function runWorker(cfg: Config, agentId: string, cwd: string, argv: string[], exec: ExecFn, timeout = 120_000): Buffer {
   const wrapped = wrapForWorker(cfg, agentId, argv, cwd);
-  const out = exec(wrapped[0]!, wrapped.slice(1), { stdio: 'pipe', maxBuffer: MAX_BUNDLE });
+  const out = exec(wrapped[0]!, wrapped.slice(1), { stdio: 'pipe', maxBuffer: MAX_BUNDLE, timeout, killSignal: 'SIGKILL' });
   return Buffer.isBuffer(out) ? out : Buffer.from(typeof out === 'string' ? out : '');
 }
 
-// git của worker: đọc checkout tin cậy (user khác sở hữu) cần safe.directory; không hook, không fsmonitor.
-const W_GIT = ['git', '-c', 'safe.directory=*', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false'];
+// git của worker: bỏ ~/.gitconfig + config hệ thống (agent sửa được home của mình); đọc checkout tin cậy (user khác
+// sở hữu) cần safe.directory; không hook, không fsmonitor, không ký.
+const W_GIT = ['env', 'GIT_CONFIG_GLOBAL=/dev/null', 'GIT_CONFIG_NOSYSTEM=1', 'git', '-c', 'safe.directory=*',
+  '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'commit.gpgSign=false'];
 
 export function isIsolated(cfg: Config): boolean {
   return Boolean(cfg.host.worker_prefix);
@@ -60,6 +63,8 @@ export function ensureTrustedCheckout(cfg: Config, workspace: string): string {
   if (!existsSync(join(trusted, '.git'))) {
     mkdirSync(resolve(cfg.host.trusted_root!), { recursive: true });
     git(resolve(cfg.host.trusted_root!), 'clone', '--no-local', '--no-hardlinks', workspace, trusted);
+    // clone chỉ tạo nhánh mặc định: lấy đủ nhánh goal/* về làm nhánh local.
+    git(trusted, 'fetch', '-q', '--no-tags', '--update-head-ok', 'origin', '+refs/heads/*:refs/heads/*');
   }
   return trusted;
 }
@@ -82,12 +87,15 @@ export function syncWorkspace(cfg: Config, agentId: string, checkout: string, ex
   runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'init', '-q'], exec);
   runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'fetch', '-q', '--no-tags', '--update-head-ok', checkout, '+refs/heads/*:refs/heads/*'], exec);
   runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'checkout', '-q', '-f', '-B', branch, sha], exec);
-  runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'clean', '-fdq'], exec);
+  // -ff: xoá cả repo lồng (gitlink) agent để lại, không thì mọi lượt sau bị bundle_unsafe.
+  runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'clean', '-ffdq'], exec);
 }
 
 export function readWorkerOut(cfg: Config, agentId: string, exec: ExecFn = execFileSync): string {
   try {
-    return runWorker(cfg, agentId, userDir(cfg, agentId), ['head', '-c', String(MAX_OUT), workerOutFile(cfg, agentId)], exec).toString('utf8');
+    const f = workerOutFile(cfg, agentId);
+    // chỉ file thường (FIFO/thiết bị làm head treo); timeout ở runWorker chặn phần còn lại.
+    return runWorker(cfg, agentId, userDir(cfg, agentId), ['sh', '-c', 'test -f "$1" && ! test -L "$1" && head -c "$2" -- "$1"', 'sh', f, String(MAX_OUT)], exec, 10_000).toString('utf8');
   } catch {
     return '';
   }
@@ -108,11 +116,14 @@ export function importTurn(cfg: Config, agentId: string, checkout: string, exec:
   const ref = `refs/heads/${branch}`;
   let data: Buffer;
   try {
+    // .git/config + info/attributes do agent viết lại (filter, gpg…) → bỏ, dựng config mặc định trước khi add/commit.
+    runWorker(cfg, agentId, ws, ['rm', '-f', join(ws, '.git', 'config'), join(ws, '.git', 'info', 'attributes')], exec);
+    runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'init', '-q'], exec);
     runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'checkout', '-q', branch], exec);
-    runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'add', '-A'], exec);
+    runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'add', '-A'], exec, 600_000);
     runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, '-c', `user.name=${TURN_NAME}`, '-c', 'user.email=btm@btm.local',
       'commit', '-q', '--allow-empty', '--no-verify', '-m', TURN_MSG], exec);
-    data = runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'bundle', 'create', '-q', '-', ref], exec);
+    data = runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'bundle', 'create', '-q', '-', ref], exec, 600_000);
   } catch {
     return { ok: false, reason: 'bundle_invalid' };
   }

@@ -420,8 +420,8 @@ describe('P4.5-T2: runner dưới worker', () => {
     const ws = path.join('/srv/btm-work', 'btm-jacky', path.basename(dir));
     const ok = await runner('dev', 'jacky', 'x', dir, join(dir, 'a.log'));
     expect(seen[0].slice(0, 7)).toEqual(['sudo', '-n', '-u', 'btm-jacky', '/usr/local/bin/btm-worker-exec', path.resolve(ws), '--']);
-    expect(steps).toEqual(['kill', 'sync', 'run', 'kill', 'import']);
-    expect(killed).toEqual(['jacky', 'jacky']);
+    expect(steps).toEqual(['kill', 'sync', 'run', 'kill', 'import', 'kill']);
+    expect(killed).toEqual(['jacky', 'jacky', 'jacky']);
     expect(ok.lastMessage).toBe('last:jacky');
     importOk = false;
     const bad = await runner('dev', 'jacky', 'x', dir, join(dir, 'c.log'));

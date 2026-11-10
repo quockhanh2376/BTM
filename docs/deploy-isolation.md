@@ -55,6 +55,8 @@ ssh -t admzon@100.96.250.103 "sudo -iu btm-elon claude auth status; sudo -iu btm
 ## Giới hạn còn lại
 - Lệnh gate chạy với `node_modules` trong workspace của Dev, mà Dev sửa được thư mục này.
 - Muốn chặn hẳn thì gate phải chạy trên checkout sạch và chạy `npm ci`. Việc này để plan sau.
+- Cùng một agent ngồi ghế khác (vd jenny làm Dev ticket A rồi QC ticket B) vẫn dùng chung home của mình. Cấu hình CLI mà jenny sửa lúc làm Dev còn nguyên khi jenny làm QC. Cách sửa: dựng lại cấu hình từ mẫu của root trước mỗi lượt, chỉ giữ phần đăng nhập. Việc này để Plan 5.
+- File đã có sẵn trong repo trước khi cách ly không được kiểm tra symlink.
 
 ## Quay lui
 1. Comment lại 3 dòng config.
