@@ -24,11 +24,11 @@ out="team/runs/$(date +%Y%m%d-%H%M)-codex-$seat-$(basename "$prompt_file" .md).j
 echo "$(date '+%F %T') · start codex($seat) · $prompt_file · $out" >> team/runs/runs.log
 set +e
 # ~/.codex của Zon có thể trỏ proxy riêng (model_provider=custom, 127.0.0.1:8045) → mặc định dùng thẳng login ChatGPT (openai).
-# Model mặc định của ~/.codex (gpt-6.1-sol) không dùng được với login ChatGPT → chỉ định rõ.
+# Model mặc định: gpt-6-luna (Zon 2026-11-10; cần Codex ≥ 0.167; gpt-6.1-* không dùng được với login ChatGPT).
 # Sandbox Windows "elevated" (mặc định máy này) đòi UAC mỗi lệnh → lỗi 1223; "unelevated" không cần admin.
 # workspace-write: chỉ ghi trong repo, không mạng. Không bao giờ --dangerously-bypass-*.
 # Test ghi repo tạm vào %TEMP% → cho ghi thêm thư mục đó.
-timeout "${tmin}m" codex exec -c model_provider="\"${CODEX_PROVIDER:-openai}\"" -m "${CODEX_MODEL:-gpt-5.6-sol}" -c model_reasoning_effort="\"${CODEX_EFFORT:-medium}\"" -c windows.sandbox="\"unelevated\"" -s workspace-write -C "$repo" --add-dir "$(cygpath -w "${TEMP:-/tmp}")" --json -o "$out.last.md" - <<< "$prompt" \
+timeout "${tmin}m" codex exec -c model_provider="\"${CODEX_PROVIDER:-openai}\"" -m "${CODEX_MODEL:-gpt-6-luna}" -c model_reasoning_effort="\"${CODEX_EFFORT:-medium}\"" -c windows.sandbox="\"unelevated\"" -s workspace-write -C "$repo" --add-dir "$(cygpath -w "${TEMP:-/tmp}")" --json -o "$out.last.md" - <<< "$prompt" \
   > "$out.stream.jsonl" 2> "$out.err"
 rc=$?
 set -e

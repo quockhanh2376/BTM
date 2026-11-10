@@ -34,7 +34,7 @@ out="team/runs/$(date +%Y%m%d-%H%M)-$who-$(basename "$prompt_file" .md).json"
 echo "$(date '+%F %T') · start $who · $prompt_file · $out" >> team/runs/runs.log
 set +e
 # stream-json: từng bước ghi ngay vào .stream.jsonl để xem trực tiếp (team/bin/watch.mjs); dòng "result" cuối = JSON cũ.
-agy -p "$prompt" --effort "${AGY_EFFORT:-medium}" --mode accept-edits --settings "$settings" \
+agy -p "$prompt" --model "${AGY_MODEL:-gemini-3.8-flash-medium}" --effort "${AGY_EFFORT:-medium}" --mode accept-edits --settings "$settings" \
   --output-format stream-json --print-timeout "${tmin}m" "${conv_args[@]}" > "$out.stream.jsonl" 2> "$out.err"
 rc=$?
 set -e
