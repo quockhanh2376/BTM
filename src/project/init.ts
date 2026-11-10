@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { git, commitAll } from '../git.ts';
+import type { Config } from '../config.ts';
+import { ensureTrustedRepo } from '../isolation/trusted.ts';
 
 export type RunOpenspecFn = (
   args: string[],
@@ -10,6 +12,7 @@ export type RunOpenspecFn = (
 
 export interface InitProjectOptions {
   key: string;
+  cfg?: Config;
   runOpenspec?: RunOpenspecFn;
 }
 
@@ -133,6 +136,7 @@ export function initProject(
     }
 
     commitAll(projectPath, 'init', { name: 'btm', email: 'btm@btm.local' });
+    if (opts.cfg?.host.worker_user) ensureTrustedRepo(opts.cfg, projectPath);
 
     return projectPath;
   } catch (err) {

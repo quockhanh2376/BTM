@@ -412,7 +412,7 @@ Options:
         const btmRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
         const templatesFrom = join(btmRoot, 'team', 'templates');
 
-        const projectPath = initProject(cfg.host.projects_root, name, templatesFrom, { key });
+        const projectPath = initProject(cfg.host.projects_root, name, templatesFrom, { key, cfg });
         const dbPath = join(cfg.host.data_dir, 'btm.db');
         const store = openStore(dbPath);
         try {
@@ -846,7 +846,7 @@ Options:
           }
 
           const protectedBranch = cfg.git?.protected_branch || 'main';
-          const res = migrateProject(activeProject, key, protectedBranch);
+          const res = migrateProject(activeProject, key, protectedBranch, store, cfg);
           if (res.already) {
             console.log(
               `Project already migrated with key "${key}". Đã chuyển sang ${protectedBranch}; nhánh cũ ${res.previousBranch} giữ nguyên.`
