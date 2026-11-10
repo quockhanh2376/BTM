@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { workerUser, wrapForWorker } from '../isolation/worker.ts';
 import type { Config } from '../config.ts';
 import type { Store } from '../store/db.ts';
 import type { ProcResult } from '../runner/run.ts';
@@ -35,16 +36,25 @@ export function createMonitor(d: MonitorDeps): {
   gate(agent: string): { ok: true } | { ok: false; reason: string };
 } {
   const env = d.env ?? process.env;
-  const runner =
+  const isolated = Boolean(d.cfg.host.worker_prefix);
+  // Cách ly: CLI của mỗi agent đăng nhập dưới user riêng → đọc Energy/đăng nhập chạy dưới user đó (cwd = home của nó).
+  const runnerFor = (agent: string) =>
     d.run ??
-    ((argv: string[]) =>
-      runProcess(argv, {
+    ((argv: string[]) => {
+      const user = workerUser(d.cfg, agent);
+      return runProcess(wrapForWorker(d.cfg, agent, argv, user ? `/home/${user}` : d.cfg.host.projects_root), {
         cwd: process.cwd(),
         timeoutMs: 60_000,
         logFile: '/dev/null',
         env,
-      }));
-  const codexHome = d.codexHome ?? (env.CODEX_HOME || join(env.HOME || '/home/agent', '.codex'));
+        // shortcut: không killall khi hết giờ – sẽ giết luôn lượt agent đang chạy dưới cùng user; tiến trình treo
+        // được dọn ở killall trước/sau lượt kế tiếp của agent đó. Nâng cấp nếu thấy check Energy treo nhiều.
+      });
+    });
+  const codexHomeFor = (agent: string) => {
+    const user = workerUser(d.cfg, agent);
+    return d.codexHome ?? (user ? `/home/${user}/.codex` : env.CODEX_HOME || join(env.HOME || '/home/agent', '.codex'));
+  };
 
   const checkedAt = new Map<string, number>();
   const inFlight = new Map<string, Promise<void>>();
@@ -70,9 +80,10 @@ export function createMonitor(d: MonitorDeps): {
 
     const task = (async () => {
       const energyReading = await d.readEnergy(agent, agentCfg.tool, {
-        run: runner,
-        codexHome,
+        run: runnerFor(agent),
+        codexHome: codexHomeFor(agent),
         now: d.now,
+        codexViaRun: isolated,
       });
       d.store.saveEnergy(energyReading);
 
@@ -80,7 +91,7 @@ export function createMonitor(d: MonitorDeps): {
       const agyQuotaOutput = energyReading.note;
 
       const loginHealth = await d.checkLogin(agent, agentCfg.tool, {
-        run: runner,
+        run: runnerFor(agent),
         env,
         cfg: d.cfg,
         now: d.now,

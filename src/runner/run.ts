@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
 import { createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { buildArgv } from './argv.ts';
+import { workerKillAll, wrapForWorker } from '../isolation/worker.ts';
+import { importTurn, isIsolated, readWorkerOut, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
 
 export interface ProcResult {
   exitCode: number | null;
@@ -59,7 +61,15 @@ export function getDescendantPids(rootPid: number): number[] {
 
 export function runProcess(
   argv: string[],
-  o: { cwd: string; timeoutMs: number; logFile: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal }
+  o: {
+    cwd: string;
+    timeoutMs: number;
+    logFile: string;
+    env?: NodeJS.ProcessEnv;
+    signal?: AbortSignal;
+    /** Gọi khi hết giờ/huỷ: tiến trình chạy dưới user khác (sudo) BTM không tự giết được. */
+    onKill?: () => void;
+  }
 ): Promise<ProcResult> {
   return new Promise((resolve, reject) => {
     if (argv.length === 0) {
@@ -238,6 +248,9 @@ export function runProcess(
     const killAll = () => {
       if (killInitiated) return;
       killInitiated = true;
+      try {
+        o.onKill?.();
+      } catch {}
 
       if (childPid) {
         for (const pid of getDescendantPids(childPid)) {
@@ -346,10 +359,22 @@ export type Runner = (
   options?: { signal?: AbortSignal; images?: string[] }
 ) => Promise<TurnOutput>;
 
+export interface Isolation {
+  sync: (cfg: Config, agentId: string, checkout: string) => void;
+  importTurn: (cfg: Config, agentId: string, checkout: string) => TurnImport;
+  readOut: (cfg: Config, agentId: string) => string;
+}
+
 export function makeRunner(
   cfg: Config,
   defaultSignal?: AbortSignal,
-  runProc: typeof runProcess = runProcess
+  runProc: typeof runProcess = runProcess,
+  killAll: (cfg: Config, agentId: string) => void = workerKillAll,
+  isolation: Isolation = {
+    sync: (c, a, k) => syncWorkspace(c, a, k),
+    importTurn: (c, a, k) => importTurn(c, a, k),
+    readOut: (c, a) => readWorkerOut(c, a),
+  }
 ): Runner {
   return async (
     seat: Seat,
@@ -370,9 +395,15 @@ export function makeRunner(
 
     const absLogFile = resolve(logFile);
     mkdirSync(dirname(absLogFile), { recursive: true });
-    const outFile = absLogFile.endsWith('.log')
-      ? absLogFile.slice(0, -4) + '.out'
-      : `${absLogFile}.out`;
+    const isolated = isIsolated(cfg);
+    // Cách ly: file kết quả của CLI nằm trong thư mục riêng của worker; BTM đọc lại qua worker (không thư mục chung).
+    const outFile = isolated
+      ? workerOutFile(cfg, agentId)
+      : absLogFile.endsWith('.log')
+        ? absLogFile.slice(0, -4) + '.out'
+        : `${absLogFile}.out`;
+    // cwd = checkout tin cậy; agent chạy trong workspace riêng của mình.
+    const runCwd = isolated ? workspacePath(cfg, agentId, cwd) : cwd;
 
     const argv = buildArgv(agent.tool, prompt, {
       seat,
@@ -382,16 +413,40 @@ export function makeRunner(
       images: options?.images,
     });
 
-    const result = await runProc(argv, {
-      cwd,
-      timeoutMs,
-      logFile: absLogFile,
-      env: process.env,
-      signal: options?.signal ?? defaultSignal,
-    });
-
+    let result: ProcResult;
+    try {
+      if (isolated) {
+        killAll(cfg, agentId);
+        try {
+          isolation.sync(cfg, agentId, cwd);
+        } catch {
+          const output = '[btm] sync_failed';
+          return { exitCode: 1, timedOut: false, durationMs: 0, output, lastMessage: output };
+        }
+      }
+      result = await runProc(wrapForWorker(cfg, agentId, argv, runCwd), {
+        cwd,
+        timeoutMs,
+        logFile: absLogFile,
+        env: process.env,
+        signal: options?.signal ?? defaultSignal,
+        onKill: isolated ? () => killAll(cfg, agentId) : undefined,
+      });
+    } finally {
+      killAll(cfg, agentId);
+    }
     let lastMessage = '';
-    if (existsSync(outFile)) {
+    if (isolated) {
+      try {
+        const imp = isolation.importTurn(cfg, agentId, cwd);
+        if (!imp.ok) result = { ...result, exitCode: result.exitCode || 1, output: `${result.output}
+[btm] ${imp.reason}` };
+        lastMessage = isolation.readOut(cfg, agentId);
+      } finally {
+        // import/readOut chạy lệnh dưới worker: dọn mọi tiến trình chúng có thể để lại.
+        killAll(cfg, agentId);
+      }
+    } else if (existsSync(outFile)) {
       try {
         lastMessage = readFileSync(outFile, 'utf8');
       } catch {

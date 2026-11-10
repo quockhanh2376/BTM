@@ -1,0 +1,2 @@
+2026-11-10T08:29:19.904422Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in D:\BotTaskManager\src\runner\run.ts:
+import { buildArgv } from './argv.js';

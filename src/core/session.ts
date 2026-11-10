@@ -66,15 +66,18 @@ export interface RunSessionOpts {
   };
 }
 
-function isRepoInsideProjectsRoot(repo: string, projectsRoot: string): boolean {
+function isInside(repo: string, root: string): boolean {
   try {
-    const realRepo = realpathSync(repo);
-    const realRoot = realpathSync(projectsRoot);
-    const rel = relative(realRoot, realRepo);
+    const rel = relative(realpathSync(root), realpathSync(repo));
     return Boolean(rel && !rel.startsWith('..') && !isAbsolute(rel));
   } catch {
     return false;
   }
+}
+
+// Cách ly: project của store là checkout tin cậy dưới host.trusted_root.
+function isRepoInsideProjectsRoot(repo: string, cfg: Config): boolean {
+  return isInside(repo, cfg.host.projects_root) || Boolean(cfg.host.worker_prefix && cfg.host.trusted_root && isInside(repo, cfg.host.trusted_root));
 }
 
 function isOutOfTurns(store: Store, sessionId: number, cfg: Config, seat: Seat): boolean {
@@ -1107,6 +1110,8 @@ async function processGoal(
           };
         }
         const gateResult = runGate(d.repo, ticket, base, d.cfg.gate.commands, {
+          cfg: d.cfg,
+          agentId: devAgent,
           timeoutMs,
           require_report_schema: d.cfg.gate.require_report_schema,
         });
@@ -1976,7 +1981,7 @@ export async function runSession(
     };
   }
 
-  if (!isRepoInsideProjectsRoot(d.repo, d.cfg.host.projects_root)) {
+  if (!isRepoInsideProjectsRoot(d.repo, d.cfg)) {
     return {
       status: 'refused',
       sessionId: null,
@@ -2137,7 +2142,7 @@ export async function resumeSession(
     };
   }
 
-  if (!isRepoInsideProjectsRoot(d.repo, d.cfg.host.projects_root)) {
+  if (!isRepoInsideProjectsRoot(d.repo, d.cfg)) {
     return {
       status: 'refused',
       sessionId,

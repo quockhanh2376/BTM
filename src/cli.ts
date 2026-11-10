@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs, { openSync, writeSync, closeSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, linkSync } from 'node:fs';
 import type http from 'node:http';
@@ -11,7 +11,8 @@ import { openStore } from './store/db.ts';
 import { initProject } from './project/init.ts';
 import { migrateProject } from './project/migrate.ts';
 import { runSession, resumeSession, type SessionOutcome } from './core/session.ts';
-import { protectedShaKey } from './core/guard.ts';
+import { protectedShaKey, turnGuardKey } from './core/guard.ts';
+import { ensureTrustedCheckout } from './isolation/trusted.ts';
 import { git } from './git.ts';
 import { approveGoal } from './ticket/goal.ts';
 import { makeRunner, type Runner } from './runner/run.ts';
@@ -362,6 +363,7 @@ Usage:
   btm goal list                                 List goals for active project
   btm goal approve G<n>                         Approve and merge goal into main
   btm main accept                               Accept and re-pin current main branch SHA
+  btm isolate                                   Create trusted checkout of active project and switch to it (needs host.worker_prefix)
   btm serve                                     Start dashboard HTTP server and host
 
 Options:
@@ -376,7 +378,7 @@ Options:
     return 0;
   }
 
-  if (['init', 'run', 'status', 'serve', 'goal', 'migrate', 'main'].includes(command)) {
+  if (['init', 'run', 'status', 'serve', 'goal', 'migrate', 'main', 'isolate'].includes(command)) {
     let cfg;
     try {
       cfg = loadConfig(configPath);
@@ -385,6 +387,8 @@ Options:
       process.exitCode = 1;
       return 1;
     }
+    // Cách ly: file BTM tạo (checkout tin cậy, log) không cho group ghi – worker chỉ đọc qua group btm-read.
+    if (cfg.host.worker_prefix) process.umask(0o027);
 
     const forbidden = checkForbiddenEnv(effectiveEnv, cfg.login.forbidden_env);
     if (forbidden.length > 0) {
@@ -846,7 +850,7 @@ Options:
           }
 
           const protectedBranch = cfg.git?.protected_branch || 'main';
-          const res = migrateProject(activeProject, key, protectedBranch);
+          const res = migrateProject(activeProject, key, protectedBranch, store);
           if (res.already) {
             console.log(
               `Project already migrated with key "${key}". Đã chuyển sang ${protectedBranch}; nhánh cũ ${res.previousBranch} giữ nguyên.`
@@ -867,6 +871,54 @@ Options:
         return 1;
       } finally {
         releaseLock?.();
+      }
+    }
+
+    if (command === 'isolate') {
+      if (!cfg.host.worker_prefix || !cfg.host.trusted_root || !cfg.host.work_root) {
+        console.error('Error: host.worker_prefix, host.trusted_root và host.work_root phải được đặt trong config.');
+        process.exitCode = 1;
+        return 1;
+      }
+      const store = openStore(join(cfg.host.data_dir, 'btm.db'));
+      try {
+        const active = store.getActiveProject();
+        if (!active) {
+          console.error('Error: No active project set.');
+          process.exitCode = 1;
+          return 1;
+        }
+        if (resolve(active).startsWith(resolve(cfg.host.trusted_root) + sep)) {
+          console.log(`Already isolated: ${active}`);
+          return 0;
+        }
+        const protectedBranch = cfg.git?.protected_branch || 'main';
+        // main của workspace cũ phải đúng sha đã ghim – không ghim lén thay đổi lạ của agent làm main mới.
+        const oldPin = store.getSetting(protectedShaKey(active))?.trim() || '';
+        const oldMain = git(active, 'rev-parse', `refs/heads/${protectedBranch}`).trim();
+        if (oldPin && oldPin !== oldMain) {
+          console.error(`Error: ${protectedBranch} (${oldMain}) khác sha đã ghim (${oldPin}). Kiểm tra rồi chạy "btm main accept" trước.`);
+          process.exitCode = 1;
+          return 1;
+        }
+        if (store.getSetting(turnGuardKey(active))?.trim()) {
+          console.error('Error: còn lượt dở (turn guard). Chạy btm serve một lần để phục hồi rồi dừng lại trước khi isolate.');
+          process.exitCode = 1;
+          return 1;
+        }
+        const trusted = ensureTrustedCheckout(cfg, active);
+        const mainSha = git(trusted, 'rev-parse', `refs/heads/${protectedBranch}`).trim();
+        if (mainSha !== oldMain) throw new Error(`checkout tin cậy có ${protectedBranch} ${mainSha} ≠ ${oldMain}`);
+        store.renameProject(active, trusted);
+        store.setSetting(protectedShaKey(trusted), mainSha);
+        console.log(`Isolated: active project ${active} → ${trusted} (main ${mainSha})`);
+        return 0;
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+        return 1;
+      } finally {
+        store.close();
       }
     }
 

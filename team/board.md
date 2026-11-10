@@ -40,6 +40,11 @@
 | P4-FIX-F | V | XONG – Q OK, VM 683/683 ×3 | team/prompts/P4-FIXF-victor.md | team/reports/P4-FIXF-dev.md |
 | P4-FIX-G | V + Codex + Cheki | XONG – VM 692/692 ×3 | team/prompts/P4-FIXG-victor.md | team/reports/P4-FIXG-dev.md |
 | P4-FIX-H | Codex + Cheki | XONG – VM 697/697 | team/prompts/P4-FIXH-dev.md | team/reports/P4-FIXH-dev.md |
+| P45-T1 | Cheki + Zon | XONG – prep đã chạy, 3 CLI đã login dưới btm-worker | – | – |
+| P45-T2 | Codex + Cheki | XONG – VM 703/703 ×3 | team/prompts/P45-T2-dev.md | team/reports/P45-T2-dev.md |
+| P45-T3 | Codex + Cheki | XONG – VM 708/708 ×3 | team/prompts/P45-T3-dev.md | team/reports/P45-T3-dev.md |
+| P45-T4 | Cheki | XONG (đổi thiết kế: checkout tin cậy) – VM 707/707 ×3 | team/prompts/P45-T4a-dev.md | team/reports/P45-T4a-dev.md |
+| P45-T5 | Cheki | XONG – Energy/đăng nhập dưới worker, VM 709/709 |
 | P5 (đội hình linh hoạt) | V→Q | waiting (sau khi Plan 4 merge) | docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).
