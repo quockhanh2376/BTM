@@ -4333,3 +4333,60 @@ describe('P5-T7: thay ghế khi hết Energy', () => {
     expect(ConfigSchema.safeParse({ ...base, seats_backup: { dev: ['elon'] } }).success).toBe(false);
   });
 });
+
+describe('P6-T2: hết hạn mức giữa lượt → tiếp tục bằng người dự phòng', () => {
+  it('Dev (agy) báo RESOURCE_EXHAUSTED → lượt kết thúc usage_limit_hit, ghi giờ hồi; Tiếp tục → jenny code, elon QC', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '1' });
+    const { deps, store } = makeDeps(repo, { seats_backup: { dev: ['jenny'], qc: ['elon'] } } as any);
+    const calls: string[] = [];
+    const { runner } = createFakeRunner([
+      (_seat, agent, _prompt, cwd) => {
+        calls.push(`pm:${agent}`);
+        writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+      },
+      (_seat, agent) => {
+        calls.push(`dev:${agent}`);
+        return { exitCode: 1, output: 'error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 2h0m0s.' };
+      },
+      (_seat, agent, _prompt, cwd) => {
+        calls.push(`dev:${agent}`);
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+        writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+      },
+      (_seat, agent) => {
+        calls.push(`qc:${agent}`);
+        return makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass');
+      },
+    ]);
+    deps.runner = runner;
+    deps.gate = () => ({ ok: true as const });
+    const first = await runSession(deps, ['Build feature'], { approved: true });
+    expect(first.status).toBe('needs_owner');
+    expect(first.notes[0]).toBe('usage_limit_hit:jacky');
+    const until = store.getSetting('usage_limited_until:jacky');
+    expect(until && Date.parse(until)).toBeGreaterThan(Date.now() + 60 * 60 * 1000);
+    await resumeSession(deps, first.sessionId!);
+    expect(calls).toEqual(['pm:elon', 'dev:jacky', 'dev:jenny', 'qc:elon']);
+    store.close();
+  });
+
+  it('không có người dự phòng → phiên dừng với lý do usage_limited kèm giờ hồi, Dev không chạy lại', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '1' });
+    const { deps, store } = makeDeps(repo);
+    store.setSetting('usage_limited_until:jacky', new Date(Date.now() + 3600_000).toISOString());
+    let devCalled = false;
+    const { runner } = createFakeRunner([
+      (_seat, _agent, _prompt, cwd) => {
+        writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+      },
+      () => { devCalled = true; return { exitCode: 0, output: '' }; },
+    ]);
+    deps.runner = runner;
+    deps.gate = () => ({ ok: true as const });
+    const out = await runSession(deps, ['Build feature'], { approved: true });
+    expect(out.status).toBe('needs_owner');
+    expect(devCalled).toBe(false);
+    expect(out.notes[0]).toMatch(/^usage_limited:jacky resets \d{2}:\d{2}$/);
+    store.close();
+  });
+});

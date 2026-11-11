@@ -71,3 +71,13 @@ describe('P5-T4: đội hình theo project (cả 4 ghế)', () => {
     store.close();
   });
 });
+
+describe('P6-T2: seats_backup theo project', () => {
+  it('đọc seats_backup từ team/project.yaml trên main; mục sai định dạng bị bỏ qua kèm cảnh báo', async () => {
+    const { readProjectSeats } = await import('../src/store/db.ts');
+    const a = repo('seats_backup:\n  dev: [jenny]\n  qc: elon\n');
+    const r = readProjectSeats(a);
+    expect(r.backups).toEqual({ dev: ['jenny'] });
+    expect(r.warnings.join(' ')).toContain('seats_backup.qc');
+  });
+});

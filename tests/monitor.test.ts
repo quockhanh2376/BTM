@@ -460,3 +460,25 @@ describe('Energy Monitor', () => {
     expect(listModels).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('P6-T2: gỡ cờ hết hạn mức khi Energy thật còn đủ', () => {
+  it('Energy fresh ≥ ngưỡng → xoá usage_limited_until; còn thấp → giữ', async () => {
+    const { openStore } = await import('../src/store/db.ts');
+    const { loadConfig } = await import('../src/config.ts');
+    const store = openStore(':memory:');
+    const cfg = loadConfig('btm.config.yaml');
+    let pct = 10;
+    const readEnergy = vi.fn(async () => ({ agent: 'jacky', status: 'fresh', readAt: '', windows: [{ name: '5h', remainingPercent: pct, resetsAt: '' }] }));
+    const checkLogin = vi.fn(async () => ({ agent: 'jacky', state: 'relogin', detail: 'x' }));
+    let t = new Date('2026-11-11T10:00:00Z');
+    const monitor = createMonitor({ cfg, store, readEnergy: readEnergy as any, checkLogin: checkLogin as any, now: () => t, run: vi.fn() as any });
+    store.setSetting('usage_limited_until:jacky', '2026-11-18T10:00:00Z');
+    await monitor.refresh(['jacky'], true);
+    expect(store.getSetting('usage_limited_until:jacky')).toBe('2026-11-18T10:00:00Z');
+    pct = 90;
+    t = new Date(t.getTime() + 3600_000);
+    await monitor.refresh(['jacky'], true);
+    expect(store.getSetting('usage_limited_until:jacky')).toBe('');
+    store.close();
+  });
+});
