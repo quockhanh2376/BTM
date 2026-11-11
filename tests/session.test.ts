@@ -2675,12 +2675,12 @@ Yêu cầu đóng note nhưng commit lỗi
     expect(devRan).toBe(true);
     expect(qcRan).toBe(false);
     expect(outcome.status).toBe('needs_owner');
-    expect(outcome.notes.some((note) => note.includes('hồi lúc'))).toBe(true);
+    expect(outcome.notes.some((note) => note.includes('resets'))).toBe(true);
     expect(outcome.notes.some((note) => note.includes('10%') && note.includes('19:57'))).toBe(true);
 
     const failures = store.listHandoffFailures(outcome.sessionId!);
     expect(failures.length).toBeGreaterThan(0);
-    expect(failures[0].reason).toContain('hồi lúc');
+    expect(failures[0].reason).toContain('resets');
 
     store.close();
   });
