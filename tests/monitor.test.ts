@@ -440,4 +440,23 @@ describe('Energy Monitor', () => {
     await monitor.refresh(['jenny']);
     expect(JSON.stringify(mockReadEnergy.mock.calls[0])).toContain('/home/btm-jenny/.codex');
   });
+
+  it('danh sách model: đọc khi đăng nhập ok, lưu cache 6 giờ; đăng nhập hỏng thì không đọc', async () => {
+    const { readAgentModels } = await import('../src/energy/monitor.ts');
+    const listModels = vi.fn().mockResolvedValue(['gemini-4-argon-medium', 'gemini-3.8-flash-high']);
+    const readEnergy = vi.fn().mockResolvedValue({ agent: 'jacky', status: 'unknown', windows: [], readAt: '' });
+    let login = { agent: 'jacky', state: 'ok', detail: 'Ok' };
+    const checkLogin = vi.fn(async () => login);
+    const monitor = createMonitor({ cfg, store, readEnergy, checkLogin: checkLogin as any, now, run: vi.fn() as any, listModels });
+    await monitor.refresh(['jacky'], true);
+    expect(readAgentModels(store, 'jacky')?.models).toEqual(['gemini-4-argon-medium', 'gemini-3.8-flash-high']);
+    nowTime = new Date(nowTime.getTime() + 60 * 60 * 1000);
+    await monitor.refresh(['jacky'], true);
+    expect(listModels).toHaveBeenCalledTimes(1); // còn trong 6 giờ
+    store.setSetting('agent_models:jacky', '');
+    login = { agent: 'jacky', state: 'relogin', detail: 'x' };
+    nowTime = new Date(nowTime.getTime() + 60 * 60 * 1000);
+    await monitor.refresh(['jacky'], true);
+    expect(listModels).toHaveBeenCalledTimes(1);
+  });
 });

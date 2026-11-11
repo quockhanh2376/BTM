@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { Config, Effort, Seat, Tool } from '../config.ts';
 import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerUser } from '../isolation/worker.ts';
+import { readAgentModels } from '../energy/monitor.ts';
 import { effectiveSeats, resolveSeats, type Store, type GoalState, type QueueItem } from '../store/db.ts';
 import { loadTickets, type Ticket, type TicketState, type TicketType, type TicketSize } from '../ticket/ticket.ts';
 import { readProjectKey } from '../ticket/goal.ts';
@@ -72,6 +73,8 @@ export interface AccountCard {
   effort: Effort;
   /** User Linux của agent khi bật cách ly (btm-<id>), null khi không. */
   user: string | null;
+  /** Model CLI liệt kê được (đọc định kỳ dưới user của agent); rỗng khi chưa đọc. */
+  modelOptions: string[];
 }
 
 export interface SnapshotNote {
@@ -205,6 +208,7 @@ function getAccounts(store: Store, cfg: Config): AccountCard[] {
       model: agentModel(cfg, store, agent) ?? null,
       effort: agentEffort(cfg, store, agent),
       user,
+      modelOptions: readAgentModels(store, agent)?.models ?? [],
     };
   });
 }

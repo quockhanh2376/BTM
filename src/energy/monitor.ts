@@ -6,6 +6,7 @@ import type { ProcResult } from '../runner/run.ts';
 import { runProcess } from '../runner/run.ts';
 import { readEnergy, type EnergyReading, type EnergyWindow } from './quota.ts';
 import { checkLogin, type LoginHealth } from './login.ts';
+import { listModels } from '../agents/models.ts';
 
 export interface MonitorDeps {
   cfg: Config;
@@ -16,6 +17,20 @@ export interface MonitorDeps {
   run?: (argv: string[]) => Promise<ProcResult>;
   env?: NodeJS.ProcessEnv;
   codexHome?: string;
+  listModels?: typeof listModels;
+}
+
+const MODELS_TTL_MS = 6 * 60 * 60 * 1000;
+
+export const agentModelsKey = (id: string) => `agent_models:${id}`;
+
+export function readAgentModels(store: Pick<Store, 'getSetting'>, id: string): { at: number; models: string[] } | null {
+  try {
+    const v = JSON.parse(store.getSetting(agentModelsKey(id)) ?? '');
+    return v && Array.isArray(v.models) && typeof v.at === 'number' ? v : null;
+  } catch {
+    return null;
+  }
 }
 
 export function formatHHmm(iso: string): string {
@@ -99,6 +114,19 @@ export function createMonitor(d: MonitorDeps): {
         agyQuotaOutput,
       });
       d.store.saveLogin(loginHealth);
+
+      // Danh sách model cho ô chọn trên dashboard: đọc dưới user của agent, tối đa 6 giờ/lần, lỗi thì giữ bản cũ.
+      if (loginHealth.state === 'ok' || loginHealth.state === 'expiring') {
+        const cached = readAgentModels(d.store, agent);
+        if (!cached || d.now().getTime() - cached.at > MODELS_TTL_MS) {
+          try {
+            const models = await (d.listModels ?? listModels)(agentCfg.tool, runnerFor(agent));
+            if (models.length > 0) {
+              d.store.setSetting(agentModelsKey(agent), JSON.stringify({ at: d.now().getTime(), models }));
+            }
+          } catch {}
+        }
+      }
 
       checkedAt.set(agent, d.now().getTime());
     })();

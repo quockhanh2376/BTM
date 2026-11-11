@@ -585,10 +585,6 @@ export function createServer(o: {
             sendJson(res, 400, { error: `Agent "${agent}" không tồn tại` });
             return;
           }
-          if (o.cfg.agents[agent]!.tool === 'codex-cli' && (effort === 'xhigh' || effort === 'max')) {
-            sendJson(res, 400, { error: 'Codex chỉ có effort low/medium/high' });
-            return;
-          }
           if (model !== undefined) o.store.setSetting(agentModelKey(agent), model);
           if (effort !== undefined) o.store.setSetting(agentEffortKey(agent), effort);
           sendJson(res, 200, { ok: true, agent, model: model ?? null, effort: effort ?? null });

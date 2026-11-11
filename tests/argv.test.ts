@@ -182,9 +182,9 @@ describe('P5-T2: model + effort', () => {
     expect(buildArgv('claude-code', 'x', { ...base, model: 'opus', effort: 'high' }).slice(0, 6)).toEqual(['claude', '--model', 'opus', '--effort', 'high', '-p']);
     expect(buildArgv('claude-code', 'x', { ...base, seat: 'qc', effort: 'medium' })).toEqual(['claude', '--effort', 'medium', '-p', 'x', '--allowedTools', 'Read']);
   });
-  it('codex: -m + model_reasoning_effort; xhigh/max → high', () => {
+  it('codex: -m + model_reasoning_effort (Codex 0.167 có cả xhigh/max)', () => {
     const a = buildArgv('codex-cli', 'x', { ...base, model: 'gpt-6-luna', effort: 'max' });
-    expect(a.slice(0, 6)).toEqual(['codex', 'exec', '-m', 'gpt-6-luna', '-c', 'model_reasoning_effort="high"']);
+    expect(a.slice(0, 6)).toEqual(['codex', 'exec', '-m', 'gpt-6-luna', '-c', 'model_reasoning_effort="max"']);
     expect(buildArgv('codex-cli', 'x', { ...base, effort: 'low' })).not.toContain('-m');
   });
   it('agy: --model/--effort trong chuỗi lệnh', () => {
