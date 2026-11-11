@@ -1020,7 +1020,7 @@ describe('HTTP Server & SSE', () => {
       const data = await res.json();
       expect(data).toEqual({ ok: true, seat: 'dev', agent: 'jenny' });
       expect(store.getSetting('seat:dev')).toBe('jenny');
-      expect(logSpy).toHaveBeenCalledWith('Đổi ghế dev: jacky → jenny');
+      expect(logSpy).toHaveBeenCalledWith('dev seat: jacky → jenny');
       logSpy.mockRestore();
     });
   });
@@ -1091,7 +1091,7 @@ describe('HTTP Server & SSE', () => {
 
       // Verify host.start called
       expect(host.startCalls.length).toBe(1);
-      expect(host.startCalls[0][0]).toContain('Xử lý ghi chú team N-1: Vui lòng kiểm tra lỗi');
+      expect(host.startCalls[0][0]).toContain('Team note N-1: Vui lòng kiểm tra lỗi');
       expect(host.startOpts[0]?.noteId).toBe(1);
       expect(host.startOpts[0]?.text).toBe('Vui lòng kiểm tra lỗi giao diện theo ảnh');
       expect(host.startOpts[0]?.image?.ext).toBe('png');
@@ -1208,7 +1208,7 @@ describe('HTTP Server & SSE', () => {
       expect(store.listNotes(testRepo).length).toBe(0);
     });
 
-    it('returns 409 "Đang có phiên chạy" when host is busy, without writing file or committing note', async () => {
+    it('returns 409 "Session running" when host is busy, without writing file or committing note', async () => {
       host.busy = () => true;
 
       const res = await fetch(`${baseUrl}/api/team-note`, {
@@ -1225,7 +1225,7 @@ describe('HTTP Server & SSE', () => {
 
       expect(res.status).toBe(409);
       const data = await res.json();
-      expect(data.error).toBe('Đang có phiên chạy');
+      expect(data.error).toBe('Session running');
 
       // Verify no note in DB
       const notes = store.listNotes(testRepo);
@@ -1365,7 +1365,7 @@ describe('HTTP Server & SSE', () => {
     });
 
     it('returns 409 when host.start reports session already running', async () => {
-      host.start = async () => ({ ok: false, error: 'Đang có phiên chạy' });
+      host.start = async () => ({ ok: false, error: 'Session running' });
 
       const res = await fetch(`${baseUrl}/api/team-note`, {
         method: 'POST',
@@ -1381,7 +1381,7 @@ describe('HTTP Server & SSE', () => {
 
       expect(res.status).toBe(409);
       const data = await res.json();
-      expect(data.error).toBe('Đang có phiên chạy');
+      expect(data.error).toBe('Session running');
       expect(store.listNotes(testRepo).length).toBe(0);
     });
   });

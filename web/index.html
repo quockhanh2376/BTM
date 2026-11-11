@@ -2125,7 +2125,7 @@
         if (savedLang && STRINGS[savedLang]) LANG = savedLang;
       } catch (e) {}
       // Thiếu key → trả lại chính key (không crash). {x} thay bằng vars.x.
-      function tr(key, vars) {
+      function tx(key, vars) {
         var table = STRINGS[LANG] || STRINGS.en;
         var str = Object.prototype.hasOwnProperty.call(table, key) ? table[key]
           : (Object.prototype.hasOwnProperty.call(STRINGS.en, key) ? STRINGS.en[key] : key);
@@ -2136,11 +2136,11 @@
       }
       function applyI18n(root) {
         var scope = root || document;
-        scope.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = tr(el.getAttribute('data-i18n')); });
-        scope.querySelectorAll('[data-i18n-aria]').forEach(function (el) { el.setAttribute('aria-label', tr(el.getAttribute('data-i18n-aria'))); });
-        scope.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) { el.setAttribute('placeholder', tr(el.getAttribute('data-i18n-placeholder'))); });
-        scope.querySelectorAll('[data-i18n-title]').forEach(function (el) { el.setAttribute('title', tr(el.getAttribute('data-i18n-title'))); });
-        scope.querySelectorAll('[data-i18n-alt]').forEach(function (el) { el.setAttribute('alt', tr(el.getAttribute('data-i18n-alt'))); });
+        scope.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = tx(el.getAttribute('data-i18n')); });
+        scope.querySelectorAll('[data-i18n-aria]').forEach(function (el) { el.setAttribute('aria-label', tx(el.getAttribute('data-i18n-aria'))); });
+        scope.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) { el.setAttribute('placeholder', tx(el.getAttribute('data-i18n-placeholder'))); });
+        scope.querySelectorAll('[data-i18n-title]').forEach(function (el) { el.setAttribute('title', tx(el.getAttribute('data-i18n-title'))); });
+        scope.querySelectorAll('[data-i18n-alt]').forEach(function (el) { el.setAttribute('alt', tx(el.getAttribute('data-i18n-alt'))); });
       }
       applyI18n();
     (function () {
@@ -2179,23 +2179,23 @@
 
       // 2. Status Translations
       var STATUS_MAP = {
-        running: tr('status.running'),
-        awaiting_approval: tr('status.awaiting_approval'),
-        done: tr('status.done'),
-        needs_owner: tr('status.needs_owner'),
-        out_of_turns: tr('status.out_of_turns'),
-        stopped: tr('status.stopped'),
-        refused: tr('status.refused'),
-        error: tr('status.error'),
-        pending: tr('status.pending'),
-        in_dev: tr('status.in_dev'),
-        awaiting_qc: tr('status.awaiting_qc'),
-        passed: tr('status.passed'),
-        returned: tr('status.returned'),
-        failed: tr('status.failed'),
-        blocked: tr('status.blocked'),
-        queued: tr('status.queued'),
-        cancelled: tr('status.cancelled')
+        running: tx('status.running'),
+        awaiting_approval: tx('status.awaiting_approval'),
+        done: tx('status.done'),
+        needs_owner: tx('status.needs_owner'),
+        out_of_turns: tx('status.out_of_turns'),
+        stopped: tx('status.stopped'),
+        refused: tx('status.refused'),
+        error: tx('status.error'),
+        pending: tx('status.pending'),
+        in_dev: tx('status.in_dev'),
+        awaiting_qc: tx('status.awaiting_qc'),
+        passed: tx('status.passed'),
+        returned: tx('status.returned'),
+        failed: tx('status.failed'),
+        blocked: tx('status.blocked'),
+        queued: tx('status.queued'),
+        cancelled: tx('status.cancelled')
       };
       var STATUS_LABELS = STATUS_MAP;
 
@@ -2308,23 +2308,23 @@
 
       function getLoginDisplay(login) {
         if (!login) {
-          return { text: tr('login.unknown'), dotClass: 'dot-unknown' };
+          return { text: tx('login.unknown'), dotClass: 'dot-unknown' };
         }
         var state = login.state || 'unknown';
         if (state === 'ok') {
           return { text: 'Ok', dotClass: 'dot-ok' };
         }
         if (state === 'expiring') {
-          var label = login.detail ? login.detail.replace(/^Expires\s*/i, tr('login.expiring', { date: '' })) : tr('login.expiringSoon');
+          var label = login.detail ? login.detail.replace(/^Expires\s*/i, tx('login.expiring', { date: '' })) : tx('login.expiringSoon');
           return { text: label, dotClass: 'dot-expiring' };
         }
         if (state === 'relogin') {
-          return { text: tr('login.relogin'), dotClass: 'dot-relogin' };
+          return { text: tx('login.relogin'), dotClass: 'dot-relogin' };
         }
         if (state === 'api_key') {
-          return { text: tr('login.apiKey'), dotClass: 'dot-api-key' };
+          return { text: tx('login.apiKey'), dotClass: 'dot-api-key' };
         }
-        return { text: tr('login.unknown'), dotClass: 'dot-unknown' };
+        return { text: tx('login.unknown'), dotClass: 'dot-unknown' };
       }
 
       function energyColor(pct) {
@@ -2348,7 +2348,7 @@
         var rawPct = typeof w === 'number' ? w : (w.remainingPercent != null ? w.remainingPercent : (w.pct != null ? w.pct : 0));
         var pct = Math.max(0, Math.min(100, Math.round(Number(rawPct) || 0)));
         var hhmm = (typeof w === 'object' && w.resetsAt) ? formatHHmm(w.resetsAt) : '';
-        return tr('energy.left', { pct: pct }) + (hhmm ? tr('energy.resets', { time: hhmm }) : '');
+        return tx('energy.left', { pct: pct }) + (hhmm ? tx('energy.resets', { time: hhmm }) : '');
       }
 
       async function copyLoginCommand(text, inputEl, feedbackTarget) {
@@ -2358,7 +2358,7 @@
           } else if (feedbackTarget && 'textContent' in feedbackTarget) {
             feedbackTarget.textContent = msg;
             setTimeout(function () {
-              feedbackTarget.textContent = tr('acc.copy');
+              feedbackTarget.textContent = tx('acc.copy');
             }, 2000);
           }
         }
@@ -2382,10 +2382,10 @@
             ok = false;
           }
           if (ok) {
-            setFeedback(tr('acc.copied'));
+            setFeedback(tx('acc.copied'));
             return true;
           } else {
-            setFeedback(tr('acc.copyManual'));
+            setFeedback(tx('acc.copyManual'));
             return false;
           }
         }
@@ -2399,7 +2399,7 @@
         if (hasClipboard) {
           try {
             await navigator.clipboard.writeText(text);
-            setFeedback(tr('acc.copied'));
+            setFeedback(tx('acc.copied'));
             return true;
           } catch (err) {
             return fallbackCopy();
@@ -2440,7 +2440,7 @@
         var chip = document.createElement('span');
         chip.className = 'energy-warn';
         var hhmm = eng.soonestReset ? formatHHmm(eng.soonestReset) : '';
-        chip.textContent = tr('energy.low') + (hhmm ? tr('energy.resets', { time: hhmm }) : '');
+        chip.textContent = tx('energy.low') + (hhmm ? tx('energy.resets', { time: hhmm }) : '');
         return chip;
       }
 
@@ -2448,7 +2448,7 @@
         var el = document.getElementById('seat-warnings');
         if (!el) return;
         if (Array.isArray(warnings) && warnings.length > 0) {
-          el.textContent = tr('seat.warnings', { list: warnings.join(' · ') });
+          el.textContent = tx('seat.warnings', { list: warnings.join(' · ') });
           el.style.display = 'block';
         } else {
           el.textContent = '';
@@ -2461,20 +2461,20 @@
         wrap.className = 'account-model';
 
         var modelInput = document.createElement('select');
-        modelInput.setAttribute('aria-label', tr('acc.modelFor', { agent: acc.agent }));
+        modelInput.setAttribute('aria-label', tx('acc.modelFor', { agent: acc.agent }));
         var options = [''].concat(Array.isArray(acc.modelOptions) ? acc.modelOptions : []);
         if (acc.model && options.indexOf(acc.model) < 0) options.push(acc.model);
         options.forEach(function (m) {
           var opt = document.createElement('option');
           opt.value = m;
-          opt.textContent = m || tr('acc.cliDefault');
+          opt.textContent = m || tx('acc.cliDefault');
           modelInput.appendChild(opt);
         });
         modelInput.value = acc.model || '';
         wrap.appendChild(modelInput);
 
         var effortSel = document.createElement('select');
-        effortSel.setAttribute('aria-label', tr('acc.effortFor', { agent: acc.agent }));
+        effortSel.setAttribute('aria-label', tx('acc.effortFor', { agent: acc.agent }));
         var allowed = EFFORTS;
         allowed.forEach(function (e) {
           var opt = document.createElement('option');
@@ -2488,15 +2488,15 @@
         var saveBtn = document.createElement('button');
         saveBtn.type = 'button';
         saveBtn.className = 'btn btn-secondary btn-sm';
-        saveBtn.textContent = tr('acc.save');
-        saveBtn.setAttribute('aria-label', tr('acc.saveFor', { agent: acc.agent }));
+        saveBtn.textContent = tx('acc.save');
+        saveBtn.setAttribute('aria-label', tx('acc.saveFor', { agent: acc.agent }));
         saveBtn.addEventListener('click', async function () {
           try {
             var res = await postJson('/api/agent', { agent: acc.agent, model: modelInput.value.trim(), effort: effortSel.value });
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
-              showFeedback(topFeedback, tr('acc.saved', { agent: acc.agent }), false);
+              showFeedback(topFeedback, tx('acc.saved', { agent: acc.agent }), false);
             }
           } catch (err) {
             showFeedback(topFeedback, err.message, true);
@@ -2523,7 +2523,7 @@
           body = {};
         }
         if (!res.ok) {
-          var errText = (body && body.error) ? body.error : tr('fb.serverError', { status: res.status });
+          var errText = (body && body.error) ? body.error : tx('fb.serverError', { status: res.status });
           throw new Error(errText);
         }
         return body;
@@ -2550,16 +2550,16 @@
         var status = snapshot && snapshot.session ? snapshot.session.status : null;
         if (snapshot && snapshot.session && snapshot.session.status === 'awaiting_approval') {
           approveBtn.disabled = false;
-          approveBtn.textContent = tr('btn.approve');
+          approveBtn.textContent = tx('btn.approve');
           approveBtn.removeAttribute('title');
         } else if (status === 'needs_owner' || status === 'stopped') {
           approveBtn.disabled = false;
-          approveBtn.textContent = tr('btn.resume');
+          approveBtn.textContent = tx('btn.resume');
           approveBtn.removeAttribute('title');
         } else {
           approveBtn.disabled = true;
-          approveBtn.textContent = tr('btn.approve');
-          approveBtn.setAttribute('title', tr('fb.nothingToApprove'));
+          approveBtn.textContent = tx('btn.approve');
+          approveBtn.setAttribute('title', tx('fb.nothingToApprove'));
         }
       }
 
@@ -2576,12 +2576,12 @@
       var goalTicketsFingerprints = {};
 
       var PIPELINE_STAGES = [
-        { key: 'intake', label: tr('stage.intake') },
-        { key: 'plan', label: tr('stage.plan') },
-        { key: 'build', label: tr('stage.build') },
-        { key: 'verify', label: tr('stage.verify') },
-        { key: 'audit', label: tr('stage.audit') },
-        { key: 'release', label: tr('stage.release') }
+        { key: 'intake', label: tx('stage.intake') },
+        { key: 'plan', label: tx('stage.plan') },
+        { key: 'build', label: tx('stage.build') },
+        { key: 'verify', label: tx('stage.verify') },
+        { key: 'audit', label: tx('stage.audit') },
+        { key: 'release', label: tx('stage.release') }
       ];
 
       function getTasksFingerprint(tasks) {
@@ -2695,7 +2695,7 @@
           var td = document.createElement('td');
           td.colSpan = 4;
           td.className = 'empty-placeholder';
-          td.textContent = tr('goal.noTickets');
+          td.textContent = tx('goal.noTickets');
           tr.appendChild(td);
           tbody.appendChild(tr);
           return;
@@ -2712,7 +2712,7 @@
 
           var tdGoal = document.createElement('td');
           tdGoal.className = 'col-goal';
-          tdGoal.textContent = t.goal || t.title || tr('goal.noDesc');
+          tdGoal.textContent = t.goal || t.title || tx('goal.noDesc');
           tr.appendChild(tdGoal);
 
           var tdFixes = document.createElement('td');
@@ -2740,17 +2740,17 @@
         clearChildren(containerEl);
         var loadingEl = document.createElement('div');
         loadingEl.className = 'empty-placeholder';
-        loadingEl.textContent = tr('history.loading');
+        loadingEl.textContent = tx('history.loading');
         containerEl.appendChild(loadingEl);
         try {
           var res = await fetch('/api/tickets/' + encodeURIComponent(ticketId) + '/history');
-          if (!res.ok) throw new Error(tr('history.cannotLoad'));
+          if (!res.ok) throw new Error(tx('history.cannotLoad'));
           var list = await res.json();
           clearChildren(containerEl);
           if (!Array.isArray(list) || list.length === 0) {
             var emptyEl = document.createElement('div');
             emptyEl.className = 'empty-placeholder';
-            emptyEl.textContent = tr('history.empty');
+            emptyEl.textContent = tx('history.empty');
             containerEl.appendChild(emptyEl);
             return;
           }
@@ -2787,7 +2787,7 @@
           var errEl = document.createElement('div');
           errEl.className = 'empty-placeholder';
           errEl.style.color = 'var(--error-text, var(--danger))';
-          errEl.textContent = err.message || tr('history.error');
+          errEl.textContent = err.message || tx('history.error');
           containerEl.appendChild(errEl);
         }
       }
@@ -2801,7 +2801,7 @@
         if (list.length === 0) {
           var empty = document.createElement('div');
           empty.className = 'empty-placeholder';
-          empty.textContent = tr('goals.empty');
+          empty.textContent = tx('goals.empty');
           container.appendChild(empty);
           return;
         }
@@ -2827,7 +2827,7 @@
           titleWrap.className = 'goal-group-title';
 
           var titleSpan = document.createElement('span');
-          titleSpan.textContent = 'G' + g.n + ' · ' + (g.title || '') + ' · ' + tr('goal.passed', { n: g.passed || 0, m: g.total || 0 });
+          titleSpan.textContent = 'G' + g.n + ' · ' + (g.title || '') + ' · ' + tx('goal.passed', { n: g.passed || 0, m: g.total || 0 });
           titleWrap.appendChild(titleSpan);
           header.appendChild(titleWrap);
 
@@ -2839,18 +2839,18 @@
             var approveGoalBtn = document.createElement('button');
             approveGoalBtn.type = 'button';
             approveGoalBtn.className = 'btn btn-primary btn-approve-goal';
-            approveGoalBtn.textContent = tr('goal.approveMerge');
+            approveGoalBtn.textContent = tx('goal.approveMerge');
             approveGoalBtn.addEventListener('click', async function () {
-              if (!confirm(tr('goal.confirmMerge', { n: g.n }))) {
+              if (!confirm(tx('goal.confirmMerge', { n: g.n }))) {
                 return;
               }
               approveGoalBtn.disabled = true;
               try {
                 var res = await postJson('/api/goal/approve', { goal: 'G' + g.n });
                 if (res && res.ok) {
-                  showFeedback(topFeedback, tr('goal.merged', { n: g.n, sha: (res.sha || '').slice(0, 7) }), false);
+                  showFeedback(topFeedback, tx('goal.merged', { n: g.n, sha: (res.sha || '').slice(0, 7) }), false);
                 } else {
-                  showFeedback(topFeedback, (res && res.message) || tr('goal.approveError'), true);
+                  showFeedback(topFeedback, (res && res.message) || tx('goal.approveError'), true);
                 }
               } catch (err) {
                 showFeedback(topFeedback, err.message, true);
@@ -2903,7 +2903,7 @@
           var tabNav = document.createElement('div');
           tabNav.className = 'task-tabs-nav';
           tabNav.setAttribute('role', 'tablist');
-          tabNav.setAttribute('aria-label', tr('goal.tableTitle', { n: g.n }));
+          tabNav.setAttribute('aria-label', tx('goal.tableTitle', { n: g.n }));
           tabNav.setAttribute('data-active-state', activeTab);
           tabNav.style.borderBottomColor = 'var(--tab-' + (activeTab === 'in_dev' ? 'in-dev' : (activeTab === 'awaiting_qc' ? 'awaiting-qc' : activeTab)) + ')';
 
@@ -2953,19 +2953,19 @@
           var thGoal = document.createElement('th');
           thGoal.scope = 'col';
           thGoal.className = 'col-goal';
-          thGoal.textContent = tr('goal.col.title');
+          thGoal.textContent = tx('goal.col.title');
           trHead.appendChild(thGoal);
 
           var thFixes = document.createElement('th');
           thFixes.scope = 'col';
           thFixes.className = 'col-fixes';
-          thFixes.textContent = tr('goal.col.rounds');
+          thFixes.textContent = tx('goal.col.rounds');
           trHead.appendChild(thFixes);
 
           var thUpdated = document.createElement('th');
           thUpdated.scope = 'col';
           thUpdated.className = 'col-updated';
-          thUpdated.textContent = tr('goal.col.updated');
+          thUpdated.textContent = tx('goal.col.updated');
           trHead.appendChild(thUpdated);
 
           thead.appendChild(trHead);
@@ -2989,7 +2989,7 @@
               var tdEmpty = document.createElement('td');
               tdEmpty.colSpan = 4;
               tdEmpty.className = 'empty-placeholder';
-              tdEmpty.textContent = tr('goal.noTickets');
+              tdEmpty.textContent = tx('goal.noTickets');
               trEmpty.appendChild(tdEmpty);
               tbody.appendChild(trEmpty);
               return;
@@ -3118,11 +3118,11 @@
 
             var labelSpan = document.createElement('span');
             var tabLabelMap = {
-              pending: tr('status.pending'),
-              in_dev: tr('status.in_dev'),
-              awaiting_qc: tr('status.awaiting_qc'),
-              passed: tr('status.passed'),
-              returned: tr('status.returned')
+              pending: tx('status.pending'),
+              in_dev: tx('status.in_dev'),
+              awaiting_qc: tx('status.awaiting_qc'),
+              passed: tx('status.passed'),
+              returned: tx('status.returned')
             };
             labelSpan.textContent = tabLabelMap[tabKey] || tabKey;
             tabBtn.appendChild(labelSpan);
@@ -3194,11 +3194,11 @@
         if (!file) return;
         var validTypes = ['image/png', 'image/jpeg', 'image/webp'];
         if (!validTypes.includes(file.type)) {
-          showFeedback(cmdFeedback, tr('cmd.imageType'), true);
+          showFeedback(cmdFeedback, tx('cmd.imageType'), true);
           return;
         }
         if (file.size > 5 * 1024 * 1024) {
-          showFeedback(cmdFeedback, tr('cmd.imageSize'), true);
+          showFeedback(cmdFeedback, tx('cmd.imageSize'), true);
           return;
         }
         if (reader) {
@@ -3225,11 +3225,11 @@
         setDisplay(attachImageGroup, to === 'team', 'flex');
         if (cmdNote) {
           if (to === 'team') {
-            cmdNote.textContent = tr('cmd.hintTeam');
+            cmdNote.textContent = tx('cmd.hintTeam');
           } else if (to === 'pm') {
-            cmdNote.textContent = tr('cmd.hintPm');
+            cmdNote.textContent = tx('cmd.hintPm');
           } else {
-            cmdNote.textContent = tr('cmd.hintSeat', { seat: formatSeatLabel(to) });
+            cmdNote.textContent = tx('cmd.hintSeat', { seat: formatSeatLabel(to) });
           }
         }
       }
@@ -3273,7 +3273,7 @@
           seatKeys = ['pm', 'dev', 'qc'];
         }
 
-        var options = [{ value: 'team', label: tr('cmd.team') }];
+        var options = [{ value: 'team', label: tx('cmd.team') }];
         seatKeys.forEach(function (sk) {
           options.push({ value: sk, label: formatSeatLabel(sk) });
         });
@@ -3314,7 +3314,7 @@
         if (list.length === 0) {
           var empty = document.createElement('div');
           empty.className = 'empty-placeholder';
-          empty.textContent = tr('inbox.empty');
+          empty.textContent = tx('inbox.empty');
           notesList.appendChild(empty);
           return;
         }
@@ -3346,7 +3346,7 @@
           statusEl.className = 'note-status';
           var isDone = n.status === 'done';
           statusEl.classList.add(isDone ? 'note-status-done' : 'note-status-open');
-          statusEl.textContent = isDone ? tr('status.done') : (n.status === 'open' ? tr('status.open') : formatStatus(n.status));
+          statusEl.textContent = isDone ? tx('status.done') : (n.status === 'open' ? tx('status.open') : formatStatus(n.status));
           header.appendChild(statusEl);
 
           item.appendChild(header);
@@ -3360,7 +3360,7 @@
             var imgEl = document.createElement('img');
             imgEl.className = 'note-image-thumb';
             imgEl.src = '/api/notes/' + n.id + '/image';
-            imgEl.alt = tr('inbox.attachment', { id: n.id });
+            imgEl.alt = tx('inbox.attachment', { id: n.id });
             item.appendChild(imgEl);
           }
 
@@ -3421,9 +3421,9 @@
           if (toolEl) {
             var toolParts = [cardData.tool || '—'];
             if (cardData.model) toolParts.push(cardData.model);
-            if (cardData.substitute) toolParts.push(tr('seat.substitute', { agent: cardData.substitute }));
+            if (cardData.substitute) toolParts.push(tx('seat.substitute', { agent: cardData.substitute }));
             if (Array.isArray(cardData.also) && cardData.also.length > 0) {
-              toolParts.push(tr('seat.also', { seats: cardData.also.map(function (x) { return SEAT_LABELS[x] || x; }).join(', ') }));
+              toolParts.push(tx('seat.also', { seats: cardData.also.map(function (x) { return SEAT_LABELS[x] || x; }).join(', ') }));
             }
             toolEl.textContent = toolParts.join(' · ');
           }
@@ -3441,10 +3441,10 @@
               statusBadge.className = 'seat-status-badge';
               if (cardData.status === 'waiting') {
                 statusBadge.classList.add('status-waiting');
-                statusBadge.textContent = tr('seat.waiting');
+                statusBadge.textContent = tx('seat.waiting');
               } else {
                 statusBadge.classList.add('status-idle');
-                statusBadge.textContent = tr('seat.idle');
+                statusBadge.textContent = tx('seat.idle');
               }
             }
           }
@@ -3480,7 +3480,7 @@
                 var row = document.createElement('div');
                 row.className = 'energy-bar-row';
 
-                var wLabel = w.name === '5h' ? tr('energy.5h') : (w.name === 'week' ? tr('energy.week') : w.name);
+                var wLabel = w.name === '5h' ? tx('energy.5h') : (w.name === 'week' ? tx('energy.week') : w.name);
                 var lbl = document.createElement('span');
                 lbl.className = 'energy-bar-label';
                 lbl.textContent = wLabel;
@@ -3513,7 +3513,7 @@
               var unk = document.createElement('div');
               unk.className = 'energy-unknown';
               var noteText = (eng && eng.note) ? (' (' + eng.note + ')') : '';
-              unk.textContent = tr('energy.unavailable') + noteText;
+              unk.textContent = tx('energy.unavailable') + noteText;
               energyBox.appendChild(unk);
             }
           }
@@ -3526,7 +3526,7 @@
 
         // Project
         if (projectBadge) {
-          projectBadge.textContent = state.project ? tr('bar.project', { name: state.project }) : tr('bar.noProject');
+          projectBadge.textContent = state.project ? tx('bar.project', { name: state.project }) : tx('bar.noProject');
         }
 
         // Settings
@@ -3536,11 +3536,11 @@
 
         // Session & Turns
         if (state.session) {
-          if (sessionBadge) sessionBadge.textContent = tr('bar.session', { id: state.session.id, status: formatStatus(state.session.status) });
-          if (turnsBadge) turnsBadge.textContent = tr('bar.turns', { used: state.session.turnsUsed, max: state.session.maxTurns });
+          if (sessionBadge) sessionBadge.textContent = tx('bar.session', { id: state.session.id, status: formatStatus(state.session.status) });
+          if (turnsBadge) turnsBadge.textContent = tx('bar.turns', { used: state.session.turnsUsed, max: state.session.maxTurns });
         } else {
-          if (sessionBadge) sessionBadge.textContent = tr('bar.noSession');
-          if (turnsBadge) turnsBadge.textContent = tr('bar.turns', { used: 0, max: 0 });
+          if (sessionBadge) sessionBadge.textContent = tx('bar.noSession');
+          if (turnsBadge) turnsBadge.textContent = tx('bar.turns', { used: 0, max: 0 });
         }
 
         if (approveBtn) {
@@ -3551,10 +3551,10 @@
         if (state.holder) {
           var seatObj = (state.seats || []).find(function (s) { return s.seat === state.holder; });
           var holderName = seatObj ? formatAgentDisplayName(seatObj.agent, seatObj.seat) : formatLogWho(state.holder, state.seats);
-          if (holderText) holderText.textContent = tr('bar.holder', { seat: holderName });
+          if (holderText) holderText.textContent = tx('bar.holder', { seat: holderName });
           setDisplay(holderDot, true, 'inline-block');
         } else {
-          if (holderText) holderText.textContent = tr('bar.noHolder');
+          if (holderText) holderText.textContent = tx('bar.noHolder');
           setDisplay(holderDot, false);
         }
 
@@ -3565,7 +3565,7 @@
           if (goals.length === 0) {
             var emptyLi = document.createElement('li');
             emptyLi.className = 'empty-placeholder';
-            emptyLi.textContent = tr('goals.sessionEmpty');
+            emptyLi.textContent = tx('goals.sessionEmpty');
             goalsList.appendChild(emptyLi);
           } else {
             goals.forEach(function (g) {
@@ -3604,7 +3604,7 @@
           if (logs.length === 0) {
             var emptyLog = document.createElement('div');
             emptyLog.className = 'empty-placeholder';
-            emptyLog.textContent = tr('log.empty');
+            emptyLog.textContent = tx('log.empty');
             logList.appendChild(emptyLog);
           } else {
             logs.forEach(function (item) {
@@ -3639,7 +3639,7 @@
           if (queue.length === 0) {
             var emptyQ = document.createElement('li');
             emptyQ.className = 'empty-placeholder';
-            emptyQ.textContent = tr('queue.empty');
+            emptyQ.textContent = tx('queue.empty');
             queueList.appendChild(emptyQ);
           } else {
             queue.forEach(function (item) {
@@ -3684,7 +3684,7 @@
         if (!Array.isArray(accounts) || accounts.length === 0) {
           var empty = document.createElement('div');
           empty.className = 'empty-placeholder';
-          empty.textContent = tr('acc.empty');
+          empty.textContent = tx('acc.empty');
           container.appendChild(empty);
           return;
         }
@@ -3743,14 +3743,14 @@
           codeEl.readOnly = true;
           codeEl.className = 'account-cmd-code';
           codeEl.value = cmdStr;
-          codeEl.setAttribute('aria-label', tr('acc.loginCmdFor', { agent: acc.agent }));
+          codeEl.setAttribute('aria-label', tx('acc.loginCmdFor', { agent: acc.agent }));
           cmdWrap.appendChild(codeEl);
 
           var copyBtn = document.createElement('button');
           copyBtn.className = 'btn btn-secondary btn-sm copy-btn';
           copyBtn.setAttribute('type', 'button');
-          copyBtn.setAttribute('aria-label', tr('acc.copyLoginFor', { agent: acc.agent }));
-          copyBtn.textContent = tr('acc.copy');
+          copyBtn.setAttribute('aria-label', tx('acc.copyLoginFor', { agent: acc.agent }));
+          copyBtn.textContent = tx('acc.copy');
 
           copyBtn.addEventListener('click', function () {
             copyLoginCommand(cmdStr, codeEl, copyBtn);
@@ -3800,7 +3800,7 @@
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
-              showFeedback(topFeedback, tr('fb.energyRefreshed'), false);
+              showFeedback(topFeedback, tx('fb.energyRefreshed'), false);
             }
           } catch (err) {
             showFeedback(topFeedback, err.message, true);
@@ -3820,7 +3820,7 @@
               if (res && res.error) {
                 showFeedback(topFeedback, res.error, true);
               } else {
-                showFeedback(topFeedback, tr('fb.seatChanged', { seat: SEAT_LABELS[sk] || sk }), false);
+                showFeedback(topFeedback, tx('fb.seatChanged', { seat: SEAT_LABELS[sk] || sk }), false);
               }
             } catch (err) {
               showFeedback(topFeedback, err.message, true);
@@ -3837,7 +3837,7 @@
 
       if (stopBtn) {
         stopBtn.addEventListener('click', async function () {
-          if (!confirm(tr('confirm.stop'))) {
+          if (!confirm(tx('confirm.stop'))) {
             return;
           }
           stopBtn.disabled = true;
@@ -3846,7 +3846,7 @@
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
-              showFeedback(topFeedback, tr('fb.stopSent'), false);
+              showFeedback(topFeedback, tx('fb.stopSent'), false);
             }
           } catch (err) {
             showFeedback(topFeedback, err.message, true);
@@ -3861,7 +3861,7 @@
           var status = latestSnapshot && latestSnapshot.session ? latestSnapshot.session.status : null;
           var isResume = status === 'needs_owner' || status === 'stopped';
           var endpoint = isResume ? '/api/resume' : '/api/approve';
-          var successMsg = isResume ? tr('fb.resumeSent') : tr('fb.approved');
+          var successMsg = isResume ? tx('fb.resumeSent') : tx('fb.approved');
           approveBtn.disabled = true;
           try {
             var res = await postJson(endpoint, {});
@@ -3924,7 +3924,7 @@
           var text = cmdTextArea.value.trim();
 
           if (!text) {
-            showFeedback(cmdFeedback, tr('cmd.empty'), true);
+            showFeedback(cmdFeedback, tx('cmd.empty'), true);
             return;
           }
 
@@ -3942,16 +3942,16 @@
               if (res && res.error) {
                 showFeedback(cmdFeedback, res.error, true);
               } else {
-                showFeedback(cmdFeedback, tr('cmd.noteSent'), false);
+                showFeedback(cmdFeedback, tx('cmd.noteSent'), false);
                 cmdTextArea.value = '';
                 clearAttachedImage();
               }
             } else {
               var res = await postJson('/api/command', { to: to, text: text });
               if (res && res.ok === false) {
-                showFeedback(cmdFeedback, res.error || tr('cmd.failed'), true);
+                showFeedback(cmdFeedback, res.error || tx('cmd.failed'), true);
               } else {
-                showFeedback(cmdFeedback, tr('cmd.sent'), false);
+                showFeedback(cmdFeedback, tx('cmd.sent'), false);
                 cmdTextArea.value = '';
               }
             }

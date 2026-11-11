@@ -34,7 +34,7 @@ describe('Energy Monitor', () => {
       store.saveLogin({
         agent: 'jacky',
         state: 'relogin',
-        detail: 'Cần đăng nhập lại',
+        detail: 'Re-login needed',
       });
 
       const monitor = createMonitor({
@@ -55,7 +55,7 @@ describe('Energy Monitor', () => {
       store.saveLogin({
         agent: 'jenny',
         state: 'api_key',
-        detail: 'API key đè đăng nhập',
+        detail: 'API key overrides login',
       });
 
       const monitor = createMonitor({
@@ -123,7 +123,7 @@ describe('Energy Monitor', () => {
 
       expect(monitor.gate('jacky')).toEqual({
         ok: false,
-        reason: 'energy:5h còn 15%, hồi lúc 19:57',
+        reason: 'energy:5h 15% left, resets 19:57',
       });
     });
 
@@ -153,7 +153,7 @@ describe('Energy Monitor', () => {
 
       expect(monitor.gate('jenny')).toEqual({
         ok: false,
-        reason: 'energy:week còn 12%, hồi lúc 00:22',
+        reason: 'energy:week 12% left, resets 00:22',
       });
     });
 
@@ -236,13 +236,13 @@ describe('Energy Monitor', () => {
         status: 'unknown',
         windows: [],
         readAt: '2026-11-08T15:00:00.000Z',
-        note: 'Lệnh agy /quota thất bại: please login first',
+        note: 'agy /quota failed: please login first',
       } as EnergyReading);
 
       const mockCheckLogin = vi.fn().mockResolvedValue({
         agent: 'jacky',
         state: 'relogin',
-        detail: 'Cần đăng nhập lại',
+        detail: 'Re-login needed',
       } as LoginHealth);
 
       const monitor = createMonitor({
@@ -260,7 +260,7 @@ describe('Energy Monitor', () => {
         'antigravity-cli',
         expect.objectContaining({
           agyQuotaOk: false,
-          agyQuotaOutput: 'Lệnh agy /quota thất bại: please login first',
+          agyQuotaOutput: 'agy /quota failed: please login first',
         })
       );
     });

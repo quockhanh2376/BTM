@@ -220,7 +220,7 @@ describe('CLI btm migrate', () => {
 
     const logOutput = consoleLogSpy.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(logOutput).toContain('Migrated project');
-    expect(logOutput).toContain('Đã chuyển sang main');
+    expect(logOutput).toContain('Switched to main');
 
     // Kiểm tra file project.yaml trên main
     expect(existsSync(join(projectDir, 'team', 'project.yaml'))).toBe(true);
@@ -236,7 +236,7 @@ describe('CLI btm migrate', () => {
     expect(exitCode2).toBe(0);
     const logOutput2 = consoleLogSpy.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(logOutput2).toContain('already migrated');
-    expect(logOutput2).toContain('Đã chuyển sang main');
+    expect(logOutput2).toContain('Switched to main');
   });
 
   it('btm migrate đang có phiên (bị khoá btm.lock) → lỗi và trả mã 1, không đổi gì', async () => {

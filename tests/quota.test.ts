@@ -661,7 +661,7 @@ describe('readEnergy', () => {
       status: 'unknown',
       windows: [],
       readAt: '2026-11-09T01:00:00.000Z',
-      note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
+      note: 'Claude /usage unavailable'
     });
   });
 
@@ -684,7 +684,7 @@ describe('readEnergy', () => {
       status: 'unknown',
       windows: [],
       readAt: '2026-11-09T01:00:00.000Z',
-      note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
+      note: 'Claude /usage unavailable'
     });
   });
 
@@ -707,7 +707,7 @@ describe('readEnergy', () => {
       status: 'unknown',
       windows: [],
       readAt: '2026-11-09T01:00:00.000Z',
-      note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
+      note: 'Claude /usage unavailable'
     });
   });
 
@@ -727,7 +727,7 @@ describe('readEnergy', () => {
       status: 'unknown',
       windows: [],
       readAt: '2026-11-09T01:00:00.000Z',
-      note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
+      note: 'Claude /usage unavailable'
     });
   });
 
@@ -749,7 +749,7 @@ describe('readEnergy', () => {
         status: 'unknown',
         windows: [],
         readAt: '2026-11-09T01:00:00.000Z',
-        note: 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)'
+        note: 'Claude /usage unavailable'
       });
     } finally {
       vi.useRealTimers();
@@ -821,7 +821,7 @@ describe('readEnergy', () => {
     });
 
     expect(reading.status).toBe('unknown');
-    expect(reading.note).toMatch(/timeout|quá thời gian/i);
+    expect(reading.note).toMatch(/timed out/i);
   });
 
   it('antigravity-cli: trả về unknown khi exit code khác 0 hoặc output hỏng', async () => {
@@ -865,7 +865,7 @@ describe('readEnergy', () => {
       expect(runStarted).toBe(true);
       expect(reading.status).toBe('unknown');
       expect(reading.windows).toEqual([]);
-      expect(reading.note).toMatch(/timeout|quá thời gian/i);
+      expect(reading.note).toMatch(/timed out/i);
     } finally {
       vi.useRealTimers();
     }
@@ -941,7 +941,7 @@ describe('readEnergy', () => {
 
     expect(reading2.status).toBe('unknown');
     expect(reading2.windows).toEqual([]);
-    expect(reading2.note).toMatch(/không phân tích được/i);
+    expect(reading2.note).toMatch(/couldn't parse/i);
   });
 
   it('codex-cli: đọc hạn mức từ file sessions codex thành công', async () => {
