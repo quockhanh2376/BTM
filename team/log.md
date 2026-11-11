@@ -160,3 +160,8 @@
   - đăng nhập 3 CLI vẫn ổn.
 - Task 7 còn thiếu (ghi trong plan): chạy lại lượt khi lỗi hạn mức giữa lượt; `seats_backup` theo project.
 - agy lưu đăng nhập ở `~/.gemini/antigravity-cli/antigravity-oauth-token` (chỉ xem tên file), nên phần sao lưu JSON làm được.
+
+## 2026-11-11 – Quyền merge (Zon)
+- Cheki tự merge mọi PR, kể cả PR plan, khi bộ test trên VM xanh. Vic và Qeen không merge.
+- Deploy và restart VM vẫn hỏi Zon.
+- PR #9 (Plan 5) đã merge (753f7aa).
