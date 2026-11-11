@@ -702,6 +702,17 @@
       min-width: 0;
     }
 
+    .energy-warn {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      border: 1px solid var(--danger);
+      border-radius: 999px;
+      padding: 1px 8px;
+      margin-bottom: 4px;
+    }
+
     .seat-warnings {
       background-color: var(--badge-bg);
       border: 1px solid var(--border);
@@ -2263,6 +2274,16 @@
         return 'ssh -t ' + sshTarget + ' "sudo -iu ' + u + ' agy"';
       }
 
+      // Chip "Sắp hết · hồi HH:mm" khi Energy thấp (chữ, không chỉ màu).
+      function energyWarnChip(eng) {
+        if (!eng || !eng.warn) return null;
+        var chip = document.createElement('span');
+        chip.className = 'energy-warn';
+        var hhmm = eng.soonestReset ? formatHHmm(eng.soonestReset) : '';
+        chip.textContent = 'Sắp hết' + (hhmm ? ' · hồi ' + hhmm : '');
+        return chip;
+      }
+
       function renderSeatWarnings(warnings) {
         var el = document.getElementById('seat-warnings');
         if (!el) return;
@@ -3292,6 +3313,8 @@
           if (energyBox) {
             clearChildren(energyBox);
             var eng = cardData.energy;
+            var warnChip = energyWarnChip(eng);
+            if (warnChip) energyBox.appendChild(warnChip);
             if (eng && eng.status === 'fresh' && Array.isArray(eng.windows) && eng.windows.length > 0) {
               eng.windows.forEach(function (w) {
                 var row = document.createElement('div');
@@ -3539,6 +3562,8 @@
           loginWrap.appendChild(loginTxt);
 
           info.appendChild(loginWrap);
+          var accWarn = energyWarnChip(acc.energy);
+          if (accWarn) info.appendChild(accWarn);
 
           if (acc.login && acc.login.detail && acc.login.detail !== lDisp.text) {
             var detailEl = document.createElement('span');

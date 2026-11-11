@@ -83,6 +83,8 @@ export const EnergySchema = z.object({
   cache_seconds: z.number().int().nonnegative(),
   min_remaining_percent: z.number().min(0).max(100),
   reserve_turns_for_pm: z.number().int().nonnegative(),
+  /** Plan 6 Task 5: chip "Sắp hết" khi cửa sổ thấp nhất còn ≤ mức này. */
+  warn_percent: z.number().min(0).max(100).optional(),
 }).strict();
 
 export const LoginSchema = z.object({

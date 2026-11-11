@@ -1427,3 +1427,12 @@ describe('P5-T7: nhãn ngồi thay', () => {
     expect(html).toContain("if (cardData.substitute) toolParts.push('lượt cuối: ' + cardData.substitute + ' ngồi thay');");
   });
 });
+
+describe('P6-T5: chip Sắp hết', () => {
+  it('chip có chữ (không chỉ màu), dùng textContent, hiện trên thẻ ghế và tài khoản', () => {
+    const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+    expect(html).toContain("chip.textContent = 'Sắp hết' + (hhmm ? ' · hồi ' + hhmm : '');");
+    expect(html).toContain('var warnChip = energyWarnChip(eng);');
+    expect(html).toContain('var accWarn = energyWarnChip(acc.energy);');
+  });
+});
