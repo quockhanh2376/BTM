@@ -76,6 +76,20 @@ done_when: done
     expect(host.busy()).toBe(false);
   });
 
+  it('P6-T2: bấm Dừng trong lúc phiên kết thúc vì usage_limit_hit → không tự Tiếp tục', async () => {
+    const sid = store.createSession(['G'], repoDir);
+    store.setSessionStatus(sid, 'needs_owner');
+    let release!: () => void;
+    const runSession = vi.fn(() => new Promise((r) => { release = () => r({ status: 'needs_owner', sessionId: sid, tasks: {}, notes: ['usage_limit_hit:jacky'] }); }));
+    const resumeSession = vi.fn(async () => ({ status: 'done', sessionId: sid, tasks: {}, notes: [] }));
+    const host = createHost({ cfg, store, runner: vi.fn() as any, logDir, dataDir, env: {}, runSession: runSession as any, resumeSession: resumeSession as any });
+    expect((await host.start(['Goal 1'])).ok).toBe(true);
+    await host.stop();
+    release();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(resumeSession).not.toHaveBeenCalled();
+  });
+
   it('start hai lần liền → lần 2 error ("Session running")', async () => {
     const gate = deferred<void>();
     const mockRunner: Runner = vi.fn().mockImplementation(async () => {

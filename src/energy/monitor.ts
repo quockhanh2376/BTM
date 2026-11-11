@@ -7,6 +7,7 @@ import { runProcess } from '../runner/run.ts';
 import { readEnergy, type EnergyReading, type EnergyWindow } from './quota.ts';
 import { checkLogin, type LoginHealth } from './login.ts';
 import { listModels } from '../agents/models.ts';
+import { usageLimitedKey } from '../agents/usage-limit.ts';
 
 export interface MonitorDeps {
   cfg: Config;
@@ -101,6 +102,14 @@ export function createMonitor(d: MonitorDeps): {
         codexViaRun: isolated,
       });
       d.store.saveEnergy(energyReading);
+      // Plan 6 Task 2: cờ "hết hạn mức tới giờ hồi" (có thể do agent in giả) được gỡ khi Energy thật còn đủ.
+      if (
+        energyReading.status === 'fresh' &&
+        energyReading.windows.length > 0 &&
+        energyReading.windows.every((w) => w.remainingPercent >= d.cfg.energy.min_remaining_percent)
+      ) {
+        if (d.store.getSetting(usageLimitedKey(agent))) d.store.setSetting(usageLimitedKey(agent), '');
+      }
 
       const agyQuotaOk = energyReading.status === 'fresh';
       const agyQuotaOutput = energyReading.note;

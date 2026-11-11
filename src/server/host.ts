@@ -650,6 +650,7 @@ export function createHost(d: HostDeps): HostApi & {
           currentAbortController = null;
         }
         isBusy = false;
+        if (isStopping) pendingAutoResume = null;
         isStopping = false;
         if (runPendingAutoResume()) return;
         void tick();
@@ -736,6 +737,7 @@ export function createHost(d: HostDeps): HostApi & {
           currentAbortController = null;
         }
         isBusy = false;
+        if (isStopping) pendingAutoResume = null;
         isStopping = false;
         if (runPendingAutoResume()) return;
         void tick();
@@ -751,21 +753,34 @@ export function createHost(d: HostDeps): HostApi & {
   // Plan 6 Task 2: lượt hỏng vì agent hết hạn mức → tự Tiếp tục (tối đa 2 lần/phiên) để người dự phòng ngồi thay,
   // không báo ntfy cho lần đó. Hết người thì phiên dừng với lý do bình thường và có báo.
   const autoResumes = new Map<number, number>();
-  let pendingAutoResume = false;
+  let pendingAutoResume: { outcome: SessionOutcome; project: string } | null = null;
   function afterOutcome(outcome: SessionOutcome, project: string): void {
     const sid = outcome.sessionId;
     const used = sid != null ? autoResumes.get(sid) ?? 0 : 0;
-    if (outcome.status === 'needs_owner' && sid != null && outcome.notes[0]?.startsWith('usage_limit_hit:') && used < 2) {
+    if (
+      outcome.status === 'needs_owner' &&
+      sid != null &&
+      outcome.notes[0]?.startsWith('usage_limit_hit:') &&
+      used < 2 &&
+      d.store.getActiveProject() === project
+    ) {
       autoResumes.set(sid, used + 1);
-      pendingAutoResume = true;
+      pendingAutoResume = { outcome, project };
       return;
     }
     void notify(d.cfg, { kind: outcome.status as NotifyKind, project, notes: outcome.notes });
   }
+  // Chạy sau khi phiên trước đã nhả khoá. Tiếp tục không được (khoá, đổi project…) → báo anh như bình thường.
   function runPendingAutoResume(): boolean {
-    if (!pendingAutoResume) return false;
-    pendingAutoResume = false;
-    void resume();
+    const p = pendingAutoResume;
+    if (!p) return false;
+    pendingAutoResume = null;
+    void resume().then((r) => {
+      if (!r.ok) {
+        void notify(d.cfg, { kind: p.outcome.status as NotifyKind, project: p.project, notes: p.outcome.notes });
+        void tick();
+      }
+    });
     return true;
   }
 
@@ -848,6 +863,7 @@ export function createHost(d: HostDeps): HostApi & {
           currentAbortController = null;
         }
         isBusy = false;
+        if (isStopping) pendingAutoResume = null;
         isStopping = false;
         if (runPendingAutoResume()) return;
         void tick();

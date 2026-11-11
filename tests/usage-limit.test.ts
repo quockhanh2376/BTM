@@ -31,3 +31,14 @@ describe('P6-T2: nhận lỗi hết hạn mức (mẫu thật từ team/runs)', 
     expect(detectUsageLimit('codex-cli', fail('tests failed: 3'), now)).toBeNull();
   });
 });
+
+describe('P6-T2 review: chặn báo giả', () => {
+  it('chỉ đọc output của CLI (không lastMessage); exit null không tính; giờ hồi tối đa 7 ngày; claude cần "limit reached … resets <giờ>"', () => {
+    expect(detectUsageLimit('claude-code', { exitCode: 1, timedOut: false, output: 'boom', lastMessage: 'Claude AI usage limit reached|9999999999' }, now)).toBeNull();
+    expect(detectUsageLimit('claude-code', { exitCode: null, timedOut: false, output: 'Claude AI usage limit reached|1794405600' }, now)).toBeNull();
+    const far = detectUsageLimit('claude-code', fail('Claude AI usage limit reached|9999999999'), now)!;
+    expect(Date.parse(far.resetsAt!) - now.getTime()).toBe(7 * 24 * 3600 * 1000);
+    expect(detectUsageLimit('claude-code', fail('expect(msg).toBe("usage limit reached")'), now)).toBeNull();
+    expect(detectUsageLimit('antigravity-cli', fail('status: RESOURCE_EXHAUSTED'), now)).toBeNull();
+  });
+});

@@ -401,7 +401,11 @@ async function processGoal(
   const projectBackups = readProjectSeats(d.repo, d.cfg.git?.protected_branch || 'main').backups;
   function backupsFor(seat: Seat): string[] {
     const list = projectBackups[seat] ?? d.cfg.seats_backup?.[seat] ?? [];
-    return list.filter((a) => Object.hasOwn(d.cfg.agents, a) && d.cfg.agents[a]!.can_sit.includes(seat));
+    return list.filter((a) => {
+      if (!Object.hasOwn(d.cfg.agents, a) || !d.cfg.agents[a]!.can_sit.includes(seat)) return false;
+      const until = d.store.getSetting(usageLimitedKey(a));
+      return !(until && Date.parse(until) > Date.now());
+    });
   }
 
   async function pickSeatAgent(
