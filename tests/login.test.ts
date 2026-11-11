@@ -155,7 +155,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('ok');
-      expect(health.detail).toBe('Ổn');
+      expect(health.detail).toBe('Ok');
       expect(health.expiresAt).toBe(expiresAt);
     });
 
@@ -172,7 +172,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('ok');
-      expect(health.detail).toBe('Ổn');
+      expect(health.detail).toBe('Ok');
     });
 
     it('bỏ qua loginExpiresAt kiểu boolean (trả về ok, không expiring)', async () => {
@@ -191,7 +191,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('ok');
-      expect(health.detail).toBe('Ổn');
+      expect(health.detail).toBe('Ok');
       expect(health.expiresAt).toBeUndefined();
     });
 
@@ -211,7 +211,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('ok');
-      expect(health.detail).toBe('Ổn');
+      expect(health.detail).toBe('Ok');
       expect(health.expiresAt).toBeUndefined();
     });
 
@@ -231,7 +231,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('ok');
-      expect(health.detail).toBe('Ổn');
+      expect(health.detail).toBe('Ok');
       expect(health.expiresAt).toBeUndefined();
     });
 
@@ -251,7 +251,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('ok');
-      expect(health.detail).toBe('Ổn');
+      expect(health.detail).toBe('Ok');
       expect(health.expiresAt).toBeUndefined();
     });
 
@@ -363,7 +363,7 @@ describe('checkLogin', () => {
 
       expect(executedArgv).toEqual(['codex', 'login', 'status']);
       expect(health.state).toBe('ok');
-      expect(health.detail).toBe('Ổn');
+      expect(health.detail).toBe('Ok');
     });
 
     it('trả về ok khi exitCode 0 và output chứa "Logged in using ChatGPT"', async () => {
@@ -379,7 +379,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('ok');
-      expect(health.detail).toBe('Ổn');
+      expect(health.detail).toBe('Ok');
     });
 
     it('trả về api_key khi output chứa "API key"', async () => {
@@ -509,7 +509,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('ok');
-      expect(health.detail).toBe('Ổn');
+      expect(health.detail).toBe('Ok');
       expect(runMock).not.toHaveBeenCalled();
     });
 

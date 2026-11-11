@@ -797,14 +797,14 @@ describe('Store SQLite', () => {
       store.saveLogin({
         agent: 'elon',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       });
 
       const l2 = store.latestLogin('elon');
       expect(l2).toEqual({
         agent: 'elon',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       });
 
       // Agent khác không bị ảnh hưởng

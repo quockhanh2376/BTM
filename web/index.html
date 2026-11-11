@@ -2127,7 +2127,7 @@
         }
         var state = login.state || 'unknown';
         if (state === 'ok') {
-          return { text: 'Ổn', dotClass: 'dot-ok' };
+          return { text: 'Ok', dotClass: 'dot-ok' };
         }
         if (state === 'expiring') {
           var label = login.detail ? login.detail.replace(/^Hết hạn\s*/i, 'Sắp hết hạn ') : 'Sắp hết hạn';
