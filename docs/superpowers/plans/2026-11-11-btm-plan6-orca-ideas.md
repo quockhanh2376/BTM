@@ -89,6 +89,11 @@ Lấp phần thiếu của Plan 5 Task 7.
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5:** Commit `feat: agent questions block a ticket, owner answers on dashboard (P6 Task 4)`.
 
+**Đã làm (Cheki 2026-11-11, sau review `team/reviews/P6-T34-review-1.md`):**
+- Chỉ câu hỏi của **Dev** mới chặn (dòng "Cần xác nhận" có dấu "?"). `confirm` của QC chỉ để tham khảo, không chặn, để QC không lách được "fail".
+- Dev hỏi thì code vẫn commit, `base` giữ nguyên, ticket về `returned` và **cả goal dừng** chờ anh (ticket khác chưa chạy, để commit không xen nhau). Anh trả lời rồi bấm Resume thì Dev làm tiếp.
+- Diff ticket tính từ base tới commit cuối của đúng ticket. Return chỉ nhận ticket passed/returned/failed, cấp lại vòng sửa, và không tạo phiên chồng lên phiên đang chờ.
+
 ### Task 5: Cảnh báo Energy thấp, tài khoản xếp theo giờ hồi
 
 **Files:** Modify `src/server/snapshot.ts`, `web/index.html`; tests `tests/snapshot.test.ts`, `tests/web.test.ts`.

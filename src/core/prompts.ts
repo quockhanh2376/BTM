@@ -121,7 +121,7 @@ export function devTicketPrompt(
     notesLine,
     allowLine,
     `Chỉ sửa file trong phạm vi, cấm git commit và push. Bị nghẽn trả lời BLOCKED. Sau mỗi bước ghi đè 1 dòng tiếng Anh việc đang làm vào .btm-status (không commit).`,
-    `Báo cáo vào team/reports/${t.id}-dev.md: dòng đầu bắt buộc là "${header}", theo sau là tối đa 5 dòng Bug / Cần sửa / Cần xác nhận, ổn ghi OK.`,
+    `Báo cáo vào team/reports/${t.id}-dev.md: dòng đầu bắt buộc là "${header}", theo sau là tối đa 5 dòng Bug / Cần sửa / Cần xác nhận (câu hỏi cho anh Zon, kết thúc bằng ?), ổn ghi OK.`,
   ];
 
   if (t.note) {
