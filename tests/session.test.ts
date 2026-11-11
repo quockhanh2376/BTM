@@ -235,7 +235,7 @@ describe('Prompts for Tickets', () => {
 
   it('pmTicketPrompt with notes instructs reading note and image and writing note: N-<id> in front matter', () => {
     const prompt = pmTicketPrompt(
-      { n: 1, title: 'Xử lý ghi chú team N-1: Thêm nút' },
+      { n: 1, title: 'Team note N-1: Thêm nút' },
       'GTM',
       'GTM-0001',
       {
@@ -309,7 +309,7 @@ describe('Goal & Ticket Session Coordinator', () => {
     store.close();
   });
 
-  it('case 1: goal mới tạo branch goal/G1-<slug>, PM ghi 2 ticket -> Dev/QC chạy theo number, goal qc_done, có team/goals/G1.md, mọi commit bắt đầu bằng GTM- hoặc G1:', async () => {
+  it('case 1: goal mới tạo branch goal/G1-<slug>, PM ghi 2 ticket -> Dev/QC chạy theo number, goal qc_done, có team/goals/G1.md, mọi commit started bằng GTM- hoặc G1:', async () => {
     const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
     const { deps, store } = makeDeps(repo);
 
@@ -1751,7 +1751,7 @@ done_when: done
     expect(calls.length).toBe(4);
 
     expect(recordSpy).toHaveBeenCalledWith(1, 'GTM-0001', 'command_denied');
-    expect(devRound2Prompt).toContain('command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ');
+    expect(devRound2Prompt).toContain('command_denied: use only allowed commands, one per call');
 
     store.close();
   });
@@ -1786,7 +1786,7 @@ done_when: done
     expect(outcome.status).toBe('done');
     expect(outcome.tasks['GTM-0001']).toBe('passed');
     expect(recordSpy).toHaveBeenCalledWith(1, 'GTM-0001', 'command_denied');
-    expect(devRound2Prompt).toContain('command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ');
+    expect(devRound2Prompt).toContain('command_denied: use only allowed commands, one per call');
 
     store.close();
   });
@@ -2009,7 +2009,7 @@ Yêu cầu cập nhật nút
 
     const outcome = await runSession(
       deps,
-      ['Xử lý ghi chú team N-1: Yêu cầu cập nhật nút'],
+      ['Team note N-1: Yêu cầu cập nhật nút'],
       { approved: true, noteId }
     );
 
@@ -2066,7 +2066,7 @@ Yêu cầu cập nhật nút
     try {
       const outcome = await runSession(
         deps,
-        ['Xử lý ghi chú team N-1: Yêu cầu cập nhật nút'],
+        ['Team note N-1: Yêu cầu cập nhật nút'],
         { approved: true, noteId }
       );
 
@@ -2250,7 +2250,7 @@ Yêu cầu đóng note nhưng commit lỗi
     };
 
     currentNoteForPm = undefined;
-    const outcome1 = await runSession(deps, [`Xử lý ghi chú team N-${note1}: Lỗi`], { approved: true });
+    const outcome1 = await runSession(deps, [`Team note N-${note1}: Lỗi`], { approved: true });
     expect(outcome1.status).toBe('done');
     const session1Notes = store.getNotesBySession(outcome1.sessionId!);
     expect(session1Notes.length).toBe(0);
@@ -2296,7 +2296,7 @@ Yêu cầu đóng note nhưng commit lỗi
 
     const outcome = await runSession(
       deps,
-      [`Xử lý ghi chú team N-${noteId}: Lỗi va chạm file`],
+      [`Team note N-${noteId}: Lỗi va chạm file`],
       {
         approved: true,
         noteId,
@@ -2342,7 +2342,7 @@ Yêu cầu đóng note nhưng commit lỗi
     try {
       const outcome = await runSession(
         deps,
-        [`Xử lý ghi chú team N-${noteId}: Test commit error`],
+        [`Team note N-${noteId}: Test commit error`],
         {
           approved: true,
           noteId,
@@ -2675,12 +2675,12 @@ Yêu cầu đóng note nhưng commit lỗi
     expect(devRan).toBe(true);
     expect(qcRan).toBe(false);
     expect(outcome.status).toBe('needs_owner');
-    expect(outcome.notes.some((note) => note.includes('hồi lúc'))).toBe(true);
+    expect(outcome.notes.some((note) => note.includes('resets'))).toBe(true);
     expect(outcome.notes.some((note) => note.includes('10%') && note.includes('19:57'))).toBe(true);
 
     const failures = store.listHandoffFailures(outcome.sessionId!);
     expect(failures.length).toBeGreaterThan(0);
-    expect(failures[0].reason).toContain('hồi lúc');
+    expect(failures[0].reason).toContain('resets');
 
     store.close();
   });
@@ -3886,7 +3886,7 @@ Yêu cầu đóng note nhưng commit lỗi
       writeTicketFile(repo, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
       commitAll(repo, 'setup ticket', { name: 'core', email: 'core@btm.local' });
 
-      // Phiên này QC là jenny. Phiên bắt đầu với ticket awaiting_qc
+      // Phiên này QC là jenny. Phiên started với ticket awaiting_qc
       const outcome = await runSession(deps, [{ n: 1 }], { approved: true });
 
       expect(outcome.status).toBe('needs_owner');
@@ -4090,7 +4090,7 @@ Yêu cầu đóng note nhưng commit lỗi
       expect(store.getSetting(`protected_sha:${repo}`)).toBe(mainShaPinned);
 
       // Giả sử ngoài BTM có commit/merge dịch refs/heads/main sang sha mới trước khi resume:
-      // snapshotTurn lúc bắt đầu lượt KHÔNG tự update-ref main, không chạy lượt, dừng needs_owner kèm sha ghim → sha hiện tại
+      // snapshotTurn lúc started lượt KHÔNG tự update-ref main, không chạy lượt, dừng needs_owner kèm sha ghim → sha hiện tại
       const dirtySha = headSha(repo);
       expect(dirtySha).not.toBe(mainShaPinned);
       git(repo, 'update-ref', 'refs/heads/main', dirtySha);

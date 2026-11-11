@@ -173,7 +173,7 @@ describe('Project Init (initProject)', () => {
     const readmePath = join(projectPath, 'docs', 'README-btm.md');
     expect(existsSync(readmePath)).toBe(true);
     const content = readFileSync(readmePath, 'utf8');
-    expect(content).toMatch(/cảnh báo/i);
+    expect(content).toMatch(/warning/i);
     expect(content).toContain('openspec not found');
 
     const filesInCommit = git(projectPath, 'ls-tree', '-r', '--name-only', 'HEAD')
@@ -983,7 +983,7 @@ runner:
     // Kích hoạt 1 lệnh Dev giả
     await capturedHost.command('dev', 'Lệnh dev chậm');
 
-    // Chờ runner bắt đầu
+    // Chờ runner started
     await runnerStarted.promise;
     expect(runnerSettled).toBe(false);
     expect(storeClosed).toBe(false);

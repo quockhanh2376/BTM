@@ -111,7 +111,7 @@ export function approveGoal(
       return {
         ok: false,
         code: 'not_ready',
-        message: 'goal chưa có commit đã QC/audit',
+        message: "no QC'd or audited commit yet",
       };
     }
 
@@ -170,7 +170,7 @@ export function approveGoal(
       return {
         ok: false,
         code: 'not_ready',
-        message: 'nhánh goal đã đổi sau khi QC/audit',
+        message: 'goal branch changed after QC/audit',
       };
     }
 
@@ -210,7 +210,7 @@ export function approveGoal(
             return {
               ok: false,
               code: 'not_ready',
-              message: 'có commit lệnh trực tiếp chưa review',
+              message: 'has unreviewed direct-command commits',
             };
           }
         }
@@ -219,7 +219,7 @@ export function approveGoal(
       return {
         ok: false,
         code: 'not_ready',
-        message: 'không thể kiểm tra commit lệnh trực tiếp',
+        message: "can't check direct-command commits",
       };
     }
 

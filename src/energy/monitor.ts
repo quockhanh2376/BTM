@@ -168,7 +168,7 @@ export function createMonitor(d: MonitorDeps): {
           const hhmm = formatHHmm(minWindow.resetsAt);
           return {
             ok: false,
-            reason: `energy:${minWindow.name} còn ${minWindow.remainingPercent}%, hồi lúc ${hhmm}`,
+            reason: `energy:${minWindow.name} ${minWindow.remainingPercent}% left, resets ${hhmm}`,
           };
         }
       }

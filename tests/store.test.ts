@@ -781,7 +781,7 @@ describe('Store SQLite', () => {
       store.saveLogin({
         agent: 'elon',
         state: 'expiring',
-        detail: 'Hết hạn 11/11',
+        detail: 'Expires 11/11',
         expiresAt: '2026-11-11T12:00:00.000Z',
       });
 
@@ -789,7 +789,7 @@ describe('Store SQLite', () => {
       expect(l1).toEqual({
         agent: 'elon',
         state: 'expiring',
-        detail: 'Hết hạn 11/11',
+        detail: 'Expires 11/11',
         expiresAt: '2026-11-11T12:00:00.000Z',
       });
 
@@ -874,7 +874,7 @@ describe('Store SQLite', () => {
         from_audit: false,
       };
 
-      it('tạo G1, G2 → n 1, 2; project khác bắt đầu lại 1; getGoal & listGoals & setGoalState hoạt động đúng', () => {
+      it('tạo G1, G2 → n 1, 2; project khác started lại 1; getGoal & listGoals & setGoalState hoạt động đúng', () => {
         const store = openStore(':memory:');
         const projA = '/proj/alpha';
         const projB = '/proj/beta';
@@ -887,7 +887,7 @@ describe('Store SQLite', () => {
         expect(g2.n).toBe(2);
         expect(g2.branch).toBe('goal/G2-reset-mat-khau');
 
-        // Project khác bắt đầu lại từ 1
+        // Project khác started lại từ 1
         const gB1 = store.createGoal(projB, 'Tính năng mới');
         expect(gB1.n).toBe(1);
         expect(gB1.branch).toBe('goal/G1-tinh-nang-moi');
@@ -1017,7 +1017,7 @@ describe('Store SQLite', () => {
         store.close();
       });
 
-      it('nextTicketSeq & bumpTicketSeq: bắt đầu 1, bump max không giảm, persist khi reopen DB', () => {
+      it('nextTicketSeq & bumpTicketSeq: started 1, bump max không giảm, persist khi reopen DB', () => {
         const tmpDir = mkdtempSync(join(tmpdir(), 'btm-store-counter-'));
         const dbPath = join(tmpDir, 'test.db');
 

@@ -546,20 +546,20 @@ export function createHost(d: HostDeps): HostApi & {
     }
   ): Promise<{ ok: boolean; error?: string }> {
     if (isStopping) {
-      return { ok: false, error: 'Đang dừng phiên' };
+      return { ok: false, error: 'Stopping' };
     }
     if (busy()) {
-      return { ok: false, error: 'Đang có phiên chạy' };
+      return { ok: false, error: 'Session running' };
     }
 
     const activeProject = d.store.getActiveProject();
     if (!activeProject) {
-      return { ok: false, error: 'Chưa có dự án active' };
+      return { ok: false, error: 'No active project' };
     }
 
     const release = acquireLock(d.dataDir);
     if (!release) {
-      return { ok: false, error: 'Đang có phiên chạy' };
+      return { ok: false, error: 'Session running' };
     }
 
     isBusy = true;
@@ -663,25 +663,25 @@ export function createHost(d: HostDeps): HostApi & {
 
   async function approve(): Promise<{ ok: boolean; error?: string }> {
     if (isStopping) {
-      return { ok: false, error: 'Đang dừng phiên' };
+      return { ok: false, error: 'Stopping' };
     }
     if (busy()) {
-      return { ok: false, error: 'Đang có phiên chạy' };
+      return { ok: false, error: 'Session running' };
     }
 
     const activeProject = d.store.getActiveProject();
     if (!activeProject) {
-      return { ok: false, error: 'Chưa có dự án active' };
+      return { ok: false, error: 'No active project' };
     }
 
     const latestAwaiting = d.store.getLatestSession('awaiting_approval', activeProject);
     if (!latestAwaiting) {
-      return { ok: false, error: 'Không có phiên chờ duyệt' };
+      return { ok: false, error: 'No session awaiting approval' };
     }
 
     const release = acquireLock(d.dataDir);
     if (!release) {
-      return { ok: false, error: 'Đang có phiên chạy' };
+      return { ok: false, error: 'Session running' };
     }
 
     isBusy = true;
@@ -748,15 +748,15 @@ export function createHost(d: HostDeps): HostApi & {
 
   async function resume(): Promise<{ ok: boolean; status?: number; error?: string }> {
     if (isStopping) {
-      return { ok: false, status: 409, error: 'Đang dừng phiên' };
+      return { ok: false, status: 409, error: 'Stopping' };
     }
     if (busy()) {
-      return { ok: false, status: 409, error: 'Đang có phiên chạy' };
+      return { ok: false, status: 409, error: 'Session running' };
     }
 
     const activeProject = d.store.getActiveProject();
     if (!activeProject) {
-      return { ok: false, status: 400, error: 'Chưa có dự án active' };
+      return { ok: false, status: 400, error: 'No active project' };
     }
 
     const latestNeedsOwner = d.store.getLatestSession('needs_owner', activeProject);
@@ -766,12 +766,12 @@ export function createHost(d: HostDeps): HostApi & {
       target = latestStopped;
     }
     if (!target) {
-      return { ok: false, status: 400, error: 'Không có phiên cần tiếp tục' };
+      return { ok: false, status: 400, error: 'No session to resume' };
     }
 
     const release = acquireLock(d.dataDir);
     if (!release) {
-      return { ok: false, status: 409, error: 'Đang có phiên chạy' };
+      return { ok: false, status: 409, error: 'Session running' };
     }
 
     isBusy = true;
@@ -838,7 +838,7 @@ export function createHost(d: HostDeps): HostApi & {
 
   function stop(): { ok: boolean; error?: string } {
     if (isExternalLockHeld()) {
-      return { ok: false, error: 'Phiên đang chạy từ terminal, dừng bằng Ctrl-C' };
+      return { ok: false, error: 'Session started from terminal – stop it with Ctrl-C' };
     }
 
     const activeProject = d.store.getActiveProject();
@@ -893,17 +893,17 @@ export function createHost(d: HostDeps): HostApi & {
     text: string
   ): Promise<{ ok: boolean; id?: number; error?: string }> {
     if (isStopping) {
-      return { ok: false, error: 'Đang dừng' };
+      return { ok: false, error: 'Stopping' };
     }
 
     const validSeats = [...Object.keys(effectiveSeats(d.cfg, d.store)), 'team'];
     if (!validSeats.includes(to)) {
-      return { ok: false, error: 'Người nhận không hợp lệ' };
+      return { ok: false, error: 'Invalid recipient' };
     }
 
     const trimmed = text.trim();
     if (trimmed.length < 1 || trimmed.length > 2000) {
-      return { ok: false, error: 'Độ dài lệnh phải từ 1 đến 2000 ký tự' };
+      return { ok: false, error: 'Command must be 1–2000 characters' };
     }
 
     if (to === 'pm') {
@@ -913,10 +913,10 @@ export function createHost(d: HostDeps): HostApi & {
     if (to === 'team') {
       const activeProject = d.store.getActiveProject();
       if (!activeProject) {
-        return { ok: false, error: 'Chưa có dự án active' };
+        return { ok: false, error: 'No active project' };
       }
       if (busy()) {
-        return { ok: false, error: 'Đang có phiên chạy' };
+        return { ok: false, error: 'Session running' };
       }
 
       try {
@@ -926,7 +926,7 @@ export function createHost(d: HostDeps): HostApi & {
       }
 
       const createdNoteId = d.store.createNote(activeProject, trimmed, null);
-      const goal = `Xử lý ghi chú team N-${createdNoteId}: ${trimmed.slice(0, 200)}`;
+      const goal = `Team note N-${createdNoteId}: ${trimmed.slice(0, 200)}`;
       const result = await start([goal], {
         noteId: createdNoteId,
         text: trimmed,
@@ -964,20 +964,20 @@ export function createHost(d: HostDeps): HostApi & {
     agent: string
   ): { ok: boolean; status?: number; error?: string } {
     if (busy()) {
-      return { ok: false, status: 409, error: 'Đang có phiên/lượt chạy' };
+      return { ok: false, status: 409, error: 'Session running' };
     }
     if (!seat || typeof seat !== 'string' || !Object.hasOwn(d.cfg.seats, seat)) {
       return {
         ok: false,
         status: 400,
-        error: `Ghế "${seat}" không hợp lệ`,
+        error: `Invalid seat "${seat}"`,
       };
     }
     if (!agent || typeof agent !== 'string' || !Object.hasOwn(d.cfg.agents, agent)) {
       return {
         ok: false,
         status: 400,
-        error: `Agent "${agent}" không thể ngồi ghế "${seat}"`,
+        error: `${agent} can't sit in ${seat}`,
       };
     }
     const agentCfg = d.cfg.agents[agent];
@@ -985,22 +985,22 @@ export function createHost(d: HostDeps): HostApi & {
       return {
         ok: false,
         status: 400,
-        error: `Agent "${agent}" không thể ngồi ghế "${seat}"`,
+        error: `${agent} can't sit in ${seat}`,
       };
     }
     const current = effectiveSeats(d.cfg, d.store)[seat];
     d.store.setSetting(seatSettingKey(d.store.getActiveProject(), seat), agent);
-    console.log(`Đổi ghế ${seat}: ${current} → ${agent}`);
+    console.log(`${seat} seat: ${current} → ${agent}`);
     return { ok: true };
   }
 
   function approveGoal(n: number): ApproveGoalResult {
     if (busy()) {
-      return { ok: false, code: 'busy', message: 'Phiên/lượt đang chạy' };
+      return { ok: false, code: 'busy', message: 'Session running' };
     }
     const activeProject = d.store.getActiveProject();
     if (!activeProject) {
-      return { ok: false, code: 'not_ready', message: 'Chưa có dự án active' };
+      return { ok: false, code: 'not_ready', message: 'No active project' };
     }
     const fn = d.approveGoal ?? approveGoalFn;
     return fn(d.store, activeProject, d.cfg, n);

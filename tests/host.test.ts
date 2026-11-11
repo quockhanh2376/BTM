@@ -63,7 +63,7 @@ done_when: done
     store.setActiveProject(repoDir);
   });
 
-  it('start hai lần liền → lần 2 error ("Đang có phiên chạy")', async () => {
+  it('start hai lần liền → lần 2 error ("Session running")', async () => {
     const gate = deferred<void>();
     const mockRunner: Runner = vi.fn().mockImplementation(async () => {
       await gate.promise;
@@ -91,7 +91,7 @@ done_when: done
 
     const res2 = await host.start(['Goal 2']);
     expect(res2.ok).toBe(false);
-    expect(res2.error).toMatch(/phiên/i);
+    expect(res2.error).toMatch(/session running/i);
 
     // Release gate to let session complete
     gate.resolve();
@@ -118,7 +118,7 @@ done_when: done
     expect(host.busy()).toBe(true);
     const res = await host.start(['Goal 1']);
     expect(res.ok).toBe(false);
-    expect(res.error).toBe('Đang có phiên chạy');
+    expect(res.error).toBe('Session running');
     expect(mockRunner).not.toHaveBeenCalled();
   });
 
@@ -213,7 +213,7 @@ done_when: done
     expect(startRes2.ok).toBe(true);
   });
 
-  it('1) stop() rồi start() liền trên cùng host → start() trả về {ok:false, error:"Đang dừng phiên"} không chạy chồng, chỉ nhả khóa sau khi settle', async () => {
+  it('1) stop() rồi start() liền trên cùng host → start() trả về {ok:false, error:"Stopping"} không chạy chồng, chỉ nhả khóa sau khi settle', async () => {
     const runnerStarted = deferred<void>();
     const runnerFinished = deferred<void>();
     let runnerCallCount = 0;
@@ -254,7 +254,7 @@ done_when: done
 
     const startRes2 = await host.start(['Immediate session']);
     expect(startRes2.ok).toBe(false);
-    expect(startRes2.error).toBe('Đang dừng phiên');
+    expect(startRes2.error).toBe('Stopping');
 
     // Runner must NOT have been called for startRes2
     expect(runnerCallCount).toBe(1);
@@ -268,7 +268,7 @@ done_when: done
     expect(existsSync(join(dataDir, 'btm.lock'))).toBe(false);
   });
 
-  it('2) stop() khi khóa do process khác giữ → trả về {ok:false, error:"Phiên đang chạy từ terminal, dừng bằng Ctrl-C"} và không sửa DB', async () => {
+  it('2) stop() khi khóa do process khác giữ → trả về {ok:false, error:"Session started from terminal – stop it with Ctrl-C"} và không sửa DB', async () => {
     const lockPath = join(dataDir, 'btm.lock');
     writeFileSync(lockPath, String(process.pid));
 
@@ -287,7 +287,7 @@ done_when: done
 
     const res = await host.stop();
     expect(res.ok).toBe(false);
-    expect(res.error).toBe('Phiên đang chạy từ terminal, dừng bằng Ctrl-C');
+    expect(res.error).toBe('Session started from terminal – stop it with Ctrl-C');
 
     // DB must not be modified
     const session = store.getSession(sId);
@@ -505,15 +505,15 @@ done_when: done
 
     const resEmpty = await host.command('pm', '');
     expect(resEmpty.ok).toBe(false);
-    expect(resEmpty.error).toBe('Độ dài lệnh phải từ 1 đến 2000 ký tự');
+    expect(resEmpty.error).toBe('Command must be 1–2000 characters');
 
     const resSpaces = await host.command('pm', '    ');
     expect(resSpaces.ok).toBe(false);
-    expect(resSpaces.error).toBe('Độ dài lệnh phải từ 1 đến 2000 ký tự');
+    expect(resSpaces.error).toBe('Command must be 1–2000 characters');
 
     const resTooLong = await host.command('pm', 'x'.repeat(2001));
     expect(resTooLong.ok).toBe(false);
-    expect(resTooLong.error).toBe('Độ dài lệnh phải từ 1 đến 2000 ký tự');
+    expect(resTooLong.error).toBe('Command must be 1–2000 characters');
 
     expect(mockRunner).not.toHaveBeenCalled();
   });
@@ -818,7 +818,7 @@ done_when: done
     // approve sau đó báo lỗi không có phiên chờ duyệt
     const approveRes = await host.approve();
     expect(approveRes.ok).toBe(false);
-    expect(approveRes.error).toMatch(/không có phiên chờ duyệt/i);
+    expect(approveRes.error).toMatch(/no session awaiting approval/i);
   });
 
   it('khi isStopping: command() trả {ok:false,error:"Đang dừng"} và tick() không chạy gì', async () => {
@@ -875,10 +875,10 @@ done_when: done
 
     // Trong khi đang dừng (isStopping = true)
     const cmdDevRes = await host.command('dev', 'Lệnh trong khi dừng');
-    expect(cmdDevRes).toEqual({ ok: false, error: 'Đang dừng' });
+    expect(cmdDevRes).toEqual({ ok: false, error: 'Stopping' });
 
     const cmdPmRes = await host.command('pm', 'Lệnh PM trong khi dừng');
-    expect(cmdPmRes).toEqual({ ok: false, error: 'Đang dừng' });
+    expect(cmdPmRes).toEqual({ ok: false, error: 'Stopping' });
 
     // Đưa 1 item vào hàng đợi bằng tay qua store để kiểm tra tick() không chạy
     const manualQueueId = store.enqueue('qc', 'Manual queued item');
@@ -1071,7 +1071,7 @@ done_when: done
     const cmdRes = await host.command('dev', 'Lệnh sửa lỗi trực tiếp');
     expect(cmdRes.ok).toBe(true);
 
-    // Chờ runner bắt đầu chạy
+    // Chờ runner started chạy
     await runnerStarted.promise;
     expect(receivedSignal).toBeDefined();
     expect(receivedSignal?.aborted).toBe(false);
@@ -1323,7 +1323,7 @@ done_when: done
       const res = await host.command('team' as any, 'Yêu cầu cả team làm việc này');
       expect(res.ok).toBe(true);
       await host.whenIdle();
-      expect(passedGoals?.[0]).toContain('Xử lý ghi chú team N-1');
+      expect(passedGoals?.[0]).toContain('Team note N-1');
       expect(passedOpts.noteId).toBe(1);
     });
 

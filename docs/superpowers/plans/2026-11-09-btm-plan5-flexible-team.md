@@ -193,6 +193,10 @@ Cùng một agent đổi ghế (vd jenny Dev ticket A → QC ticket B) không đ
 - [ ] **Step 2–4:** FAIL → implement → PASS. **Step 5:** Cheki mở dashboard demo chụp cả theme sáng và tối, kiểm chữ không tràn thẻ ở màn hẹp.
 - [ ] **Step 6:** Commit `feat: English UI with string table, ready for VI (P5 Task 9)`.
 
+**Đã làm (Cheki 2026-11-11):**
+- Bảng `STRINGS` và hàm `tx()` nằm ngay trong `web/index.html`, vì server chỉ phục vụ một file. Tên hàm là `tx` (không phải `t`/`tr`) vì trang có biến cục bộ `t` (ticket) và `tr` (dòng bảng). Phần HTML tĩnh dùng `data-i18n*`.
+- Server trả câu tiếng Anh thay cho tiếng Việt, nhưng **chưa** đổi sang mã + tham số. Khi làm bản tiếng Việt thì đổi lỗi API sang mã (shortcut, ghi ở đây).
+
 **Sau Task 9 (song ngữ):** thêm `STRINGS.vi` theo cùng key, nút EN/VI trên thanh trên, nhớ lựa chọn trong `localStorage`. Không cần đổi server.
 
 ---

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1619,32 +1619,32 @@
 <body>
   <div class="container">
     <!-- Disconnection banner -->
-    <div id="conn-banner" class="conn-banner" style="display: none;">Mất kết nối, đang thử lại…</div>
+    <div id="conn-banner" class="conn-banner" style="display: none;" data-i18n="conn.lost">Disconnected, retrying…</div>
     <div id="seat-warnings" class="seat-warnings" role="status" style="display: none;"></div>
 
     <!-- Thanh phiên -->
     <header class="card session-bar">
       <div class="brand-section">
         <h1 class="brand-title">Bot Task Manager</h1>
-        <span id="project-badge" class="badge">Dự án: —</span>
-        <span id="session-badge" class="badge">Phiên: —</span>
-        <span id="turns-badge" class="badge">Đã dùng 0/0 lượt</span>
+        <span id="project-badge" class="badge" data-i18n="bar.noProject">Project: —</span>
+        <span id="session-badge" class="badge" data-i18n="bar.noSession">No session</span>
+        <span id="turns-badge" class="badge">Turns 0/0</span>
         <span id="holder-box" class="badge badge-accent">
-          <svg id="holder-dot" class="spinner-icon" style="display: none; margin-right: 6px;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg id="holder-dot" class="spinner-icon" style="display: none; margin-right: 6px;" role="img" aria-label="Running" data-i18n-aria="seat.running" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
             <path d="M12 3a9 9 0 0 1 9 9"></path>
           </svg>
-          <span id="holder-text">Đang giữ lượt: —</span>
+          <span id="holder-text" data-i18n="bar.noHolder">Active seat: —</span>
         </span>
       </div>
       <div class="actions-section">
         <label class="auto-approve-label" id="auto-approve-label">
-          <input type="checkbox" id="auto-approve-toggle"> Auto duyệt thẻ
+          <input type="checkbox" id="auto-approve-toggle"> <span data-i18n="btn.autoApprove">Auto-approve tickets</span>
         </label>
-        <button id="refresh-energy-btn" class="btn btn-secondary" type="button">Làm mới Energy</button>
-        <button id="approve-btn" class="btn btn-primary" type="button" disabled title="Không có thẻ chờ duyệt">Duyệt thẻ</button>
-        <button id="stop-btn" class="btn btn-danger" type="button">Dừng</button>
-        <button id="theme-toggle" class="btn btn-icon" type="button" aria-label="Chuyển sáng/tối">
+        <button id="refresh-energy-btn" class="btn btn-secondary" type="button" data-i18n="btn.refreshEnergy">Refresh energy</button>
+        <button id="approve-btn" class="btn btn-primary" type="button" disabled title="No tickets awaiting approval" data-i18n-title="fb.nothingToApprove" data-i18n="btn.approve">Approve tickets</button>
+        <button id="stop-btn" class="btn btn-danger" type="button" data-i18n="btn.stop">Stop</button>
+        <button id="theme-toggle" class="btn btn-icon" type="button" aria-label="Toggle light/dark" data-i18n-aria="btn.theme">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="5"></circle>
             <line x1="12" y1="1" x2="12" y2="3"></line>
@@ -1663,9 +1663,9 @@
 
     <!-- Mục tiêu phiên -->
     <section class="card goals-section">
-      <h2>Mục tiêu phiên</h2>
+      <h2 data-i18n="goals.sessionTitle">Session goals</h2>
       <ul id="goals-list" class="goals-list">
-        <li class="empty-placeholder">Chưa có mục tiêu phiên</li>
+        <li class="empty-placeholder" data-i18n="goals.sessionEmpty">No session goals</li>
       </ul>
     </section>
 
@@ -1677,48 +1677,48 @@
           <div>
             <div class="seat-title-wrap">
               <div class="seat-title" id="pm-title">Elon-PM</div>
-              <svg id="pm-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <svg id="pm-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Running" data-i18n-aria="seat.running" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
                 <path d="M12 3a9 9 0 0 1 9 9"></path>
               </svg>
             </div>
             <div class="seat-tool" id="pm-tool">superpowers</div>
           </div>
-          <span class="seat-status-badge status-idle" id="pm-status-badge">Rảnh</span>
+          <span class="seat-status-badge status-idle" id="pm-status-badge" data-i18n="seat.idle">Idle</span>
         </div>
         <div class="seat-info-row">
-          <div class="seat-info-item"><span>Task:</span><span id="pm-task">—</span></div>
-          <div class="seat-info-item"><span>Bắt đầu:</span><span id="pm-since">—</span></div>
-          <div class="seat-info-item"><span>Số lượt:</span><span id="pm-turns">0</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="pm-task">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="pm-since">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="pm-turns">0</span></div>
         </div>
         <div class="seat-swap-row">
-          <label for="pm-agent-select" class="seat-swap-label">Người ngồi ghế</label>
-          <select id="pm-agent-select" class="seat-swap-select" aria-label="Người ngồi ghế"></select>
+          <label for="pm-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
+          <select id="pm-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
         </div>
         <div class="last-line-container">
-          <span class="last-line-label">Dòng log cuối:</span>
+          <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
           <pre class="last-line-text" id="pm-last-line">—</pre>
         </div>
         <div class="seat-footer" id="pm-footer">
           <div id="pm-login-indicator" class="seat-login-indicator">
             <span class="login-dot dot-unknown"></span>
-            <span class="login-text">Đăng nhập: —</span>
+            <span class="login-text" data-i18n="login.none">Login: —</span>
           </div>
           <div id="pm-energy-box" class="seat-energy-box">
-            <span class="energy-unknown">Energy: —</span>
+            <span class="energy-unknown" data-i18n="energy.none">Energy: —</span>
             <div class="energy-bar-row">
-              <span class="energy-bar-label">5 giờ</span>
-              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5 giờ: còn 100%">
+              <span class="energy-bar-label">5h</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5h: 100% left">
                 <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
               </div>
-              <span class="energy-bar-text">còn 100%</span>
+              <span class="energy-bar-text">100% left</span>
             </div>
             <div class="energy-bar-row">
-              <span class="energy-bar-label">Tuần</span>
-              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Tuần: còn 100%">
+              <span class="energy-bar-label">Week</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Week: 100% left">
                 <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
               </div>
-              <span class="energy-bar-text">còn 100%</span>
+              <span class="energy-bar-text">100% left</span>
             </div>
           </div>
         </div>
@@ -1730,48 +1730,48 @@
           <div>
             <div class="seat-title-wrap">
               <div class="seat-title" id="dev-title">Jacky-Dev</div>
-              <svg id="dev-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <svg id="dev-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Running" data-i18n-aria="seat.running" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
                 <path d="M12 3a9 9 0 0 1 9 9"></path>
               </svg>
             </div>
             <div class="seat-tool" id="dev-tool">claude</div>
           </div>
-          <span class="seat-status-badge status-idle" id="dev-status-badge">Rảnh</span>
+          <span class="seat-status-badge status-idle" id="dev-status-badge" data-i18n="seat.idle">Idle</span>
         </div>
         <div class="seat-info-row">
-          <div class="seat-info-item"><span>Task:</span><span id="dev-task">—</span></div>
-          <div class="seat-info-item"><span>Bắt đầu:</span><span id="dev-since">—</span></div>
-          <div class="seat-info-item"><span>Số lượt:</span><span id="dev-turns">0</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="dev-task">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="dev-since">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="dev-turns">0</span></div>
         </div>
         <div class="seat-swap-row">
-          <label for="dev-agent-select" class="seat-swap-label">Người ngồi ghế</label>
-          <select id="dev-agent-select" class="seat-swap-select" aria-label="Người ngồi ghế"></select>
+          <label for="dev-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
+          <select id="dev-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
         </div>
         <div class="last-line-container">
-          <span class="last-line-label">Dòng log cuối:</span>
+          <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
           <pre class="last-line-text" id="dev-last-line">—</pre>
         </div>
         <div class="seat-footer" id="dev-footer">
           <div id="dev-login-indicator" class="seat-login-indicator">
             <span class="login-dot dot-unknown"></span>
-            <span class="login-text">Đăng nhập: —</span>
+            <span class="login-text" data-i18n="login.none">Login: —</span>
           </div>
           <div id="dev-energy-box" class="seat-energy-box">
-            <span class="energy-unknown">Energy: —</span>
+            <span class="energy-unknown" data-i18n="energy.none">Energy: —</span>
             <div class="energy-bar-row">
-              <span class="energy-bar-label">5 giờ</span>
-              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5 giờ: còn 100%">
+              <span class="energy-bar-label">5h</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5h: 100% left">
                 <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
               </div>
-              <span class="energy-bar-text">còn 100%</span>
+              <span class="energy-bar-text">100% left</span>
             </div>
             <div class="energy-bar-row">
-              <span class="energy-bar-label">Tuần</span>
-              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Tuần: còn 100%">
+              <span class="energy-bar-label">Week</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Week: 100% left">
                 <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
               </div>
-              <span class="energy-bar-text">còn 100%</span>
+              <span class="energy-bar-text">100% left</span>
             </div>
           </div>
         </div>
@@ -1783,48 +1783,48 @@
           <div>
             <div class="seat-title-wrap">
               <div class="seat-title" id="qc-title">Jenny-QC</div>
-              <svg id="qc-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <svg id="qc-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Running" data-i18n-aria="seat.running" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
                 <path d="M12 3a9 9 0 0 1 9 9"></path>
               </svg>
             </div>
             <div class="seat-tool" id="qc-tool">codex</div>
           </div>
-          <span class="seat-status-badge status-idle" id="qc-status-badge">Rảnh</span>
+          <span class="seat-status-badge status-idle" id="qc-status-badge" data-i18n="seat.idle">Idle</span>
         </div>
         <div class="seat-info-row">
-          <div class="seat-info-item"><span>Task:</span><span id="qc-task">—</span></div>
-          <div class="seat-info-item"><span>Bắt đầu:</span><span id="qc-since">—</span></div>
-          <div class="seat-info-item"><span>Số lượt:</span><span id="qc-turns">0</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="qc-task">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="qc-since">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="qc-turns">0</span></div>
         </div>
         <div class="seat-swap-row">
-          <label for="qc-agent-select" class="seat-swap-label">Người ngồi ghế</label>
-          <select id="qc-agent-select" class="seat-swap-select" aria-label="Người ngồi ghế"></select>
+          <label for="qc-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
+          <select id="qc-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
         </div>
         <div class="last-line-container">
-          <span class="last-line-label">Dòng log cuối:</span>
+          <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
           <pre class="last-line-text" id="qc-last-line">—</pre>
         </div>
         <div class="seat-footer" id="qc-footer">
           <div id="qc-login-indicator" class="seat-login-indicator">
             <span class="login-dot dot-unknown"></span>
-            <span class="login-text">Đăng nhập: —</span>
+            <span class="login-text" data-i18n="login.none">Login: —</span>
           </div>
           <div id="qc-energy-box" class="seat-energy-box">
-            <span class="energy-unknown">Energy: —</span>
+            <span class="energy-unknown" data-i18n="energy.none">Energy: —</span>
             <div class="energy-bar-row">
-              <span class="energy-bar-label">5 giờ</span>
-              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5 giờ: còn 100%">
+              <span class="energy-bar-label">5h</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5h: 100% left">
                 <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
               </div>
-              <span class="energy-bar-text">còn 100%</span>
+              <span class="energy-bar-text">100% left</span>
             </div>
             <div class="energy-bar-row">
-              <span class="energy-bar-label">Tuần</span>
-              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Tuần: còn 100%">
+              <span class="energy-bar-label">Week</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Week: 100% left">
                 <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
               </div>
-              <span class="energy-bar-text">còn 100%</span>
+              <span class="energy-bar-text">100% left</span>
             </div>
           </div>
         </div>
@@ -1836,48 +1836,48 @@
           <div>
             <div class="seat-title-wrap">
               <div class="seat-title" id="audit-title">Kai-Audit</div>
-              <svg id="audit-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Đang chạy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <svg id="audit-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Running" data-i18n-aria="seat.running" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
                 <path d="M12 3a9 9 0 0 1 9 9"></path>
               </svg>
             </div>
             <div class="seat-tool" id="audit-tool">—</div>
           </div>
-          <span class="seat-status-badge status-idle" id="audit-status-badge">Rảnh</span>
+          <span class="seat-status-badge status-idle" id="audit-status-badge" data-i18n="seat.idle">Idle</span>
         </div>
         <div class="seat-info-row">
-          <div class="seat-info-item"><span>Task:</span><span id="audit-task">—</span></div>
-          <div class="seat-info-item"><span>Bắt đầu:</span><span id="audit-since">—</span></div>
-          <div class="seat-info-item"><span>Số lượt:</span><span id="audit-turns">0</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="audit-task">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="audit-since">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="audit-turns">0</span></div>
         </div>
         <div class="seat-swap-row">
-          <label for="audit-agent-select" class="seat-swap-label">Người ngồi ghế</label>
-          <select id="audit-agent-select" class="seat-swap-select" aria-label="Người ngồi ghế"></select>
+          <label for="audit-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
+          <select id="audit-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
         </div>
         <div class="last-line-container">
-          <span class="last-line-label">Dòng log cuối:</span>
+          <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
           <pre class="last-line-text" id="audit-last-line">—</pre>
         </div>
         <div class="seat-footer" id="audit-footer">
           <div id="audit-login-indicator" class="seat-login-indicator">
             <span class="login-dot dot-unknown"></span>
-            <span class="login-text">Đăng nhập: —</span>
+            <span class="login-text" data-i18n="login.none">Login: —</span>
           </div>
           <div id="audit-energy-box" class="seat-energy-box">
-            <span class="energy-unknown">Energy: —</span>
+            <span class="energy-unknown" data-i18n="energy.none">Energy: —</span>
             <div class="energy-bar-row">
-              <span class="energy-bar-label">5 giờ</span>
-              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5 giờ: còn 100%">
+              <span class="energy-bar-label">5h</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5h: 100% left">
                 <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
               </div>
-              <span class="energy-bar-text">còn 100%</span>
+              <span class="energy-bar-text">100% left</span>
             </div>
             <div class="energy-bar-row">
-              <span class="energy-bar-label">Tuần</span>
-              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Tuần: còn 100%">
+              <span class="energy-bar-label">Week</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Week: 100% left">
                 <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
               </div>
-              <span class="energy-bar-text">còn 100%</span>
+              <span class="energy-bar-text">100% left</span>
             </div>
           </div>
         </div>
@@ -1888,35 +1888,35 @@
     <div class="board-and-log-layout">
       <!-- Bảng goal & ticket -->
       <section class="card task-board-section goals-board-section">
-        <h2 class="section-title">Danh sách mục tiêu</h2>
+        <h2 class="section-title" data-i18n="goals.title">Goals</h2>
         <div id="goals-container" class="goals-container">
-          <div class="empty-placeholder">Chưa có goal nào</div>
+          <div class="empty-placeholder" data-i18n="goals.empty">No goals yet</div>
         </div>
       </section>
 
       <!-- Nhật ký -->
       <section class="card log-panel">
-        <h2 class="section-title">Nhật ký</h2>
+        <h2 class="section-title" data-i18n="log.title">Log</h2>
         <div class="log-list" id="log-list">
-          <div class="empty-placeholder">Chưa có nhật ký</div>
+          <div class="empty-placeholder" data-i18n="log.empty">No log entries</div>
         </div>
       </section>
     </div>
 
     <!-- Hộp thư team -->
     <section class="card inbox-section">
-      <h2 class="section-title">Hộp thư team</h2>
+      <h2 class="section-title" data-i18n="inbox.title">Team inbox</h2>
       <div id="notes-list" class="notes-list">
-        <div class="empty-placeholder">Chưa có ghi chú team</div>
+        <div class="empty-placeholder" data-i18n="inbox.empty">No team notes</div>
       </div>
     </section>
 
     <!-- Khung lệnh -->
     <section class="card cmd-section">
-      <h2 class="section-title">Khung lệnh</h2>
+      <h2 class="section-title" data-i18n="cmd.title">Command</h2>
       <div class="recipient-radios" id="recipient-radios">
         <label class="radio-label">
-          <input type="radio" name="cmd-to" value="team" checked> Cả team
+          <input type="radio" name="cmd-to" value="team" checked> <span data-i18n="cmd.team">Team</span>
         </label>
         <label class="radio-label">
           <input type="radio" name="cmd-to" value="pm"> PM
@@ -1930,39 +1930,39 @@
       </div>
 
       <div class="form-group">
-        <label for="cmd-text" class="form-label">Nội dung lệnh hoặc mục tiêu:</label>
-        <textarea id="cmd-text" class="form-textarea" rows="3" placeholder="Nhập mục tiêu cho PM, lệnh cho Dev/QC hoặc ghi chú cho Cả team..."></textarea>
+        <label for="cmd-text" class="form-label" data-i18n="cmd.label">Command or goal:</label>
+        <textarea id="cmd-text" class="form-textarea" rows="3" placeholder="Goal for PM, command for Dev/QC, or note for the team…" data-i18n-placeholder="cmd.placeholder"></textarea>
       </div>
 
       <div id="attach-image-group" class="attach-image-group">
         <label for="note-image-input" class="file-input-label" id="attach-image-label">
-          Đính kèm ảnh
+          <span data-i18n="cmd.attach">Attach image</span>
         </label>
         <input type="file" id="note-image-input" accept="image/png,image/jpeg,image/webp" class="sr-only">
         <div id="image-preview-wrap" class="image-preview-wrap" style="display: none;">
-          <img id="image-preview" class="image-preview-thumb" alt="Xem trước ảnh đính kèm">
+          <img id="image-preview" class="image-preview-thumb" alt="Attached image preview" data-i18n-alt="cmd.preview">
           <span id="image-preview-name" class="image-preview-name"></span>
-          <button id="remove-image-btn" class="btn-sm" type="button">Bỏ ảnh</button>
+          <button id="remove-image-btn" class="btn-sm" type="button" data-i18n="cmd.removeImage">Remove image</button>
         </div>
       </div>
 
       <div class="cmd-actions">
-        <button id="cmd-send-btn" class="btn btn-primary" type="button">Gửi lệnh</button>
-        <p class="cmd-note" id="cmd-note">Lệnh cho PM = mở phiên với mục tiêu này; lệnh cho Dev/QC xếp hàng sau lượt đang chạy</p>
+        <button id="cmd-send-btn" class="btn btn-primary" type="button" data-i18n="cmd.send">Send</button>
+        <p class="cmd-note" id="cmd-note" data-i18n="cmd.hint">PM: starts a session with this goal · Dev/QC: queued after the current turn</p>
       </div>
       <div id="cmd-feedback" class="action-feedback" style="display: none;"></div>
 
       <div class="queue-container">
-        <h3 class="queue-title">Hàng đợi</h3>
+        <h3 class="queue-title" data-i18n="queue.title">Queue</h3>
         <ul id="queue-list" class="queue-list">
-          <li class="empty-placeholder">Hàng đợi trống</li>
+          <li class="empty-placeholder" data-i18n="queue.empty">Queue empty</li>
         </ul>
       </div>
     </section>
 
     <!-- Khu Tài khoản -->
     <section class="card accounts-section" id="accounts-container">
-      <h2>Tài khoản</h2>
+      <h2 data-i18n="acc.title">Accounts</h2>
       <div id="accounts-list" class="accounts-list">
         <div class="account-row">
           <div class="account-info">
@@ -1970,12 +1970,12 @@
             <span class="account-tool">Tool</span>
             <div class="account-login">
               <span class="login-dot dot-unknown"></span>
-              <span>Chưa rõ</span>
+              <span data-i18n="login.unknown">Unknown</span>
             </div>
           </div>
           <div class="account-cmd-wrap">
-            <input type="text" readonly class="account-cmd-code" value="ssh -t admzon@100.96.250.103 &quot;sudo -iu agent agy&quot;" aria-label="Lệnh đăng nhập">
-            <button class="btn btn-secondary btn-sm copy-btn" type="button" aria-label="Sao chép lệnh đăng nhập">Sao chép</button>
+            <input type="text" readonly class="account-cmd-code" value="ssh -t admzon@100.96.250.103 &quot;sudo -iu agent agy&quot;" aria-label="Login command" data-i18n-aria="acc.loginCmd">
+            <button class="btn btn-secondary btn-sm copy-btn" type="button" aria-label="Copy login command" data-i18n-aria="acc.copyLogin" data-i18n="acc.copy">Copy</button>
           </div>
         </div>
       </div>
@@ -1983,6 +1983,166 @@
   </div>
 
   <script>
+
+      // ===== i18n (Plan 5 Task 9): mọi chữ hiển thị nằm ở đây; bản 'vi' thêm sau cùng key. =====
+      var STRINGS = {
+        en: {
+          'conn.lost': 'Disconnected, retrying…',
+          'bar.project': 'Project: {name}',
+          'bar.noProject': 'Project: —',
+          'bar.session': 'Session #{id} · {status}',
+          'bar.noSession': 'No session',
+          'bar.turns': 'Turns {used}/{max}',
+          'bar.holder': 'Active seat: {seat}',
+          'bar.noHolder': 'Active seat: —',
+          'btn.autoApprove': 'Auto-approve tickets',
+          'btn.refreshEnergy': 'Refresh energy',
+          'btn.approve': 'Approve tickets',
+          'btn.stop': 'Stop',
+          'btn.resume': 'Resume',
+          'btn.theme': 'Toggle light/dark',
+          'confirm.stop': 'Stop now? The running agent will be killed and the queue cleared.',
+          'fb.stopSent': 'Stop sent',
+          'fb.resumeSent': 'Resume sent',
+          'fb.approved': 'Tickets approved',
+          'fb.nothingToApprove': 'No tickets awaiting approval',
+          'fb.energyRefreshed': 'Energy refreshed',
+          'fb.seatChanged': '{seat} seat reassigned',
+          'fb.serverError': 'Server error ({status})',
+          'goals.sessionTitle': 'Session goals',
+          'goals.sessionEmpty': 'No session goals',
+          'seat.idle': 'Idle',
+          'seat.running': 'Running',
+          'seat.waiting': 'Waiting',
+          'seat.task': 'Task:',
+          'seat.started': 'Started:',
+          'seat.turns': 'Turns:',
+          'seat.agent': 'Seated agent',
+          'seat.lastLog': 'Last log:',
+          'seat.also': 'also {seats}',
+          'seat.substitute': 'last turn: {agent} (substitute)',
+          'seat.warnings': 'Team: {list}',
+          'login.none': 'Login: —',
+          'login.ok': 'Ok',
+          'login.expiring': 'Expires {date}',
+          'login.expiringSoon': 'Expiring soon',
+          'login.relogin': 'Re-login needed',
+          'login.apiKey': 'API key override',
+          'login.unknown': 'Unknown',
+          'energy.none': 'Energy: —',
+          'energy.5h': '5h',
+          'energy.week': 'Week',
+          'energy.left': '{pct}% left',
+          'energy.resets': ' · resets {time}',
+          'energy.unavailable': 'Energy: unavailable',
+          'energy.low': 'Low',
+          'goals.title': 'Goals',
+          'goals.empty': 'No goals yet',
+          'stage.intake': 'Intake',
+          'stage.plan': 'Planning',
+          'stage.build': 'Dev',
+          'stage.verify': 'Testing',
+          'stage.audit': 'Security audit',
+          'stage.release': 'Release',
+          'goal.passed': '{n}/{m} passed',
+          'goal.noTickets': 'No tickets',
+          'goal.noDesc': '(No description)',
+          'goal.approveMerge': 'Approve merge',
+          'goal.confirmMerge': 'Merge goal G{n} into main?',
+          'goal.merged': 'Goal G{n} merged ({sha})',
+          'goal.approveError': 'Goal approval failed',
+          'goal.tableTitle': 'G{n} tickets',
+          'goal.col.title': 'Title',
+          'goal.col.rounds': 'Fix rounds',
+          'goal.col.updated': 'Updated',
+          'history.loading': 'Loading history…',
+          'history.cannotLoad': "Can't load history",
+          'history.empty': 'No history yet',
+          'history.error': 'History load error',
+          'status.running': 'Running',
+          'status.awaiting_approval': 'Awaiting approval',
+          'status.done': 'Done',
+          'status.needs_owner': 'Needs owner',
+          'status.out_of_turns': 'Out of turns',
+          'status.stopped': 'Stopped',
+          'status.refused': 'Refused',
+          'status.error': 'Error',
+          'status.pending': 'Pending',
+          'status.in_dev': 'In dev',
+          'status.awaiting_qc': 'Awaiting QC',
+          'status.passed': 'Passed',
+          'status.returned': 'Returned',
+          'status.failed': 'Failed',
+          'status.blocked': 'Blocked',
+          'status.queued': 'Queued',
+          'status.cancelled': 'Cancelled',
+          'status.open': 'Open',
+          'queue.title': 'Queue',
+          'queue.empty': 'Queue empty',
+          'log.title': 'Log',
+          'log.empty': 'No log entries',
+          'inbox.title': 'Team inbox',
+          'inbox.empty': 'No team notes',
+          'inbox.attachment': 'Attachment N-{id}',
+          'cmd.title': 'Command',
+          'cmd.team': 'Team',
+          'cmd.label': 'Command or goal:',
+          'cmd.placeholder': 'Goal for PM, command for Dev/QC, or note for the team…',
+          'cmd.attach': 'Attach image',
+          'cmd.preview': 'Attached image preview',
+          'cmd.removeImage': 'Remove image',
+          'cmd.send': 'Send',
+          'cmd.hint': 'PM: starts a session with this goal · Dev/QC: queued after the current turn',
+          'cmd.hintPm': 'PM: starts a session with this goal',
+          'cmd.hintSeat': '{seat}: queued after the current turn',
+          'cmd.hintTeam': 'Team: starts a session with this note · attach or paste an image',
+          'cmd.imageType': 'PNG, JPEG or WebP only',
+          'cmd.imageSize': 'Image over 5 MB',
+          'cmd.empty': 'Enter a command or goal',
+          'cmd.noteSent': 'Team note sent',
+          'cmd.sent': 'Command sent',
+          'cmd.failed': 'Send failed',
+          'acc.title': 'Accounts',
+          'acc.empty': 'No account info',
+          'acc.loginCmd': 'Login command',
+          'acc.loginCmdFor': 'Login command ({agent})',
+          'acc.copy': 'Copy',
+          'acc.copyLogin': 'Copy login command',
+          'acc.copyLoginFor': 'Copy login command for {agent}',
+          'acc.copied': 'Copied',
+          'acc.copyManual': 'Select and press Ctrl+C',
+          'acc.modelFor': 'Model for {agent}',
+          'acc.cliDefault': 'CLI default',
+          'acc.effortFor': 'Effort for {agent}',
+          'acc.save': 'Save',
+          'acc.saveFor': 'Save model and effort for {agent}',
+          'acc.saved': 'Saved for {agent} (applies next turn)'
+        }
+      };
+      var LANG = 'en';
+      try {
+        var savedLang = window.localStorage.getItem('btm.lang');
+        if (savedLang && STRINGS[savedLang]) LANG = savedLang;
+      } catch (e) {}
+      // Thiếu key → trả lại chính key (không crash). {x} thay bằng vars.x.
+      function tx(key, vars) {
+        var table = STRINGS[LANG] || STRINGS.en;
+        var str = Object.prototype.hasOwnProperty.call(table, key) ? table[key]
+          : (Object.prototype.hasOwnProperty.call(STRINGS.en, key) ? STRINGS.en[key] : key);
+        if (vars) {
+          str = str.replace(/\{(\w+)\}/g, function (m, k) { return Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m; });
+        }
+        return str;
+      }
+      function applyI18n(root) {
+        var scope = root || document;
+        scope.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = tx(el.getAttribute('data-i18n')); });
+        scope.querySelectorAll('[data-i18n-aria]').forEach(function (el) { el.setAttribute('aria-label', tx(el.getAttribute('data-i18n-aria'))); });
+        scope.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) { el.setAttribute('placeholder', tx(el.getAttribute('data-i18n-placeholder'))); });
+        scope.querySelectorAll('[data-i18n-title]').forEach(function (el) { el.setAttribute('title', tx(el.getAttribute('data-i18n-title'))); });
+        scope.querySelectorAll('[data-i18n-alt]').forEach(function (el) { el.setAttribute('alt', tx(el.getAttribute('data-i18n-alt'))); });
+      }
+      applyI18n();
     (function () {
       // 1. Theme Management
       function initTheme() {
@@ -2019,23 +2179,23 @@
 
       // 2. Status Translations
       var STATUS_MAP = {
-        running: 'Đang chạy',
-        awaiting_approval: 'Chờ duyệt',
-        done: 'Hoàn tất',
-        needs_owner: 'Cần anh xem',
-        out_of_turns: 'Hết lượt',
-        stopped: 'Đã dừng',
-        refused: 'Bị từ chối',
-        error: 'Lỗi',
-        pending: 'Chờ',
-        in_dev: 'Đang làm',
-        awaiting_qc: 'Chờ test',
-        passed: 'Đạt',
-        returned: 'Trả về',
-        failed: 'Thất bại',
-        blocked: 'Bị chặn',
-        queued: 'Xếp hàng',
-        cancelled: 'Đã hủy'
+        running: tx('status.running'),
+        awaiting_approval: tx('status.awaiting_approval'),
+        done: tx('status.done'),
+        needs_owner: tx('status.needs_owner'),
+        out_of_turns: tx('status.out_of_turns'),
+        stopped: tx('status.stopped'),
+        refused: tx('status.refused'),
+        error: tx('status.error'),
+        pending: tx('status.pending'),
+        in_dev: tx('status.in_dev'),
+        awaiting_qc: tx('status.awaiting_qc'),
+        passed: tx('status.passed'),
+        returned: tx('status.returned'),
+        failed: tx('status.failed'),
+        blocked: tx('status.blocked'),
+        queued: tx('status.queued'),
+        cancelled: tx('status.cancelled')
       };
       var STATUS_LABELS = STATUS_MAP;
 
@@ -2148,23 +2308,23 @@
 
       function getLoginDisplay(login) {
         if (!login) {
-          return { text: 'Chưa rõ', dotClass: 'dot-unknown' };
+          return { text: tx('login.unknown'), dotClass: 'dot-unknown' };
         }
         var state = login.state || 'unknown';
         if (state === 'ok') {
           return { text: 'Ok', dotClass: 'dot-ok' };
         }
         if (state === 'expiring') {
-          var label = login.detail ? login.detail.replace(/^Hết hạn\s*/i, 'Sắp hết hạn ') : 'Sắp hết hạn';
+          var label = login.detail ? login.detail.replace(/^Expires\s*/i, tx('login.expiring', { date: '' })) : tx('login.expiringSoon');
           return { text: label, dotClass: 'dot-expiring' };
         }
         if (state === 'relogin') {
-          return { text: 'Cần đăng nhập lại', dotClass: 'dot-relogin' };
+          return { text: tx('login.relogin'), dotClass: 'dot-relogin' };
         }
         if (state === 'api_key') {
-          return { text: 'API key đè', dotClass: 'dot-api-key' };
+          return { text: tx('login.apiKey'), dotClass: 'dot-api-key' };
         }
-        return { text: 'Chưa rõ', dotClass: 'dot-unknown' };
+        return { text: tx('login.unknown'), dotClass: 'dot-unknown' };
       }
 
       function energyColor(pct) {
@@ -2188,7 +2348,7 @@
         var rawPct = typeof w === 'number' ? w : (w.remainingPercent != null ? w.remainingPercent : (w.pct != null ? w.pct : 0));
         var pct = Math.max(0, Math.min(100, Math.round(Number(rawPct) || 0)));
         var hhmm = (typeof w === 'object' && w.resetsAt) ? formatHHmm(w.resetsAt) : '';
-        return 'còn ' + pct + '%' + (hhmm ? (' · hồi ' + hhmm) : '');
+        return tx('energy.left', { pct: pct }) + (hhmm ? tx('energy.resets', { time: hhmm }) : '');
       }
 
       async function copyLoginCommand(text, inputEl, feedbackTarget) {
@@ -2198,7 +2358,7 @@
           } else if (feedbackTarget && 'textContent' in feedbackTarget) {
             feedbackTarget.textContent = msg;
             setTimeout(function () {
-              feedbackTarget.textContent = 'Sao chép';
+              feedbackTarget.textContent = tx('acc.copy');
             }, 2000);
           }
         }
@@ -2222,10 +2382,10 @@
             ok = false;
           }
           if (ok) {
-            setFeedback('Đã sao chép');
+            setFeedback(tx('acc.copied'));
             return true;
           } else {
-            setFeedback('Hãy bôi đen và Ctrl+C');
+            setFeedback(tx('acc.copyManual'));
             return false;
           }
         }
@@ -2239,7 +2399,7 @@
         if (hasClipboard) {
           try {
             await navigator.clipboard.writeText(text);
-            setFeedback('Đã sao chép');
+            setFeedback(tx('acc.copied'));
             return true;
           } catch (err) {
             return fallbackCopy();
@@ -2280,7 +2440,7 @@
         var chip = document.createElement('span');
         chip.className = 'energy-warn';
         var hhmm = eng.soonestReset ? formatHHmm(eng.soonestReset) : '';
-        chip.textContent = 'Sắp hết' + (hhmm ? ' · hồi ' + hhmm : '');
+        chip.textContent = tx('energy.low') + (hhmm ? tx('energy.resets', { time: hhmm }) : '');
         return chip;
       }
 
@@ -2288,7 +2448,7 @@
         var el = document.getElementById('seat-warnings');
         if (!el) return;
         if (Array.isArray(warnings) && warnings.length > 0) {
-          el.textContent = 'Đội hình: ' + warnings.join(' · ');
+          el.textContent = tx('seat.warnings', { list: warnings.join(' · ') });
           el.style.display = 'block';
         } else {
           el.textContent = '';
@@ -2301,20 +2461,20 @@
         wrap.className = 'account-model';
 
         var modelInput = document.createElement('select');
-        modelInput.setAttribute('aria-label', 'Model cho ' + acc.agent);
+        modelInput.setAttribute('aria-label', tx('acc.modelFor', { agent: acc.agent }));
         var options = [''].concat(Array.isArray(acc.modelOptions) ? acc.modelOptions : []);
         if (acc.model && options.indexOf(acc.model) < 0) options.push(acc.model);
         options.forEach(function (m) {
           var opt = document.createElement('option');
           opt.value = m;
-          opt.textContent = m || 'Mặc định của CLI';
+          opt.textContent = m || tx('acc.cliDefault');
           modelInput.appendChild(opt);
         });
         modelInput.value = acc.model || '';
         wrap.appendChild(modelInput);
 
         var effortSel = document.createElement('select');
-        effortSel.setAttribute('aria-label', 'Mức suy luận cho ' + acc.agent);
+        effortSel.setAttribute('aria-label', tx('acc.effortFor', { agent: acc.agent }));
         var allowed = EFFORTS;
         allowed.forEach(function (e) {
           var opt = document.createElement('option');
@@ -2328,15 +2488,15 @@
         var saveBtn = document.createElement('button');
         saveBtn.type = 'button';
         saveBtn.className = 'btn btn-secondary btn-sm';
-        saveBtn.textContent = 'Lưu';
-        saveBtn.setAttribute('aria-label', 'Lưu model và mức suy luận cho ' + acc.agent);
+        saveBtn.textContent = tx('acc.save');
+        saveBtn.setAttribute('aria-label', tx('acc.saveFor', { agent: acc.agent }));
         saveBtn.addEventListener('click', async function () {
           try {
             var res = await postJson('/api/agent', { agent: acc.agent, model: modelInput.value.trim(), effort: effortSel.value });
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
-              showFeedback(topFeedback, 'Đã lưu model/effort cho ' + acc.agent + ' (áp từ lượt kế)', false);
+              showFeedback(topFeedback, tx('acc.saved', { agent: acc.agent }), false);
             }
           } catch (err) {
             showFeedback(topFeedback, err.message, true);
@@ -2363,7 +2523,7 @@
           body = {};
         }
         if (!res.ok) {
-          var errText = (body && body.error) ? body.error : ('Lỗi máy chủ (' + res.status + ')');
+          var errText = (body && body.error) ? body.error : tx('fb.serverError', { status: res.status });
           throw new Error(errText);
         }
         return body;
@@ -2390,16 +2550,16 @@
         var status = snapshot && snapshot.session ? snapshot.session.status : null;
         if (snapshot && snapshot.session && snapshot.session.status === 'awaiting_approval') {
           approveBtn.disabled = false;
-          approveBtn.textContent = 'Duyệt thẻ';
+          approveBtn.textContent = tx('btn.approve');
           approveBtn.removeAttribute('title');
         } else if (status === 'needs_owner' || status === 'stopped') {
           approveBtn.disabled = false;
-          approveBtn.textContent = 'Tiếp tục phiên';
+          approveBtn.textContent = tx('btn.resume');
           approveBtn.removeAttribute('title');
         } else {
           approveBtn.disabled = true;
-          approveBtn.textContent = 'Duyệt thẻ';
-          approveBtn.setAttribute('title', 'Không có thẻ chờ duyệt');
+          approveBtn.textContent = tx('btn.approve');
+          approveBtn.setAttribute('title', tx('fb.nothingToApprove'));
         }
       }
 
@@ -2416,12 +2576,12 @@
       var goalTicketsFingerprints = {};
 
       var PIPELINE_STAGES = [
-        { key: 'intake', label: 'Tiếp nhận' },
-        { key: 'plan', label: 'Lập kế hoạch' },
-        { key: 'build', label: 'Đang làm' },
-        { key: 'verify', label: 'Kiểm thử' },
-        { key: 'audit', label: 'Kiểm tra bảo mật' },
-        { key: 'release', label: 'Phát hành' }
+        { key: 'intake', label: tx('stage.intake') },
+        { key: 'plan', label: tx('stage.plan') },
+        { key: 'build', label: tx('stage.build') },
+        { key: 'verify', label: tx('stage.verify') },
+        { key: 'audit', label: tx('stage.audit') },
+        { key: 'release', label: tx('stage.release') }
       ];
 
       function getTasksFingerprint(tasks) {
@@ -2535,7 +2695,7 @@
           var td = document.createElement('td');
           td.colSpan = 4;
           td.className = 'empty-placeholder';
-          td.textContent = 'Không có ticket';
+          td.textContent = tx('goal.noTickets');
           tr.appendChild(td);
           tbody.appendChild(tr);
           return;
@@ -2552,7 +2712,7 @@
 
           var tdGoal = document.createElement('td');
           tdGoal.className = 'col-goal';
-          tdGoal.textContent = t.goal || t.title || '(Chưa có mô tả)';
+          tdGoal.textContent = t.goal || t.title || tx('goal.noDesc');
           tr.appendChild(tdGoal);
 
           var tdFixes = document.createElement('td');
@@ -2580,17 +2740,17 @@
         clearChildren(containerEl);
         var loadingEl = document.createElement('div');
         loadingEl.className = 'empty-placeholder';
-        loadingEl.textContent = 'Đang tải lịch sử…';
+        loadingEl.textContent = tx('history.loading');
         containerEl.appendChild(loadingEl);
         try {
           var res = await fetch('/api/tickets/' + encodeURIComponent(ticketId) + '/history');
-          if (!res.ok) throw new Error('Không thể tải lịch sử');
+          if (!res.ok) throw new Error(tx('history.cannotLoad'));
           var list = await res.json();
           clearChildren(containerEl);
           if (!Array.isArray(list) || list.length === 0) {
             var emptyEl = document.createElement('div');
             emptyEl.className = 'empty-placeholder';
-            emptyEl.textContent = 'Chưa có lịch sử thay đổi';
+            emptyEl.textContent = tx('history.empty');
             containerEl.appendChild(emptyEl);
             return;
           }
@@ -2627,7 +2787,7 @@
           var errEl = document.createElement('div');
           errEl.className = 'empty-placeholder';
           errEl.style.color = 'var(--error-text, var(--danger))';
-          errEl.textContent = err.message || 'Lỗi tải lịch sử';
+          errEl.textContent = err.message || tx('history.error');
           containerEl.appendChild(errEl);
         }
       }
@@ -2641,7 +2801,7 @@
         if (list.length === 0) {
           var empty = document.createElement('div');
           empty.className = 'empty-placeholder';
-          empty.textContent = 'Chưa có goal nào';
+          empty.textContent = tx('goals.empty');
           container.appendChild(empty);
           return;
         }
@@ -2667,7 +2827,7 @@
           titleWrap.className = 'goal-group-title';
 
           var titleSpan = document.createElement('span');
-          titleSpan.textContent = 'G' + g.n + ' · ' + (g.title || '') + ' · ' + (g.passed || 0) + '/' + (g.total || 0) + ' đạt';
+          titleSpan.textContent = 'G' + g.n + ' · ' + (g.title || '') + ' · ' + tx('goal.passed', { n: g.passed || 0, m: g.total || 0 });
           titleWrap.appendChild(titleSpan);
           header.appendChild(titleWrap);
 
@@ -2679,18 +2839,18 @@
             var approveGoalBtn = document.createElement('button');
             approveGoalBtn.type = 'button';
             approveGoalBtn.className = 'btn btn-primary btn-approve-goal';
-            approveGoalBtn.textContent = 'Duyệt merge';
+            approveGoalBtn.textContent = tx('goal.approveMerge');
             approveGoalBtn.addEventListener('click', async function () {
-              if (!confirm('Duyệt merge goal G' + g.n + ' vào nhánh chính?')) {
+              if (!confirm(tx('goal.confirmMerge', { n: g.n }))) {
                 return;
               }
               approveGoalBtn.disabled = true;
               try {
                 var res = await postJson('/api/goal/approve', { goal: 'G' + g.n });
                 if (res && res.ok) {
-                  showFeedback(topFeedback, 'Đã duyệt và merge goal G' + g.n + ' (' + (res.sha || '').slice(0, 7) + ')', false);
+                  showFeedback(topFeedback, tx('goal.merged', { n: g.n, sha: (res.sha || '').slice(0, 7) }), false);
                 } else {
-                  showFeedback(topFeedback, (res && res.message) || 'Lỗi duyệt goal', true);
+                  showFeedback(topFeedback, (res && res.message) || tx('goal.approveError'), true);
                 }
               } catch (err) {
                 showFeedback(topFeedback, err.message, true);
@@ -2743,7 +2903,7 @@
           var tabNav = document.createElement('div');
           tabNav.className = 'task-tabs-nav';
           tabNav.setAttribute('role', 'tablist');
-          tabNav.setAttribute('aria-label', 'Bảng ticket G' + g.n);
+          tabNav.setAttribute('aria-label', tx('goal.tableTitle', { n: g.n }));
           tabNav.setAttribute('data-active-state', activeTab);
           tabNav.style.borderBottomColor = 'var(--tab-' + (activeTab === 'in_dev' ? 'in-dev' : (activeTab === 'awaiting_qc' ? 'awaiting-qc' : activeTab)) + ')';
 
@@ -2793,19 +2953,19 @@
           var thGoal = document.createElement('th');
           thGoal.scope = 'col';
           thGoal.className = 'col-goal';
-          thGoal.textContent = 'Mục tiêu';
+          thGoal.textContent = tx('goal.col.title');
           trHead.appendChild(thGoal);
 
           var thFixes = document.createElement('th');
           thFixes.scope = 'col';
           thFixes.className = 'col-fixes';
-          thFixes.textContent = 'Vòng sửa';
+          thFixes.textContent = tx('goal.col.rounds');
           trHead.appendChild(thFixes);
 
           var thUpdated = document.createElement('th');
           thUpdated.scope = 'col';
           thUpdated.className = 'col-updated';
-          thUpdated.textContent = 'Cập nhật';
+          thUpdated.textContent = tx('goal.col.updated');
           trHead.appendChild(thUpdated);
 
           thead.appendChild(trHead);
@@ -2829,7 +2989,7 @@
               var tdEmpty = document.createElement('td');
               tdEmpty.colSpan = 4;
               tdEmpty.className = 'empty-placeholder';
-              tdEmpty.textContent = 'Không có ticket';
+              tdEmpty.textContent = tx('goal.noTickets');
               trEmpty.appendChild(tdEmpty);
               tbody.appendChild(trEmpty);
               return;
@@ -2958,11 +3118,11 @@
 
             var labelSpan = document.createElement('span');
             var tabLabelMap = {
-              pending: 'Chờ',
-              in_dev: 'Đang làm',
-              awaiting_qc: 'Chờ test',
-              passed: 'Đạt',
-              returned: 'Trả về'
+              pending: tx('status.pending'),
+              in_dev: tx('status.in_dev'),
+              awaiting_qc: tx('status.awaiting_qc'),
+              passed: tx('status.passed'),
+              returned: tx('status.returned')
             };
             labelSpan.textContent = tabLabelMap[tabKey] || tabKey;
             tabBtn.appendChild(labelSpan);
@@ -3034,11 +3194,11 @@
         if (!file) return;
         var validTypes = ['image/png', 'image/jpeg', 'image/webp'];
         if (!validTypes.includes(file.type)) {
-          showFeedback(cmdFeedback, 'Chỉ chấp nhận ảnh PNG, JPEG hoặc WebP', true);
+          showFeedback(cmdFeedback, tx('cmd.imageType'), true);
           return;
         }
         if (file.size > 5 * 1024 * 1024) {
-          showFeedback(cmdFeedback, 'Ảnh vượt quá giới hạn 5 MB', true);
+          showFeedback(cmdFeedback, tx('cmd.imageSize'), true);
           return;
         }
         if (reader) {
@@ -3065,11 +3225,11 @@
         setDisplay(attachImageGroup, to === 'team', 'flex');
         if (cmdNote) {
           if (to === 'team') {
-            cmdNote.textContent = 'Gửi Cả team = mở phiên với ghi chú này; có thể đính kèm hoặc dán ảnh';
+            cmdNote.textContent = tx('cmd.hintTeam');
           } else if (to === 'pm') {
-            cmdNote.textContent = 'Lệnh cho PM = mở phiên với mục tiêu này';
+            cmdNote.textContent = tx('cmd.hintPm');
           } else {
-            cmdNote.textContent = 'Lệnh cho ' + formatSeatLabel(to) + ' xếp hàng sau lượt đang chạy';
+            cmdNote.textContent = tx('cmd.hintSeat', { seat: formatSeatLabel(to) });
           }
         }
       }
@@ -3113,7 +3273,7 @@
           seatKeys = ['pm', 'dev', 'qc'];
         }
 
-        var options = [{ value: 'team', label: 'Cả team' }];
+        var options = [{ value: 'team', label: tx('cmd.team') }];
         seatKeys.forEach(function (sk) {
           options.push({ value: sk, label: formatSeatLabel(sk) });
         });
@@ -3154,7 +3314,7 @@
         if (list.length === 0) {
           var empty = document.createElement('div');
           empty.className = 'empty-placeholder';
-          empty.textContent = 'Chưa có ghi chú team';
+          empty.textContent = tx('inbox.empty');
           notesList.appendChild(empty);
           return;
         }
@@ -3186,7 +3346,7 @@
           statusEl.className = 'note-status';
           var isDone = n.status === 'done';
           statusEl.classList.add(isDone ? 'note-status-done' : 'note-status-open');
-          statusEl.textContent = isDone ? 'Xong' : (n.status === 'open' ? 'Mở' : formatStatus(n.status));
+          statusEl.textContent = isDone ? tx('status.done') : (n.status === 'open' ? tx('status.open') : formatStatus(n.status));
           header.appendChild(statusEl);
 
           item.appendChild(header);
@@ -3200,7 +3360,7 @@
             var imgEl = document.createElement('img');
             imgEl.className = 'note-image-thumb';
             imgEl.src = '/api/notes/' + n.id + '/image';
-            imgEl.alt = 'Ảnh đính kèm N-' + n.id;
+            imgEl.alt = tx('inbox.attachment', { id: n.id });
             item.appendChild(imgEl);
           }
 
@@ -3261,9 +3421,9 @@
           if (toolEl) {
             var toolParts = [cardData.tool || '—'];
             if (cardData.model) toolParts.push(cardData.model);
-            if (cardData.substitute) toolParts.push('lượt cuối: ' + cardData.substitute + ' ngồi thay');
+            if (cardData.substitute) toolParts.push(tx('seat.substitute', { agent: cardData.substitute }));
             if (Array.isArray(cardData.also) && cardData.also.length > 0) {
-              toolParts.push('kiêm ' + cardData.also.map(function (x) { return SEAT_LABELS[x] || x; }).join(', '));
+              toolParts.push(tx('seat.also', { seats: cardData.also.map(function (x) { return SEAT_LABELS[x] || x; }).join(', ') }));
             }
             toolEl.textContent = toolParts.join(' · ');
           }
@@ -3281,10 +3441,10 @@
               statusBadge.className = 'seat-status-badge';
               if (cardData.status === 'waiting') {
                 statusBadge.classList.add('status-waiting');
-                statusBadge.textContent = 'Chờ';
+                statusBadge.textContent = tx('seat.waiting');
               } else {
                 statusBadge.classList.add('status-idle');
-                statusBadge.textContent = 'Rảnh';
+                statusBadge.textContent = tx('seat.idle');
               }
             }
           }
@@ -3320,7 +3480,7 @@
                 var row = document.createElement('div');
                 row.className = 'energy-bar-row';
 
-                var wLabel = w.name === '5h' ? '5 giờ' : (w.name === 'week' ? 'Tuần' : w.name);
+                var wLabel = w.name === '5h' ? tx('energy.5h') : (w.name === 'week' ? tx('energy.week') : w.name);
                 var lbl = document.createElement('span');
                 lbl.className = 'energy-bar-label';
                 lbl.textContent = wLabel;
@@ -3353,7 +3513,7 @@
               var unk = document.createElement('div');
               unk.className = 'energy-unknown';
               var noteText = (eng && eng.note) ? (' (' + eng.note + ')') : '';
-              unk.textContent = 'Energy: không đọc được' + noteText;
+              unk.textContent = tx('energy.unavailable') + noteText;
               energyBox.appendChild(unk);
             }
           }
@@ -3366,7 +3526,7 @@
 
         // Project
         if (projectBadge) {
-          projectBadge.textContent = state.project ? ('Dự án: ' + state.project) : 'Dự án: —';
+          projectBadge.textContent = state.project ? tx('bar.project', { name: state.project }) : tx('bar.noProject');
         }
 
         // Settings
@@ -3376,11 +3536,11 @@
 
         // Session & Turns
         if (state.session) {
-          if (sessionBadge) sessionBadge.textContent = 'Phiên #' + state.session.id + ' · ' + formatStatus(state.session.status);
-          if (turnsBadge) turnsBadge.textContent = 'Đã dùng ' + state.session.turnsUsed + '/' + state.session.maxTurns + ' lượt';
+          if (sessionBadge) sessionBadge.textContent = tx('bar.session', { id: state.session.id, status: formatStatus(state.session.status) });
+          if (turnsBadge) turnsBadge.textContent = tx('bar.turns', { used: state.session.turnsUsed, max: state.session.maxTurns });
         } else {
-          if (sessionBadge) sessionBadge.textContent = 'Chưa có phiên';
-          if (turnsBadge) turnsBadge.textContent = 'Đã dùng 0/0 lượt';
+          if (sessionBadge) sessionBadge.textContent = tx('bar.noSession');
+          if (turnsBadge) turnsBadge.textContent = tx('bar.turns', { used: 0, max: 0 });
         }
 
         if (approveBtn) {
@@ -3391,10 +3551,10 @@
         if (state.holder) {
           var seatObj = (state.seats || []).find(function (s) { return s.seat === state.holder; });
           var holderName = seatObj ? formatAgentDisplayName(seatObj.agent, seatObj.seat) : formatLogWho(state.holder, state.seats);
-          if (holderText) holderText.textContent = 'Đang giữ lượt: ' + holderName;
+          if (holderText) holderText.textContent = tx('bar.holder', { seat: holderName });
           setDisplay(holderDot, true, 'inline-block');
         } else {
-          if (holderText) holderText.textContent = 'Đang giữ lượt: —';
+          if (holderText) holderText.textContent = tx('bar.noHolder');
           setDisplay(holderDot, false);
         }
 
@@ -3405,7 +3565,7 @@
           if (goals.length === 0) {
             var emptyLi = document.createElement('li');
             emptyLi.className = 'empty-placeholder';
-            emptyLi.textContent = 'Chưa có mục tiêu phiên';
+            emptyLi.textContent = tx('goals.sessionEmpty');
             goalsList.appendChild(emptyLi);
           } else {
             goals.forEach(function (g) {
@@ -3444,7 +3604,7 @@
           if (logs.length === 0) {
             var emptyLog = document.createElement('div');
             emptyLog.className = 'empty-placeholder';
-            emptyLog.textContent = 'Chưa có nhật ký';
+            emptyLog.textContent = tx('log.empty');
             logList.appendChild(emptyLog);
           } else {
             logs.forEach(function (item) {
@@ -3479,7 +3639,7 @@
           if (queue.length === 0) {
             var emptyQ = document.createElement('li');
             emptyQ.className = 'empty-placeholder';
-            emptyQ.textContent = 'Hàng đợi trống';
+            emptyQ.textContent = tx('queue.empty');
             queueList.appendChild(emptyQ);
           } else {
             queue.forEach(function (item) {
@@ -3524,7 +3684,7 @@
         if (!Array.isArray(accounts) || accounts.length === 0) {
           var empty = document.createElement('div');
           empty.className = 'empty-placeholder';
-          empty.textContent = 'Chưa có thông tin tài khoản';
+          empty.textContent = tx('acc.empty');
           container.appendChild(empty);
           return;
         }
@@ -3583,14 +3743,14 @@
           codeEl.readOnly = true;
           codeEl.className = 'account-cmd-code';
           codeEl.value = cmdStr;
-          codeEl.setAttribute('aria-label', 'Lệnh đăng nhập cho ' + acc.agent);
+          codeEl.setAttribute('aria-label', tx('acc.loginCmdFor', { agent: acc.agent }));
           cmdWrap.appendChild(codeEl);
 
           var copyBtn = document.createElement('button');
           copyBtn.className = 'btn btn-secondary btn-sm copy-btn';
           copyBtn.setAttribute('type', 'button');
-          copyBtn.setAttribute('aria-label', 'Sao chép lệnh đăng nhập cho ' + acc.agent);
-          copyBtn.textContent = 'Sao chép';
+          copyBtn.setAttribute('aria-label', tx('acc.copyLoginFor', { agent: acc.agent }));
+          copyBtn.textContent = tx('acc.copy');
 
           copyBtn.addEventListener('click', function () {
             copyLoginCommand(cmdStr, codeEl, copyBtn);
@@ -3640,7 +3800,7 @@
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
-              showFeedback(topFeedback, 'Đã làm mới Energy', false);
+              showFeedback(topFeedback, tx('fb.energyRefreshed'), false);
             }
           } catch (err) {
             showFeedback(topFeedback, err.message, true);
@@ -3660,7 +3820,7 @@
               if (res && res.error) {
                 showFeedback(topFeedback, res.error, true);
               } else {
-                showFeedback(topFeedback, 'Đã đổi người ngồi ghế ' + sk, false);
+                showFeedback(topFeedback, tx('fb.seatChanged', { seat: SEAT_LABELS[sk] || sk }), false);
               }
             } catch (err) {
               showFeedback(topFeedback, err.message, true);
@@ -3677,7 +3837,7 @@
 
       if (stopBtn) {
         stopBtn.addEventListener('click', async function () {
-          if (!confirm('Bạn có chắc chắn muốn Dừng? Agent đang chạy sẽ bị dừng và hàng đợi sẽ bị xóa.')) {
+          if (!confirm(tx('confirm.stop'))) {
             return;
           }
           stopBtn.disabled = true;
@@ -3686,7 +3846,7 @@
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
-              showFeedback(topFeedback, 'Đã gửi lệnh Dừng', false);
+              showFeedback(topFeedback, tx('fb.stopSent'), false);
             }
           } catch (err) {
             showFeedback(topFeedback, err.message, true);
@@ -3701,7 +3861,7 @@
           var status = latestSnapshot && latestSnapshot.session ? latestSnapshot.session.status : null;
           var isResume = status === 'needs_owner' || status === 'stopped';
           var endpoint = isResume ? '/api/resume' : '/api/approve';
-          var successMsg = isResume ? 'Đã gửi lệnh tiếp tục phiên' : 'Đã duyệt thẻ';
+          var successMsg = isResume ? tx('fb.resumeSent') : tx('fb.approved');
           approveBtn.disabled = true;
           try {
             var res = await postJson(endpoint, {});
@@ -3764,7 +3924,7 @@
           var text = cmdTextArea.value.trim();
 
           if (!text) {
-            showFeedback(cmdFeedback, 'Vui lòng nhập nội dung lệnh hoặc mục tiêu', true);
+            showFeedback(cmdFeedback, tx('cmd.empty'), true);
             return;
           }
 
@@ -3782,16 +3942,16 @@
               if (res && res.error) {
                 showFeedback(cmdFeedback, res.error, true);
               } else {
-                showFeedback(cmdFeedback, 'Đã gửi ghi chú team thành công', false);
+                showFeedback(cmdFeedback, tx('cmd.noteSent'), false);
                 cmdTextArea.value = '';
                 clearAttachedImage();
               }
             } else {
               var res = await postJson('/api/command', { to: to, text: text });
               if (res && res.ok === false) {
-                showFeedback(cmdFeedback, res.error || 'Gửi lệnh thất bại', true);
+                showFeedback(cmdFeedback, res.error || tx('cmd.failed'), true);
               } else {
-                showFeedback(cmdFeedback, 'Đã gửi lệnh thành công', false);
+                showFeedback(cmdFeedback, tx('cmd.sent'), false);
                 cmdTextArea.value = '';
               }
             }

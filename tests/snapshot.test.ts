@@ -125,7 +125,7 @@ describe('Snapshot and Log Tail', () => {
         turns: 0,
         lastLine: '',
         energy: { status: 'unknown', windows: [], readAt: '' },
-        login: { state: 'unknown', detail: 'Chưa rõ' },
+        login: { state: 'unknown', detail: 'Unknown' },
         candidates: ['elon'],
       });
       expect(snap.seats[1]).toMatchObject({
@@ -139,7 +139,7 @@ describe('Snapshot and Log Tail', () => {
         turns: 0,
         lastLine: '',
         energy: { status: 'unknown', windows: [], readAt: '' },
-        login: { state: 'unknown', detail: 'Chưa rõ' },
+        login: { state: 'unknown', detail: 'Unknown' },
         candidates: ['jacky', 'jenny'],
       });
       expect(snap.seats[2]).toMatchObject({
@@ -153,7 +153,7 @@ describe('Snapshot and Log Tail', () => {
         turns: 0,
         lastLine: '',
         energy: { status: 'unknown', windows: [], readAt: '' },
-        login: { state: 'unknown', detail: 'Chưa rõ' },
+        login: { state: 'unknown', detail: 'Unknown' },
         candidates: ['elon', 'jenny'],
       });
     });
@@ -450,9 +450,9 @@ from_audit: false
         expect(snap.log[i - 1].at >= snap.log[i].at).toBe(true);
       }
       // Oldest turn T-001 should not be in the newest 50 events
-      expect(snap.log.some((l) => l.text.includes('bắt đầu T-001'))).toBe(false);
+      expect(snap.log.some((l) => l.text.includes('started T-001'))).toBe(false);
       // Newest turn T-030 should be in the newest 50 events
-      expect(snap.log.some((l) => l.text.includes('bắt đầu T-030'))).toBe(true);
+      expect(snap.log.some((l) => l.text.includes('started T-030'))).toBe(true);
     });
 
     it('aggregates log entries: turn start/end, handoff failures, session status (max 50, newest first)', () => {
@@ -486,7 +486,7 @@ from_audit: false
 
       // Verify specific log events exist
       expect(
-        snap.log.some((l) => l.who === 'jacky' && l.text.includes('bắt đầu T-001'))
+        snap.log.some((l) => l.who === 'jacky' && l.text.includes('started T-001'))
       ).toBe(true);
 
       expect(
@@ -623,7 +623,7 @@ note: N-1
       store.saveLogin({
         agent: 'elon',
         state: 'expiring',
-        detail: 'Hết hạn 12/11',
+        detail: 'Expires 12/11',
       });
 
       const snap = buildSnapshot(store, cfg);
@@ -646,7 +646,7 @@ note: N-1
       const pmSeat = snap.seats.find((s) => s.seat === 'pm');
       expect(pmSeat?.login).toEqual({
         state: 'expiring',
-        detail: 'Hết hạn 12/11',
+        detail: 'Expires 12/11',
       });
 
       expect(snap.accounts).toBeDefined();

@@ -106,7 +106,7 @@ export async function checkLogin(
     return {
       agent,
       state: 'api_key',
-      detail: `API key đè đăng nhập: ${forbidden.join(', ')}`,
+      detail: `API key overrides login: ${forbidden.join(', ')}`,
     };
   }
 
@@ -119,7 +119,7 @@ export async function checkLogin(
         return {
           agent,
           state: 'relogin',
-          detail: `Chưa có user ${prefix}${agent} – chạy: sudo BTM_AGENTS="${agent}" bash deploy/isolation-setup.sh prep, rồi đăng nhập CLI dưới user đó`,
+          detail: `No Linux user ${prefix}${agent}. Run: sudo BTM_AGENTS="${agent}" bash deploy/isolation-setup.sh prep, then log in as ${prefix}${agent}`,
         };
       }
     } catch {
@@ -137,7 +137,7 @@ export async function checkLogin(
         return {
           agent,
           state: 'unknown',
-          detail: 'Không kiểm tra được',
+          detail: 'Check failed',
         };
       }
 
@@ -146,7 +146,7 @@ export async function checkLogin(
         return {
           agent,
           state: 'unknown',
-          detail: 'Không kiểm tra được',
+          detail: 'Check failed',
         };
       }
 
@@ -154,7 +154,7 @@ export async function checkLogin(
         return {
           agent,
           state: 'relogin',
-          detail: 'Cần đăng nhập lại',
+          detail: 'Re-login needed',
         };
       }
 
@@ -172,7 +172,7 @@ export async function checkLogin(
               return {
                 agent,
                 state: 'expiring',
-                detail: `Hết hạn ${formattedDate}`,
+                detail: `Expires ${formattedDate}`,
                 expiresAt: exp.toISOString(),
               };
             }
@@ -196,13 +196,13 @@ export async function checkLogin(
       return {
         agent,
         state: 'unknown',
-        detail: 'Không kiểm tra được',
+        detail: 'Check failed',
       };
     } catch {
       return {
         agent,
         state: 'unknown',
-        detail: 'Không kiểm tra được',
+        detail: 'Check failed',
       };
     }
   }
@@ -217,7 +217,7 @@ export async function checkLogin(
         return {
           agent,
           state: 'unknown',
-          detail: 'Không kiểm tra được',
+          detail: 'Check failed',
         };
       }
 
@@ -225,7 +225,7 @@ export async function checkLogin(
         return {
           agent,
           state: 'api_key',
-          detail: 'API key đè đăng nhập',
+          detail: 'API key overrides login',
         };
       }
 
@@ -240,13 +240,13 @@ export async function checkLogin(
       return {
         agent,
         state: 'relogin',
-        detail: 'Cần đăng nhập lại',
+        detail: 'Re-login needed',
       };
     } catch {
       return {
         agent,
         state: 'unknown',
-        detail: 'Không kiểm tra được',
+        detail: 'Check failed',
       };
     }
   }
@@ -267,7 +267,7 @@ export async function checkLogin(
         return {
           agent,
           state: 'relogin',
-          detail: 'Cần đăng nhập lại',
+          detail: 'Re-login needed',
         };
       }
     }
@@ -275,13 +275,13 @@ export async function checkLogin(
     return {
       agent,
       state: 'unknown',
-      detail: 'Không kiểm tra được',
+      detail: 'Check failed',
     };
   }
 
   return {
     agent,
     state: 'unknown',
-    detail: 'Không kiểm tra được',
+    detail: 'Check failed',
   };
 }

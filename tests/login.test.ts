@@ -112,10 +112,10 @@ describe('checkLogin', () => {
 
       expect(health.state).toBe('relogin');
       expect(health.agent).toBe('elon');
-      expect(health.detail).toBe('Cần đăng nhập lại');
+      expect(health.detail).toBe('Re-login needed');
     });
 
-    it('trả về expiring khi loginExpiresAt cách 3 ngày (< warn_expiry_days = 5) với detail "Hết hạn dd/mm"', async () => {
+    it('trả về expiring khi loginExpiresAt cách 3 ngày (< warn_expiry_days = 5) với detail "Expires dd/mm"', async () => {
       // now: 2026-11-08T15:00:00Z -> 3 ngày sau: 2026-11-11T15:00:00Z
       const expiresAt = new Date('2026-11-11T15:00:00.000Z').toISOString();
       const health = await checkLogin('elon', 'claude-code', {
@@ -133,7 +133,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('expiring');
-      expect(health.detail).toBe('Hết hạn 11/11');
+      expect(health.detail).toBe('Expires 11/11');
       expect(health.expiresAt).toBe(expiresAt);
     });
 
@@ -272,7 +272,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('expiring');
-      expect(health.detail).toBe('Hết hạn 11/11');
+      expect(health.detail).toBe('Expires 11/11');
     });
 
     it('trả về unknown khi output không thể phân tích cú pháp JSON', async () => {
@@ -288,7 +288,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('unknown');
-      expect(health.detail).toBe('Không kiểm tra được');
+      expect(health.detail).toBe('Check failed');
     });
 
     it('trả về unknown khi lệnh claude bị timeout', async () => {
@@ -305,7 +305,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('unknown');
-      expect(health.detail).toBe('Không kiểm tra được');
+      expect(health.detail).toBe('Check failed');
     });
 
     it('bọc deps.run bằng timeout 60s trả về unknown khi run không bao giờ resolve', async () => {
@@ -322,7 +322,7 @@ describe('checkLogin', () => {
         const health = await promise;
 
         expect(health.state).toBe('unknown');
-        expect(health.detail).toBe('Không kiểm tra được');
+        expect(health.detail).toBe('Check failed');
       } finally {
         vi.useRealTimers();
       }
@@ -339,7 +339,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('unknown');
-      expect(health.detail).toBe('Không kiểm tra được');
+      expect(health.detail).toBe('Check failed');
       expect(health.detail).not.toContain('token=FAKE_SECRET');
       expect(health.detail).not.toContain('ENOENT');
     });
@@ -395,7 +395,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('api_key');
-      expect(health.detail).toBe('API key đè đăng nhập');
+      expect(health.detail).toBe('API key overrides login');
     });
 
     it('trả về relogin khi output là "Not logged in"', async () => {
@@ -411,7 +411,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('relogin');
-      expect(health.detail).toBe('Cần đăng nhập lại');
+      expect(health.detail).toBe('Re-login needed');
     });
 
     it('trả về relogin cho các trường hợp output khác hoặc lỗi đăng nhập', async () => {
@@ -443,7 +443,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('unknown');
-      expect(health.detail).toBe('Không kiểm tra được');
+      expect(health.detail).toBe('Check failed');
     });
 
     it('bọc deps.run bằng timeout 60s trả về unknown khi run không bao giờ resolve cho codex', async () => {
@@ -460,7 +460,7 @@ describe('checkLogin', () => {
         const health = await promise;
 
         expect(health.state).toBe('unknown');
-        expect(health.detail).toBe('Không kiểm tra được');
+        expect(health.detail).toBe('Check failed');
       } finally {
         vi.useRealTimers();
       }
@@ -477,7 +477,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('unknown');
-      expect(health.detail).toBe('Không kiểm tra được');
+      expect(health.detail).toBe('Check failed');
       expect(health.detail).not.toContain('token=FAKE_SECRET');
       expect(health.detail).not.toContain('ENOENT');
     });
@@ -494,7 +494,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('unknown');
-      expect(health.detail).toBe('Không kiểm tra được');
+      expect(health.detail).toBe('Check failed');
       expect(runMock).not.toHaveBeenCalled();
     });
 
@@ -524,7 +524,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('relogin');
-      expect(health.detail).toBe('Cần đăng nhập lại');
+      expect(health.detail).toBe('Re-login needed');
       expect(runMock).not.toHaveBeenCalled();
     });
 
@@ -540,7 +540,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('relogin');
-      expect(health.detail).toBe('Cần đăng nhập lại');
+      expect(health.detail).toBe('Re-login needed');
       expect(runMock).not.toHaveBeenCalled();
     });
 
@@ -555,7 +555,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('relogin');
-      expect(health.detail).toBe('Cần đăng nhập lại');
+      expect(health.detail).toBe('Re-login needed');
       expect(runMock).not.toHaveBeenCalled();
     });
 
@@ -570,7 +570,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('unknown');
-      expect(health.detail).toBe('Không kiểm tra được');
+      expect(health.detail).toBe('Check failed');
       expect(runMock).not.toHaveBeenCalled();
     });
   });
@@ -585,7 +585,7 @@ describe('checkLogin', () => {
       });
 
       expect(health.state).toBe('unknown');
-      expect(health.detail).toBe('Không kiểm tra được');
+      expect(health.detail).toBe('Check failed');
     });
   });
 });

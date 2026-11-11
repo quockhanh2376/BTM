@@ -259,7 +259,7 @@ describe('approveGoal', () => {
     }
   });
 
-  it('B2: nhánh goal đã đổi sau khi QC/audit (refs/heads/<branch> !== reviewed_sha) → reject not_ready', () => {
+  it('B2: goal branch changed after QC/audit (refs/heads/<branch> !== reviewed_sha) → reject not_ready', () => {
     const repo = tmpRepo({ 'README.md': '# Repo' });
     const cfg = makeTestConfig(dataDir, { auditSeat: '' });
     const created = store.createGoal(repo, 'Kiem tra reviewed_sha');
@@ -282,7 +282,7 @@ describe('approveGoal', () => {
     expect(res.ok).toBe(false);
     if (!res.ok) {
       expect(res.code).toBe('not_ready');
-      expect(res.message).toBe('nhánh goal đã đổi sau khi QC/audit');
+      expect(res.message).toBe('goal branch changed after QC/audit');
     }
   });
 
@@ -303,7 +303,7 @@ describe('approveGoal', () => {
     expect(res).toEqual({
       ok: false,
       code: 'not_ready',
-      message: 'goal chưa có commit đã QC/audit',
+      message: "no QC'd or audited commit yet",
     });
     expect(git(repo, 'rev-parse', 'refs/heads/main').trim()).toBe(mainBefore);
     expect(store.getGoal(repo, created.n)?.state).toBe('qc_done');
@@ -533,13 +533,13 @@ describe('approveGoal', () => {
     }
   });
 
-  it('C4: goal có commit G<n>: cmd ngoài dải ticket → approveGoal từ chối not_ready ("có commit lệnh trực tiếp chưa review") khi không có audit; cho phép khi đã audit_passed', () => {
+  it('C4: goal có commit G<n>: cmd ngoài dải ticket → approveGoal từ chối not_ready ("has unreviewed direct-command commits") khi không có audit; cho phép khi đã audit_passed', () => {
     const repo = tmpRepo({ 'file.txt': 'init\n' });
     const cfgNoAudit = makeTestConfig(dataDir, { auditSeat: '' });
     const created = store.createGoal(repo, 'Goal co direct cmd');
 
     git(repo, 'checkout', '-b', created.branch);
-    // Commit lệnh trực tiếp trước khi ticket bắt đầu (ngoài dải ticket)
+    // Commit lệnh trực tiếp trước khi ticket started (ngoài dải ticket)
     writeFileSync(join(repo, 'cmd-change.txt'), 'unreviewed direct cmd');
     git(repo, 'add', 'cmd-change.txt');
     execFileSync('git', [...AUTHOR, 'commit', '-m', `G${created.n}: cmd 1: quick tweak`], { cwd: repo });
@@ -571,7 +571,7 @@ describe('approveGoal', () => {
     expect(resNoAudit).toEqual({
       ok: false,
       code: 'not_ready',
-      message: 'có commit lệnh trực tiếp chưa review',
+      message: 'has unreviewed direct-command commits',
     });
 
     // Khi goal đã qua audit (audit_passed) → cho phép approveGoal

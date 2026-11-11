@@ -23,7 +23,7 @@ describe('P6-T1: thông báo ntfy', () => {
     const [url, init] = send.mock.calls[0] as any;
     expect(url).toBe('https://ntfy.sh/btm-secret-topic');
     expect(init.headers).toMatchObject({ Title: 'BTM go-to-the-moon', Click: 'http://127.0.0.1:8080/' });
-    expect(init.body).toBe('Can anh xu ly · energy:5h');
+    expect(init.body).toBe('Needs you · energy:5h');
   });
 
   it('không chép chữ tự do của agent: note chứa link/@everyone/HTML chỉ còn mã đã lọc', () => {

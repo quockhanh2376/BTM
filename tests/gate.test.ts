@@ -619,7 +619,7 @@ describe('runGate', () => {
 
       expect(commitsMissingTicketId(repo, base, 'GTM-0012')).toEqual([]);
 
-      // 2. Thêm commit không bắt đầu bằng ID (WIP x)
+      // 2. Thêm commit không started bằng ID (WIP x)
       writeFileSync(join(repo, 'src/a.ts'), 'v3');
       execFileSync('git', ['add', '-A'], { cwd: repo });
       execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'WIP x'], { cwd: repo });

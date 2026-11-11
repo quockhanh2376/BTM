@@ -71,7 +71,7 @@ export function ensureTrustedCheckout(cfg: Config, workspace: string): string {
 
 function currentBranch(checkout: string): string {
   const ref = git(checkout, 'symbolic-ref', '-q', 'HEAD').trim();
-  if (!ref.startsWith('refs/heads/')) throw new Error('checkout tin cậy không ở trên nhánh nào');
+  if (!ref.startsWith('refs/heads/')) throw new Error('trusted checkout is not on a branch');
   return ref.slice('refs/heads/'.length);
 }
 

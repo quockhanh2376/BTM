@@ -172,7 +172,7 @@ function writeGoalSummaryAndCommit(
   const summaryLines = [
     `# G${goal.n} · ${goal.title}`,
     '',
-    '| # | Ticket | Tiêu đề | Trạng thái | Vòng sửa |',
+    '| # | Ticket | Title | State | Fix rounds |',
     '|---|---|---|---|---|',
   ];
   for (const t of tickets) {
@@ -404,7 +404,7 @@ async function processGoal(
     const reasons: string[] = [];
     for (const agent of [primary, ...backups]) {
       if (exclude.has(agent)) {
-        reasons.push(`${agent}: luật cứng`);
+        reasons.push(`${agent}: hard rule`);
         continue;
       }
       if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
@@ -1219,7 +1219,7 @@ async function processGoal(
             d.store.recordHandoffFailure(sessionId, ticket.id, reason);
           }
 
-          const deniedNote = 'command_denied: chỉ dùng lệnh trong danh sách, mỗi lệnh riêng lẻ';
+          const deniedNote = 'command_denied: use only allowed commands, one per call';
           fixNotes = [
             ...(hasAutoDenied ? [deniedNote] : []),
             ...(!gateResult.ok ? gateResult.reasons : []),
@@ -1955,7 +1955,7 @@ async function processGoal(
       status: 'needs_owner',
       sessionId,
       tasks,
-      notes: [`Các thẻ chưa hoàn thành (failed/blocked): ${list.join(', ')}`],
+      notes: [`Unfinished tickets (failed/blocked): ${list.join(', ')}`],
     };
   }
 

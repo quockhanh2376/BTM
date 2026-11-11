@@ -6,6 +6,11 @@ import { tmpdir } from 'node:os';
 describe('Web Dashboard (web/index.html)', () => {
   const htmlPath = resolve(process.cwd(), 'web/index.html');
   const html = readFileSync(htmlPath, 'utf-8');
+  // Đoạn JS trích từ trang gọi tr(): dựng tr thật từ bảng STRINGS của trang (Plan 5 Task 9).
+  {
+    const i18nSrc = html.slice(html.indexOf('var STRINGS = {'), html.indexOf('function applyI18n'));
+    (globalThis as any).tx = new Function('window', `${i18nSrc}; return tx;`)({ localStorage: { getItem: () => null } });
+  }
 
   it('rác test: os.tmpdir() trong test nằm dưới <repo>/.tmp', () => {
     const repoTmp = resolve(process.cwd(), '.tmp');
@@ -27,7 +32,7 @@ describe('Web Dashboard (web/index.html)', () => {
   });
 
   it('theme toggle uses aria-label, SVG icon, and no emoji', () => {
-    expect(html).toContain('aria-label="Chuyển sáng/tối"');
+    expect(html).toContain('aria-label="Toggle light/dark"');
     expect(html).toContain('<svg');
     const toggleMatch = html.match(/<button[^>]*id=["']theme-toggle["'][^>]*>([\s\S]*?)<\/button>/);
     expect(toggleMatch).not.toBeNull();
@@ -152,23 +157,23 @@ describe('Web Dashboard (web/index.html)', () => {
 
   it('has translation table with all 17 status keys and keeps unknown values intact', () => {
     const expectedTranslations: Record<string, string> = {
-      running: 'Đang chạy',
-      awaiting_approval: 'Chờ duyệt',
-      done: 'Hoàn tất',
-      needs_owner: 'Cần anh xem',
-      out_of_turns: 'Hết lượt',
-      stopped: 'Đã dừng',
-      refused: 'Bị từ chối',
-      error: 'Lỗi',
-      pending: 'Chờ',
-      in_dev: 'Đang làm',
-      awaiting_qc: 'Chờ test',
-      passed: 'Đạt',
-      returned: 'Trả về',
-      failed: 'Thất bại',
-      blocked: 'Bị chặn',
-      queued: 'Xếp hàng',
-      cancelled: 'Đã hủy',
+      running: 'Running',
+      awaiting_approval: 'Awaiting approval',
+      done: 'Done',
+      needs_owner: 'Needs owner',
+      out_of_turns: 'Out of turns',
+      stopped: 'Stopped',
+      refused: 'Refused',
+      error: 'Error',
+      pending: 'Pending',
+      in_dev: 'In dev',
+      awaiting_qc: 'Awaiting QC',
+      passed: 'Passed',
+      returned: 'Returned',
+      failed: 'Failed',
+      blocked: 'Blocked',
+      queued: 'Queued',
+      cancelled: 'Cancelled',
     };
 
     const mapMatch = html.match(/STATUS_MAP\s*=\s*(\{[\s\S]*?\});/);
@@ -195,7 +200,7 @@ describe('Web Dashboard (web/index.html)', () => {
   it('includes SSE connection logic and banner message for disconnection', () => {
     expect(html).toContain('/api/events');
     expect(html).toContain('EventSource');
-    expect(html).toContain('Mất kết nối, đang thử lại…');
+    expect(html).toContain('Disconnected, retrying…');
   });
 
   it('handles state event from SSE', () => {
@@ -210,20 +215,20 @@ describe('Web Dashboard (web/index.html)', () => {
 
   it('renders required layout components and Vietnamese texts', () => {
     expect(html).toContain('Bot Task Manager');
-    expect(html).toContain('Dừng');
-    expect(html).toContain('Duyệt thẻ');
-    expect(html).toContain('Mục tiêu phiên');
+    expect(html).toContain('Stop');
+    expect(html).toContain('Approve tickets');
+    expect(html).toContain('Session goals');
     expect(html).toContain('Energy: —');
-    expect(html).toContain('Đăng nhập: —');
-    expect(html).toContain('Chờ');
-    expect(html).toContain('Đang làm');
-    expect(html).toContain('Chờ test');
-    expect(html).toContain('Đạt');
-    expect(html).toContain('Trả về');
-    expect(html).toContain('Nhật ký');
-    expect(html).toContain('Gửi lệnh');
-    expect(html).toContain('Lệnh cho PM = mở phiên với mục tiêu này; lệnh cho Dev/QC xếp hàng sau lượt đang chạy');
-    expect(html).toContain('Hàng đợi');
+    expect(html).toContain('Login: —');
+    expect(html).toContain('Pending');
+    expect(html).toContain('In dev');
+    expect(html).toContain('Awaiting QC');
+    expect(html).toContain('Passed');
+    expect(html).toContain('Returned');
+    expect(html).toContain('Log');
+    expect(html).toContain('Send');
+    expect(html).toContain('PM: starts a session with this goal · Dev/QC: queued after the current turn');
+    expect(html).toContain('Queue');
   });
 
   it('requires confirmation before stop command', () => {
@@ -232,7 +237,7 @@ describe('Web Dashboard (web/index.html)', () => {
 
   it('has radio inputs for recipient with team (Cả team) as default', () => {
     expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']team["'][^>]*checked/);
-    expect(html).toMatch(/Cả team/);
+    expect(html).toMatch(/Team/);
     expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']pm["']/);
     expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']dev["']/);
     expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']qc["']/);
@@ -311,7 +316,7 @@ describe('Web Dashboard (web/index.html)', () => {
       const sessionBarHtml = sessionBarMatch![0];
 
       // Contains label with 'Auto duyệt thẻ'
-      expect(sessionBarHtml).toMatch(/<label[^>]*>[\s\S]*?Auto duyệt thẻ[\s\S]*?<\/label>/);
+      expect(sessionBarHtml).toMatch(/<label[^>]*>[\s\S]*?Auto-approve tickets[\s\S]*?<\/label>/);
       // Contains checkbox input
       expect(sessionBarHtml).toMatch(/<input[^>]*type=["']checkbox["'][^>]*>/);
     });
@@ -339,7 +344,7 @@ describe('Web Dashboard (web/index.html)', () => {
 
     it('chứa icon SVG vòng xoay inline 18px với role="img" và aria-label="Đang chạy" đặt cạnh tên agent', () => {
       // Thẻ ghế có icon SVG inline 18px với role="img" và aria-label="Đang chạy"
-      expect(html).toContain('aria-label="Đang chạy"');
+      expect(html).toContain('aria-label="Running"');
       expect(html).toContain('role="img"');
       expect(html).toContain('18px');
       expect(html).toContain('currentColor');
@@ -349,19 +354,19 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(pmCardMatch).not.toBeNull();
       const pmHtml = pmCardMatch![0];
       expect(pmHtml).toContain('id="pm-title">Elon-PM');
-      expect(pmHtml).toMatch(/<svg[^>]*\bid=["']pm-spinner["'][^>]*role=["']img["'][^>]*aria-label=["']Đang chạy["']/);
+      expect(pmHtml).toMatch(/<svg[^>]*\bid=["']pm-spinner["'][^>]*role=["']img["'][^>]*aria-label=["']Running["']/);
 
       const devCardMatch = html.match(/id=["']seat-card-dev["'][\s\S]*?(?=id=["']seat-card-qc["'])/);
       expect(devCardMatch).not.toBeNull();
       const devHtml = devCardMatch![0];
       expect(devHtml).toContain('id="dev-title">Jacky-Dev');
-      expect(devHtml).toMatch(/<svg[^>]*\bid=["']dev-spinner["'][^>]*role=["']img["'][^>]*aria-label=["']Đang chạy["']/);
+      expect(devHtml).toMatch(/<svg[^>]*\bid=["']dev-spinner["'][^>]*role=["']img["'][^>]*aria-label=["']Running["']/);
 
       const qcCardMatch = html.match(/id=["']seat-card-qc["'][\s\S]*?(?=<\/section>)/);
       expect(qcCardMatch).not.toBeNull();
       const qcHtml = qcCardMatch![0];
       expect(qcHtml).toContain('id="qc-title">Jenny-QC');
-      expect(qcHtml).toMatch(/<svg[^>]*\bid=["']qc-spinner["'][^>]*role=["']img["'][^>]*aria-label=["']Đang chạy["']/);
+      expect(qcHtml).toMatch(/<svg[^>]*\bid=["']qc-spinner["'][^>]*role=["']img["'][^>]*aria-label=["']Running["']/);
     });
 
     it('chip Đang giữ lượt trên thanh trên dùng cùng icon vòng xoay thay chấm nhấp nháy', () => {
@@ -371,20 +376,20 @@ describe('Web Dashboard (web/index.html)', () => {
 
       // Dùng SVG inline thay cho blink-dot
       expect(holderBoxHtml).not.toContain('blink-dot');
-      expect(holderBoxHtml).toMatch(/<svg[^>]*role=["']img["'][^>]*aria-label=["']Đang chạy["']/);
+      expect(holderBoxHtml).toMatch(/<svg[^>]*role=["']img["'][^>]*aria-label=["']Running["']/);
       expect(holderBoxHtml).toContain('currentColor');
     });
 
     it('không còn chuỗi hiển thị "Đang chạy" dạng chip; nhãn Chờ/Rảnh giữ dạng chip xám nhỏ', () => {
       // HTML tĩnh không có chip nào hiển thị chữ 'Đang chạy'
-      expect(html).not.toMatch(/<span[^>]*class=["'][^"']*seat-status-badge[^"']*["'][^>]*>\s*Đang chạy\s*<\/span>/);
+      expect(html).not.toMatch(/<span[^>]*class=["'][^"']*seat-status-badge[^"']*["'][^>]*>\s*Running\s*<\/span>/);
 
       // Nhãn Chờ / Rảnh giữ dạng chip xám nhỏ trong CSS
       expect(html).toMatch(/\.status-waiting\b/);
       expect(html).toMatch(/\.status-idle\b/);
 
       // Trong renderSeat: khi status === 'running', không gán text 'Đang chạy' vào statusBadge dạng chip
-      expect(html).not.toMatch(/statusBadge\.textContent\s*=\s*['"]Đang chạy['"]/);
+      expect(html).not.toMatch(/statusBadge\.textContent\s*=\s*['"]Running['"]/);
       expect(html).not.toMatch(/statusBadge\.textContent\s*=\s*formatStatus\s*\(\s*['"]running['"]\s*\)/);
     });
   });
@@ -397,30 +402,30 @@ describe('Web Dashboard (web/index.html)', () => {
       const approveBtnHtml = approveBtnMatch![0];
       expect(approveBtnHtml).not.toMatch(/display\s*:\s*none/i);
       expect(approveBtnHtml).toContain('disabled');
-      expect(approveBtnHtml).toContain('title="Không có thẻ chờ duyệt"');
+      expect(approveBtnHtml).toContain('title="No tickets awaiting approval"');
 
       // 2. Kiểm tra logic trong renderSnapshot không ẩn nút mà chuyển disabled/title
       expect(html).not.toMatch(/setDisplay\s*\(\s*approveBtn\s*,\s*state\.session\.status\s*===\s*['"]awaiting_approval['"]/);
       expect(html).toMatch(/approveBtn\.disabled\s*=/);
-      expect(html).toMatch(/Không có thẻ chờ duyệt/);
+      expect(html).toMatch(/No tickets awaiting approval/);
     });
 
     it('có khu vực Hộp thư team hiển thị note, ảnh qua /api/notes/<id>/image và báo cáo ngắn', () => {
       // 1. Tiêu đề Hộp thư team
-      expect(html).toContain('Hộp thư team');
+      expect(html).toContain('Team inbox');
       expect(html).toContain('id="notes-list"');
 
       // 2. Logic renderNotes hiển thị trạng thái Mở / Xong, ảnh alt="Ảnh đính kèm N-<id>" và endpoint /api/notes/
       expect(html).toMatch(/\/api\/notes\//);
-      expect(html).toMatch(/Ảnh đính kèm N-/);
-      expect(html).toMatch(/['"]Mở['"]/);
-      expect(html).toMatch(/['"]Xong['"]/);
+      expect(html).toMatch(/inbox\.attachment/);
+      expect(html).toMatch(/status\.open/);
+      expect(html).toMatch(/status\.done/);
     });
 
     it('người nhận có Cả team mặc định và sinh từ snapshot.seats', () => {
       // Có input radio Cả team mặc định
       expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']team["'][^>]*checked/);
-      expect(html).toMatch(/Cả team/);
+      expect(html).toMatch(/Team/);
 
       // Render danh sách người nhận từ snapshot.seats
       expect(html).toMatch(/state\.seats/);
@@ -430,10 +435,10 @@ describe('Web Dashboard (web/index.html)', () => {
     it('hỗ trợ đính kèm ảnh khi chọn Cả team với input file accept png/jpeg/webp và dán ảnh Ctrl+V', () => {
       // Input file với accept đúng và label có text Đính kèm ảnh
       expect(html).toMatch(/<input[^>]*type=["']file["'][^>]*accept=["'][^"']*image\/png[^"']*image\/jpeg[^"']*image\/webp[^"']*["']/);
-      expect(html).toMatch(/<label[^>]*for=["'][^"']*["'][^>]*>[\s\S]*?Đính kèm ảnh[\s\S]*?<\/label>/);
+      expect(html).toMatch(/<label[^>]*for=["'][^"']*["'][^>]*>[\s\S]*?Attach image[\s\S]*?<\/label>/);
 
       // Khung xem trước thumbnail và nút Bỏ ảnh
-      expect(html).toContain('Bỏ ảnh');
+      expect(html).toContain('Remove image');
       expect(html).toMatch(/id=["'][^"']*preview[^"']*["']/);
 
       // Listener paste cho Ctrl+V
@@ -492,35 +497,28 @@ describe('Web Dashboard (web/index.html)', () => {
     };
 
     it('web có đủ 6 nhãn chặng pipeline tiếng Việt', () => {
-      expect(html).toContain('Tiếp nhận');
-      expect(html).toContain('Lập kế hoạch');
-      expect(html).toContain('Đang làm');
-      expect(html).toContain('Kiểm thử');
-      expect(html).toContain('Kiểm tra bảo mật');
-      expect(html).toContain('Phát hành');
+      expect(html).toContain('Intake');
+      expect(html).toContain('Planning');
+      expect(html).toContain('In dev');
+      expect(html).toContain('Testing');
+      expect(html).toContain('Security audit');
+      expect(html).toContain('Release');
 
       const match = html.match(/PIPELINE_STAGES\s*=\s*(\[[\s\S]*?\]);/);
       expect(match).not.toBeNull();
       const stages = new Function(`return ${match![1]};`)() as Array<{ key: string; label: string }>;
       expect(stages).toHaveLength(6);
       expect(stages.map((s) => s.key)).toEqual(['intake', 'plan', 'build', 'verify', 'audit', 'release']);
-      expect(stages.map((s) => s.label)).toEqual([
-        'Tiếp nhận',
-        'Lập kế hoạch',
-        'Đang làm',
-        'Kiểm thử',
-        'Kiểm tra bảo mật',
-        'Phát hành',
-      ]);
+      expect(stages.map((s) => s.label)).toEqual(['Intake', 'Planning', 'Dev', 'Testing', 'Security audit', 'Release']);
     });
 
     it('nút Duyệt merge là <button> và có hộp xác nhận gọi POST /api/goal/approve', () => {
       // 1. Phải là phần tử <button>
-      expect(html).toMatch(/document\.createElement\(['"]button['"]\)[\s\S]*?Duyệt merge/);
+      expect(html).toMatch(/document\.createElement\(['"]button['"]\)[\s\S]*?goal\.approveMerge/);
       expect(html).toContain('btn-approve-goal');
 
       // 2. Có gọi confirm và POST /api/goal/approve
-      expect(html).toMatch(/confirm\([^)]*Duyệt merge goal/);
+      expect(html).toMatch(/confirm\(tx\('goal\.confirmMerge'/);
       expect(html).toContain('/api/goal/approve');
 
       // 3. Điều kiện sẵn sàng: chỉ hiện khi qc_done (không audit) hoặc audit_passed
@@ -630,11 +628,11 @@ describe('Web Dashboard (web/index.html)', () => {
 
       // G2 header text
       const titleWrap2 = card2.children[0].children[0];
-      expect(titleWrap2.children[0].textContent).toBe('G2 · Goal Hai · 3/3 đạt');
+      expect(titleWrap2.children[0].textContent).toBe('G2 · Goal Hai · 3/3 passed');
 
       // G1 header text
       const titleWrap1 = card1.children[0].children[0];
-      expect(titleWrap1.children[0].textContent).toBe('G1 · Goal Một · 1/2 đạt');
+      expect(titleWrap1.children[0].textContent).toBe('G1 · Goal Một · 1/2 passed');
     });
 
     it('dòng ticket hiển thị #<number>/<of> · <tiêu đề> + chip type/size, dòng lịch sử là tr có 1 td colspan=4', () => {
@@ -721,11 +719,11 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(html).toContain('aria-controls');
 
       // 3. 5 nhãn tab và số đếm task-tab-count
-      expect(html).toContain('Chờ');
-      expect(html).toContain('Đang làm');
-      expect(html).toContain('Chờ test');
-      expect(html).toContain('Đạt');
-      expect(html).toContain('Trả về');
+      expect(html).toContain('Pending');
+      expect(html).toContain('In dev');
+      expect(html).toContain('Awaiting QC');
+      expect(html).toContain('Passed');
+      expect(html).toContain('Returned');
       expect(html).toContain('task-tab-count');
     });
 
@@ -901,7 +899,7 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(tableMatch).not.toBeNull();
       expect(tableMatch![1]).not.toMatch(/height:\s*(100%|inherit)/);
 
-      expect(html).toMatch(/tdEmpty\.textContent\s*=\s*['"]Không có ticket['"]/);
+      expect(html).toMatch(/tdEmpty\.textContent\s*=\s*tx\('goal\.noTickets'\)/);
     });
 
     it('bảng trong panel: table width 100%, table-layout fixed, có colgroup và đặt đúng độ rộng các cột', () => {
@@ -928,9 +926,9 @@ describe('Web Dashboard (web/index.html)', () => {
     it('panel bên dưới là bảng chữ ID · Mục tiêu · Vòng sửa · Cập nhật, mục tiêu xuống dòng, trống ghi "Không có ticket"', () => {
       // 1. Tiêu đề bảng: ID, Mục tiêu/Tiêu đề, Vòng sửa, Cập nhật
       expect(html).toMatch(/thId\.textContent\s*=\s*['"]ID['"]/);
-      expect(html).toMatch(/thGoal\.textContent\s*=\s*['"](Mục tiêu|Tiêu đề)['"]/);
-      expect(html).toMatch(/thFixes\.textContent\s*=\s*['"]Vòng sửa['"]/);
-      expect(html).toMatch(/thUpdated\.textContent\s*=\s*['"]Cập nhật['"]/);
+      expect(html).toMatch(/thGoal\.textContent\s*=\s*tx\('goal\.col\.title'\)/);
+      expect(html).toMatch(/thFixes\.textContent\s*=\s*tx\('goal\.col\.rounds'\)/);
+      expect(html).toMatch(/thUpdated\.textContent\s*=\s*tx\('goal\.col\.updated'\)/);
 
       // 2. Mục tiêu dài thì xuống dòng
       expect(html).toMatch(/(word-break:\s*break-word|overflow-wrap:\s*break-word)/);
@@ -938,7 +936,7 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(html).not.toMatch(/\.col-goal[^{]*\{[^}]*white-space:\s*nowrap/);
 
       // 3. Trống ghi "Không có ticket"
-      expect(html).toContain('Không có ticket');
+      expect(html).toContain('No tickets');
 
       // 4. table-layout fixed + word-break
       expect(html).toMatch(/\.task-table\s*\{[^}]*table-layout:\s*fixed/);
@@ -991,7 +989,7 @@ describe('Web Dashboard (web/index.html)', () => {
       runRender([], 'pending', mockTbody);
       expect(createdRows.length).toBe(1);
       const emptyRow = createdRows[0];
-      expect(emptyRow.children[0].textContent).toBe('Không có ticket');
+      expect(emptyRow.children[0].textContent).toBe('No tickets');
       expect(emptyRow.children[0].className).toContain('empty-placeholder');
 
       // 2. Khi tab có thẻ -> hiển thị đủ các cột
@@ -1168,7 +1166,7 @@ describe('Web Dashboard (web/index.html)', () => {
   describe('P3-T4: Energy, đèn đăng nhập và trang Tài khoản', () => {
     it('thanh trên có nút "Làm mới Energy"', () => {
       expect(html).toContain('id="refresh-energy-btn"');
-      expect(html).toMatch(/Làm mới Energy/);
+      expect(html).toMatch(/Refresh energy/);
     });
 
     it('thẻ ghế hỗ trợ thanh energy với role="meter" và aria-valuenow', () => {
@@ -1178,7 +1176,7 @@ describe('Web Dashboard (web/index.html)', () => {
 
     it('có khu Tài khoản ở cuối trang với danh sách agent và nút Sao chép có aria-label', () => {
       expect(html).toContain('id="accounts-container"');
-      expect(html).toMatch(/aria-label=["']Sao chép/);
+      expect(html).toMatch(/aria-label=["']Copy/);
     });
 
     it('tuyệt đối không dùng innerHTML trong web/index.html', () => {
@@ -1241,10 +1239,10 @@ describe('Web Dashboard (web/index.html)', () => {
       const formatEnergy = new Function('formatHHmm', `return (${match![0]});`)(formatHHmm);
 
       // Chỉ làm tròn khi hiển thị chữ
-      expect(formatEnergy({ remainingPercent: 19.9 })).toBe('còn 20%');
-      expect(formatEnergy({ remainingPercent: 49.9 })).toBe('còn 50%');
-      expect(formatEnergy({ remainingPercent: 50 })).toBe('còn 50%');
-      expect(formatEnergy({ remainingPercent: 49.9, resetsAt: '2026-11-09T13:45:00Z' })).toBe('còn 50% · hồi 13:45');
+      expect(formatEnergy({ remainingPercent: 19.9 })).toBe('20% left');
+      expect(formatEnergy({ remainingPercent: 49.9 })).toBe('50% left');
+      expect(formatEnergy({ remainingPercent: 50 })).toBe('50% left');
+      expect(formatEnergy({ remainingPercent: 49.9, resetsAt: '2026-11-09T13:45:00Z' })).toBe('50% left · resets 13:45');
       expect(formatEnergy(null)).toBe('');
     });
 
@@ -1256,8 +1254,8 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(html).toMatch(/<input[^>]*readonly[^>]*account-cmd-code|document\.createElement\(['"]input['"]\)[\s\S]*?readOnly\s*=\s*true/);
       expect(html).toMatch(/\.select\s*\(\s*\)/);
       expect(html).toMatch(/execCommand\s*\(\s*['"]copy['"]\s*\)/);
-      expect(html).toContain('Đã sao chép');
-      expect(html).toContain('Hãy bôi đen và Ctrl+C');
+      expect(html).toContain('Copied');
+      expect(html).toContain('Select and press Ctrl+C');
 
       // Test hành vi hàm copyLoginCommand
       const copyFnCode = match![0];
@@ -1284,7 +1282,7 @@ describe('Web Dashboard (web/index.html)', () => {
         const res = await runCopy('ssh command 1', null, (msg: string) => { feedback = msg; });
         expect(res).toBe(true);
         expect(writeCalledWith).toBe('ssh command 1');
-        expect(feedback).toBe('Đã sao chép');
+        expect(feedback).toBe('Copied');
       }
 
       // Nhánh 2: Không phải isSecureContext -> fallback select() + execCommand('copy') thành công
@@ -1316,7 +1314,7 @@ describe('Web Dashboard (web/index.html)', () => {
         expect(res).toBe(true);
         expect(selected).toBe(true);
         expect(execCommandCalled).toBe('copy');
-        expect(feedback).toBe('Đã sao chép');
+        expect(feedback).toBe('Copied');
       }
 
       // Nhánh 3: Clipboard lỗi -> fallback execCommand thất bại -> 'Hãy bôi đen và Ctrl+C'
@@ -1348,7 +1346,7 @@ describe('Web Dashboard (web/index.html)', () => {
         const res = await runCopy('ssh failed command', mockInput, (msg: string) => { feedback = msg; });
         expect(res).toBe(false);
         expect(selected).toBe(true);
-        expect(feedback).toBe('Hãy bôi đen và Ctrl+C');
+        expect(feedback).toBe('Select and press Ctrl+C');
       }
     });
   });
@@ -1359,7 +1357,7 @@ describe('Web Dashboard (web/index.html)', () => {
         expect(html).toContain(`id="seat-card-${seat}"`);
         expect(html).toContain(`id="${seat}-agent-select"`);
       });
-      const labelMatches = html.match(/Người ngồi ghế/g);
+      const labelMatches = html.match(/data-i18n="seat.agent">Seated agent</g);
       expect(labelMatches).not.toBeNull();
       expect(labelMatches!.length).toBeGreaterThanOrEqual(3);
     });
@@ -1371,7 +1369,7 @@ describe('Web Dashboard (web/index.html)', () => {
     });
 
     it('nút Duyệt thẻ hiện "Tiếp tục phiên" và bật khi needs_owner/stopped (gọi /api/resume), "Duyệt thẻ" khi awaiting_approval', () => {
-      expect(html).toContain('Tiếp tục phiên');
+      expect(html).toContain('Resume');
       expect(html).toContain('/api/resume');
       expect(html).toMatch(/status\s*===\s*['"]needs_owner['"]\s*\|\|\s*status\s*===\s*['"]stopped['"]/);
     });
@@ -1380,9 +1378,9 @@ describe('Web Dashboard (web/index.html)', () => {
   describe('P4-UI1: Nút "Dừng" + dashboard dày cho màn 27" 2K/4K', () => {
     it('đổi chữ "Dừng khẩn cấp" thành "Dừng" trên nút #stop-btn, confirm và feedback, giữ nguyên id và btn-danger', () => {
       expect(html).not.toContain('Dừng khẩn cấp');
-      expect(html).toMatch(/<button[^>]*id=["']stop-btn["'][^>]*class=["'][^"']*\bbtn-danger\b[^"']*["'][^>]*>\s*Dừng\s*<\/button>/);
-      expect(html).toMatch(/confirm\([^)]*Dừng\?/);
-      expect(html).toContain('Đã gửi lệnh Dừng');
+      expect(html).toMatch(/<button[^>]*id=["']stop-btn["'][^>]*class=["'][^"']*\bbtn-danger\b[^"']*["'][^>]*>\s*Stop\s*<\/button>/);
+      expect(html).toMatch(/confirm\(tx\('confirm\.stop'\)\)/);
+      expect(html).toContain("tx('fb.stopSent')");
     });
 
     it('bỏ max-width: 1400px của khung chính, dùng full width, thu gọn khoảng cách và dùng repeat(auto-fit, minmax(280px, 1fr))', () => {
@@ -1401,10 +1399,10 @@ describe('P5-T5: dashboard model/effort, user riêng, cảnh báo đội hình',
   it('có ô model + effort, lưu qua /api/agent, Codex chỉ 3 mức', () => {
     expect(html).toContain("postJson('/api/agent'");
     expect(html).toContain('var allowed = EFFORTS;');
-    expect(html).toMatch(/aria-label', 'Model cho '/);
+    expect(html).toContain("tx('acc.modelFor', { agent: acc.agent })");
     // ô model là danh sách chọn: mặc định CLI + model CLI liệt kê + model đang dùng nếu thiếu
     expect(html).toContain("var modelInput = document.createElement('select');");
-    expect(html).toContain("opt.textContent = m || 'Mặc định của CLI';");
+    expect(html).toContain("opt.textContent = m || tx('acc.cliDefault');");
     expect(html).toContain('if (acc.model && options.indexOf(acc.model) < 0) options.push(acc.model);');
     // gọn chiều ngang: mục Tài khoản là lưới thẻ nhỏ
     expect(html).toContain('grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));');
@@ -1416,7 +1414,7 @@ describe('P5-T5: dashboard model/effort, user riêng, cảnh báo đội hình',
   it('ghế audit có select; cảnh báo đội hình hiển thị bằng textContent; không vẽ lại khi đang gõ', () => {
     expect(html).toContain('id="audit-agent-select"');
     expect(html).toContain('id="seat-warnings"');
-    expect(html).toContain("el.textContent = 'Đội hình: '");
+    expect(html).toContain("el.textContent = tx('seat.warnings'");
     expect(html).toContain('container.contains(active)');
   });
 });
@@ -1424,15 +1422,49 @@ describe('P5-T5: dashboard model/effort, user riêng, cảnh báo đội hình',
 describe('P5-T7: nhãn ngồi thay', () => {
   it('thẻ ghế hiện agent dự phòng đã ngồi thay', () => {
     const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
-    expect(html).toContain("if (cardData.substitute) toolParts.push('lượt cuối: ' + cardData.substitute + ' ngồi thay');");
+    expect(html).toContain("if (cardData.substitute) toolParts.push(tx('seat.substitute', { agent: cardData.substitute }));");
   });
 });
 
 describe('P6-T5: chip Sắp hết', () => {
   it('chip có chữ (không chỉ màu), dùng textContent, hiện trên thẻ ghế và tài khoản', () => {
     const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
-    expect(html).toContain("chip.textContent = 'Sắp hết' + (hhmm ? ' · hồi ' + hhmm : '');");
+    expect(html).toContain("chip.textContent = tx('energy.low') + (hhmm ? tx('energy.resets', { time: hhmm }) : '');");
     expect(html).toContain('var warnChip = energyWarnChip(eng);');
     expect(html).toContain('var accWarn = energyWarnChip(acc.energy);');
+  });
+});
+
+describe('P5-T9: UI tiếng Anh, bảng chuỗi', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const i18nStart = html.indexOf('var STRINGS = {');
+  const i18nEnd = html.indexOf('var LANG =');
+  const tx = new Function('window', `${html.slice(i18nStart, html.indexOf('function applyI18n'))}; return tx;`)({ localStorage: { getItem: () => null } });
+
+  it('ngoài bảng STRINGS không còn chữ tiếng Việt (bỏ qua comment)', () => {
+    const rest = (html.slice(0, i18nStart) + html.slice(i18nEnd))
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .split('\n').map((l) => l.replace(/(^|\s)\/\/.*$/, '')).join('\n');
+    const bad = rest.split('\n').filter((l) => /[À-ỹĐđ]/.test(l));
+    expect(bad).toEqual([]);
+    expect(html).toContain('<html lang="en">');
+  });
+
+  it("mọi key dùng trong tx('…') và data-i18n* đều có trong STRINGS.en; thiếu key trả lại key", () => {
+    const table = new Function(`${html.slice(i18nStart, i18nEnd)}; return STRINGS;`)().en as Record<string, string>;
+    const keys = new Set<string>();
+    for (const m of html.matchAll(/tx\('([\w.]+)'/g)) keys.add(m[1]!);
+    for (const m of html.matchAll(/data-i18n(?:-aria|-placeholder|-title|-alt)?="([\w.]+)"/g)) keys.add(m[1]!);
+    const missing = [...keys].filter((k) => !(k in table));
+    expect(missing).toEqual([]);
+    expect(keys.size).toBeGreaterThan(80);
+    expect(tx('no.such.key')).toBe('no.such.key');
+    expect(tx('bar.turns', { used: 3, max: 10 })).toBe('Turns 3/10');
+    expect(tx('energy.left', { pct: 15 }) + tx('energy.resets', { time: '19:57' })).toBe('15% left · resets 19:57');
+  });
+
+  it('trang không có biến cục bộ tên tx (che hàm dịch)', () => {
+    expect(html).not.toMatch(/(var|let|const)\s+tx\b/);
   });
 });
