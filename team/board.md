@@ -45,6 +45,8 @@
 | P45-T3 | Codex + Cheki | XONG – VM 708/708 ×3 | team/prompts/P45-T3-dev.md | team/reports/P45-T3-dev.md |
 | P45-T4 | Cheki | XONG (đổi thiết kế: checkout tin cậy) – VM 707/707 ×3 | team/prompts/P45-T4a-dev.md | team/reports/P45-T4a-dev.md |
 | P45-T5 | Cheki | XONG – Energy/đăng nhập dưới worker, VM 709/709 |
-| P5 (đội hình linh hoạt) | V→Q | waiting (sau khi Plan 4 merge) | docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md | – |
+| P45 (cách ly agent) | Cheki | XONG – PR #8 merged, VM deployed + thử tấn công 12/12 | docs/superpowers/plans/2026-11-10-btm-plan4-5-agent-isolation.md | team/reviews/P45-review-2.md |
+| P5 (đội hình linh hoạt) | Cheki | XONG – PR #9 merged, VM deployed; thiếu: tự chạy lại khi hết hạn mức giữa lượt | docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md | team/reviews/P5-review-1.md |
+| UI-Ok + model picker | Cheki | XONG – PR #11, #12 merged, VM deployed | – | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).
