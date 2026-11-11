@@ -911,11 +911,11 @@ describe('HTTP Server & SSE', () => {
       expect((await post({ agent: 'jacky', model: '' })).status).toBe(200);
       expect(store.getSetting('agent_model:jacky')).toBe('');
     });
-    it('model lạ, effort lạ, agent lạ, Codex xhigh → 400; đang chạy → 409', async () => {
+    it('model lạ, effort lạ, agent lạ → 400; Codex xhigh được; đang chạy → 409', async () => {
       expect((await post({ agent: 'jacky', model: 'x;rm -rf /' })).status).toBe(400);
       expect((await post({ agent: 'jacky', effort: 'ultra' })).status).toBe(400);
       expect((await post({ agent: 'ghost', effort: 'low' })).status).toBe(400);
-      expect((await post({ agent: 'jenny', effort: 'xhigh' })).status).toBe(400);
+      expect((await post({ agent: 'jenny', effort: 'xhigh' })).status).toBe(200);
       host.busy = vi.fn().mockReturnValue(true);
       expect((await post({ agent: 'jacky', effort: 'low' })).status).toBe(409);
       expect(store.getSetting('agent_effort:jacky')).toBeNull();

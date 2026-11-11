@@ -619,16 +619,17 @@
     }
 
     .accounts-list {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
       gap: 8px;
     }
 
     .account-row {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      min-width: 0;
       padding: 10px;
       border-radius: 8px;
       background-color: var(--badge-bg);
@@ -639,8 +640,20 @@
     .account-info {
       display: flex;
       align-items: center;
-      gap: 12px;
-      min-width: 220px;
+      gap: 6px 10px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .account-row .account-cmd-wrap {
+      min-width: 0;
+      flex: none;
+      justify-content: stretch;
+    }
+
+    .account-row .account-cmd-code {
+      flex: 1;
+      min-width: 0;
     }
 
     .account-name {
@@ -684,8 +697,9 @@
       color: var(--text);
     }
 
-    .account-model input {
-      width: 190px;
+    .account-model select:first-child {
+      flex: 1;
+      min-width: 0;
     }
 
     .seat-warnings {
@@ -2265,17 +2279,22 @@
         var wrap = document.createElement('div');
         wrap.className = 'account-model';
 
-        var modelInput = document.createElement('input');
-        modelInput.type = 'text';
-        modelInput.value = acc.model || '';
-        modelInput.placeholder = 'model mặc định của CLI';
-        modelInput.maxLength = 80;
+        var modelInput = document.createElement('select');
         modelInput.setAttribute('aria-label', 'Model cho ' + acc.agent);
+        var options = [''].concat(Array.isArray(acc.modelOptions) ? acc.modelOptions : []);
+        if (acc.model && options.indexOf(acc.model) < 0) options.push(acc.model);
+        options.forEach(function (m) {
+          var opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = m || 'Mặc định của CLI';
+          modelInput.appendChild(opt);
+        });
+        modelInput.value = acc.model || '';
         wrap.appendChild(modelInput);
 
         var effortSel = document.createElement('select');
         effortSel.setAttribute('aria-label', 'Mức suy luận cho ' + acc.agent);
-        var allowed = acc.tool === 'codex-cli' ? EFFORTS.slice(0, 3) : EFFORTS;
+        var allowed = EFFORTS;
         allowed.forEach(function (e) {
           var opt = document.createElement('option');
           opt.value = e;
@@ -3476,7 +3495,7 @@
         if (!container) return;
         // Đang gõ model / chọn effort: không vẽ lại kẻo mất chữ đang nhập.
         var active = document.activeElement;
-        if (active && container.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT') && !active.readOnly) return;
+        if (active && container.contains(active) && active.tagName === 'SELECT') return;
         clearChildren(container);
 
         if (!Array.isArray(accounts) || accounts.length === 0) {

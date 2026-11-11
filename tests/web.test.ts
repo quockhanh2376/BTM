@@ -1400,8 +1400,14 @@ describe('P5-T5: dashboard model/effort, user riêng, cảnh báo đội hình',
   const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
   it('có ô model + effort, lưu qua /api/agent, Codex chỉ 3 mức', () => {
     expect(html).toContain("postJson('/api/agent'");
-    expect(html).toContain("acc.tool === 'codex-cli' ? EFFORTS.slice(0, 3) : EFFORTS");
+    expect(html).toContain('var allowed = EFFORTS;');
     expect(html).toMatch(/aria-label', 'Model cho '/);
+    // ô model là danh sách chọn: mặc định CLI + model CLI liệt kê + model đang dùng nếu thiếu
+    expect(html).toContain("var modelInput = document.createElement('select');");
+    expect(html).toContain("opt.textContent = m || 'Mặc định của CLI';");
+    expect(html).toContain('if (acc.model && options.indexOf(acc.model) < 0) options.push(acc.model);');
+    // gọn chiều ngang: mục Tài khoản là lưới thẻ nhỏ
+    expect(html).toContain('grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));');
   });
   it('lệnh đăng nhập dùng user riêng của agent (kiểm tên user), mặc định agent', () => {
     expect(html).toContain("getLoginCommand(acc.tool, sshTarget, acc.user)");

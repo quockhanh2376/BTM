@@ -30,8 +30,7 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
     }
     case 'codex-cli': {
       const imageArgs = o.images && o.images.length > 0 ? o.images.flatMap((img) => ['-i', img]) : [];
-      // Codex chỉ có low/medium/high.
-      const codexEffort = o.effort === 'xhigh' || o.effort === 'max' ? 'high' : o.effort;
+      const codexEffort = o.effort;
       return [
         'codex',
         'exec',
