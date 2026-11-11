@@ -83,6 +83,8 @@ export const EnergySchema = z.object({
   cache_seconds: z.number().int().nonnegative(),
   min_remaining_percent: z.number().min(0).max(100),
   reserve_turns_for_pm: z.number().int().nonnegative(),
+  /** Plan 6 Task 5: chip "Sắp hết" khi cửa sổ thấp nhất còn ≤ mức này. */
+  warn_percent: z.number().min(0).max(100).optional(),
 }).strict();
 
 export const LoginSchema = z.object({
@@ -136,6 +138,13 @@ const BaseConfigSchema = z.object({
     dev: z.array(z.string()).optional(),
     qc: z.array(z.string()).optional(),
     audit: z.array(z.string()).optional(),
+  }).strict().optional(),
+  /** Plan 6 Task 1: thông báo ntfy. url_file chứa URL topic (https), ngoài git, 0600. */
+  notify: z.object({
+    url_file: z.string().refine(isAbsolute, 'notify.url_file must be an absolute path'),
+    dashboard_url: z.string().regex(/^https?:\/\/[^\s]+$/).optional(),
+    on: z.array(z.enum(['needs_owner', 'awaiting_approval', 'done', 'stopped', 'out_of_turns']))
+      .default(['needs_owner', 'awaiting_approval', 'out_of_turns']),
   }).strict().optional(),
   rules: RulesSchema,
   energy: EnergySchema,

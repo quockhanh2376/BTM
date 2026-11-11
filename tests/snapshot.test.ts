@@ -629,7 +629,7 @@ note: N-1
       const snap = buildSnapshot(store, cfg);
 
       const devSeat = snap.seats.find((s) => s.seat === 'dev');
-      expect(devSeat?.energy).toEqual({
+      expect(devSeat?.energy).toMatchObject({
         status: 'fresh',
         windows: [
           { name: '5h', remainingPercent: 80, resetsAt: '2026-11-08T18:00:00Z' },
@@ -685,6 +685,29 @@ describe('P5-T5: snapshot có model/effort/user, nhãn kiêm ghế, ghế audit 
     expect(pm).toMatchObject({ model: 'opus', also: ['audit'] });
     expect(snap.seats.map((s: any) => s.seat)).toContain('audit');
     expect(Array.isArray(snap.seatWarnings)).toBe(true);
+    store.close();
+  });
+});
+
+describe('P6-T5: cảnh báo Energy thấp, tài khoản xếp theo giới hạn chặt nhất', () => {
+  it('≤20% → warn + giờ hồi của cửa sổ thấp nhất; 25% → không; tài khoản thấp nhất lên đầu, chưa rõ xuống cuối', async () => {
+    const { buildSnapshot } = await import('../src/server/snapshot.ts');
+    const { openStore } = await import('../src/store/db.ts');
+    const { loadConfig } = await import('../src/config.ts');
+    const cfg = loadConfig('btm.config.yaml');
+    const store = openStore(':memory:');
+    store.saveEnergy({ agent: 'jacky', status: 'fresh', readAt: '2026-11-11T10:00:00Z', windows: [
+      { name: '5h', remainingPercent: 15, resetsAt: '2026-11-11T12:30:00Z' },
+      { name: 'week', remainingPercent: 60, resetsAt: '2026-11-15T00:00:00Z' },
+    ] } as any);
+    store.saveEnergy({ agent: 'elon', status: 'fresh', readAt: '2026-11-11T10:00:00Z', windows: [
+      { name: '5h', remainingPercent: 25, resetsAt: '2026-11-11T13:00:00Z' },
+    ] } as any);
+    const snap = buildSnapshot(store, cfg) as any;
+    const dev = snap.seats.find((s: any) => s.seat === 'dev');
+    expect(dev.energy).toMatchObject({ warn: true, soonestReset: '2026-11-11T12:30:00Z', minPercent: 15 });
+    expect(snap.seats.find((s: any) => s.seat === 'pm').energy.warn).toBe(false);
+    expect(snap.accounts.map((a: any) => a.agent)).toEqual(['jacky', 'elon', 'jenny']);
     store.close();
   });
 });

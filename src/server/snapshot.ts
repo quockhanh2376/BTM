@@ -48,6 +48,12 @@ export interface SeatCard {
     windows: EnergyWindow[];
     readAt: string;
     note?: string;
+    /** Cửa sổ thấp nhất ≤ energy.warn_percent (Plan 6 Task 5). */
+    warn?: boolean;
+    /** Giờ hồi của cửa sổ thấp nhất. */
+    soonestReset?: string | null;
+    /** % còn của cửa sổ thấp nhất (để xếp tài khoản). */
+    minPercent?: number | null;
   };
   login: {
     state: LoginState;
@@ -75,6 +81,7 @@ export interface AccountCard {
   user: string | null;
   /** Model CLI liệt kê được (đọc định kỳ dưới user của agent); rỗng khi chưa đọc. */
   modelOptions: string[];
+  energy: SeatCard['energy'];
 }
 
 export interface SnapshotNote {
@@ -164,7 +171,7 @@ export function lastLogLine(file: string | null): string {
   }
 }
 
-function getSeatEnergy(store: Store, agent: string): SeatCard['energy'] {
+function getSeatEnergy(store: Store, agent: string, cfg?: Config): SeatCard['energy'] {
   const r = store.latestEnergy(agent);
   if (!r) {
     return { status: 'unknown', windows: [], readAt: '' };
@@ -174,6 +181,12 @@ function getSeatEnergy(store: Store, agent: string): SeatCard['energy'] {
     windows: r.windows,
     readAt: r.readAt,
   };
+  if (r.status === 'fresh' && r.windows.length > 0) {
+    const min = r.windows.reduce((a, w) => (w.remainingPercent < a.remainingPercent ? w : a));
+    res.minPercent = min.remainingPercent;
+    res.soonestReset = min.resetsAt || null;
+    res.warn = min.remainingPercent <= (cfg?.energy.warn_percent ?? 20);
+  }
   if (r.note !== undefined && r.note !== null) {
     res.note = r.note;
   }
@@ -191,8 +204,10 @@ function getSeatLogin(store: Store, agent: string): SeatCard['login'] {
   };
 }
 
+// Giới hạn chặt nhất trước; chưa đọc được Energy xếp cuối (Plan 6 Task 5).
 function getAccounts(store: Store, cfg: Config): AccountCard[] {
-  return Object.keys(cfg.agents).map((agent) => {
+  const rank = (a: AccountCard) => a.energy.minPercent ?? 101;
+  return Object.keys(cfg.agents).map((agent): AccountCard => {
     const tool = cfg.agents[agent].tool;
     const login = getSeatLogin(store, agent);
     let user: string | null = null;
@@ -209,8 +224,9 @@ function getAccounts(store: Store, cfg: Config): AccountCard[] {
       effort: agentEffort(cfg, store, agent),
       user,
       modelOptions: readAgentModels(store, agent)?.models ?? [],
+      energy: getSeatEnergy(store, agent, cfg),
     };
-  });
+  }).sort((a, b) => rank(a) - rank(b));
 }
 
 // Ghế audit hiện khi có người ngồi hoặc có agent được phép ngồi (để đổi ghế trên dashboard).
@@ -245,7 +261,7 @@ function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
       since: null,
       turns: 0,
       lastLine: '',
-      energy: getSeatEnergy(store, agent),
+      energy: getSeatEnergy(store, agent, cfg),
       login: getSeatLogin(store, agent),
       candidates,
       ...seatExtras(cfg, store, effSeats, seat, agent),
@@ -510,7 +526,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       since,
       turns: turnsCount,
       lastLine,
-      energy: getSeatEnergy(store, agent),
+      energy: getSeatEnergy(store, agent, cfg),
       login: getSeatLogin(store, agent),
       candidates,
       ...seatExtras(cfg, store, effSeats, seat, agent),

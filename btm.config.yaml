@@ -66,6 +66,12 @@ agents:
 #   dev: [jenny]
 #   qc: [elon]
 
+# Thông báo ntfy (decision 0004). File chứa URL topic: 0600, user agent, ngoài git.
+# notify:
+#   url_file: /var/lib/btm/notify.url
+#   dashboard_url: http://127.0.0.1:8080/
+#   on: [needs_owner, awaiting_approval, out_of_turns]
+
 rules:
   coder_cannot_qc_same_task: true
   auto_handoff_on_failure: false       # v1.0: anh tự quyết người thay

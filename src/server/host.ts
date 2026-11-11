@@ -5,6 +5,7 @@ import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import type { Runner, TurnOutput } from '../runner/run.ts';
 import type { HostApi } from './http.ts';
 import { runSession, resumeSession } from '../core/session.ts';
+import { notify, type NotifyKind } from '../notify/notify.ts';
 import { directPrompt } from '../core/prompts.ts';
 import { git, commitAll } from '../git.ts';
 import {
@@ -609,7 +610,7 @@ export function createHost(d: HostDeps): HostApi & {
 
     (async () => {
       try {
-        await sessionFn(
+        const outcome = await sessionFn(
           {
             cfg: d.cfg,
             store: d.store,
@@ -637,6 +638,7 @@ export function createHost(d: HostDeps): HostApi & {
               : undefined,
           }
         );
+        void notify(d.cfg, { kind: outcome.status as NotifyKind, project: activeProject, notes: outcome.notes });
       } catch {
         // Any error is captured by session outcome
       } finally {
@@ -706,7 +708,7 @@ export function createHost(d: HostDeps): HostApi & {
 
     (async () => {
       try {
-        await resumeFn(
+        const outcome = await resumeFn(
           {
             cfg: d.cfg,
             store: d.store,
@@ -721,6 +723,7 @@ export function createHost(d: HostDeps): HostApi & {
           },
           latestAwaiting.id
         );
+        void notify(d.cfg, { kind: outcome.status as NotifyKind, project: activeProject, notes: outcome.notes });
       } catch {
         // Any error is captured by session outcome
       } finally {
@@ -795,7 +798,7 @@ export function createHost(d: HostDeps): HostApi & {
 
     (async () => {
       try {
-        await resumeFn(
+        const outcome = await resumeFn(
           {
             cfg: d.cfg,
             store: d.store,
@@ -810,6 +813,7 @@ export function createHost(d: HostDeps): HostApi & {
           },
           target.id
         );
+        void notify(d.cfg, { kind: outcome.status as NotifyKind, project: activeProject, notes: outcome.notes });
       } catch {
         // Any error is captured by session outcome
       } finally {
