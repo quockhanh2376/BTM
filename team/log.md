@@ -170,3 +170,8 @@
 - Thông báo qua ntfy (decision 0004). URL topic nằm ở `/var/lib/btm/notify.url` (0600, user agent). Config trên VM đã bật `notify:` (sửa cục bộ như 3 dòng cách ly).
 - Chip "Sắp hết", tài khoản xếp theo giới hạn chặt nhất.
 - PR #16, VM 749/749 ×3, deploy 1b4ec60. Tin thử gửi ntfy trả 200.
+
+## 2026-11-11 – P5 Task 9: app tiếng Anh (Cheki)
+- PR #20: UI, server, ntfy và CLI chuyển sang tiếng Anh theo bảng anh Zon đã duyệt. Dashboard dùng bảng `STRINGS.en` + `tx()`, sẵn để thêm `vi`.
+- Sửa lỗi phát hiện khi làm: biến `tr` che hàm dịch.
+- VM 752/752 ×3. Deploy 67bbcc5. Dashboard 200, đăng nhập 3 agent "Ok".
