@@ -63,6 +63,19 @@ done_when: done
     store.setActiveProject(repoDir);
   });
 
+  it('P6-T2: phiên dừng vì usage_limit_hit → host tự Tiếp tục, tối đa 2 lần/phiên; lý do khác thì không', async () => {
+    const sid = store.createSession(['G'], repoDir);
+    store.setSessionStatus(sid, 'needs_owner');
+    const runSession = vi.fn(async () => ({ status: 'needs_owner', sessionId: sid, tasks: {}, notes: ['usage_limit_hit:jacky'] }));
+    const resumeSession = vi.fn(async () => ({ status: 'needs_owner', sessionId: sid, tasks: {}, notes: ['usage_limit_hit:jenny'] }));
+    const host = createHost({ cfg, store, runner: vi.fn() as any, logDir, dataDir, env: {}, runSession: runSession as any, resumeSession: resumeSession as any });
+    expect((await host.start(['Goal 1'])).ok).toBe(true);
+    for (let i = 0; i < 40 && (host.busy() || resumeSession.mock.calls.length < 2); i++) await new Promise((r) => setTimeout(r, 25));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(resumeSession).toHaveBeenCalledTimes(2); // lần 3 không tự chạy nữa
+    expect(host.busy()).toBe(false);
+  });
+
   it('start hai lần liền → lần 2 error ("Session running")', async () => {
     const gate = deferred<void>();
     const mockRunner: Runner = vi.fn().mockImplementation(async () => {

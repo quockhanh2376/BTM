@@ -4,7 +4,7 @@ import type { Config, Seat } from '../config.ts';
 import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import type { Runner, TurnOutput } from '../runner/run.ts';
 import type { HostApi } from './http.ts';
-import { runSession, resumeSession } from '../core/session.ts';
+import { runSession, resumeSession, type SessionOutcome } from '../core/session.ts';
 import { notify, type NotifyKind } from '../notify/notify.ts';
 import { directPrompt } from '../core/prompts.ts';
 import { git, commitAll } from '../git.ts';
@@ -638,7 +638,7 @@ export function createHost(d: HostDeps): HostApi & {
               : undefined,
           }
         );
-        void notify(d.cfg, { kind: outcome.status as NotifyKind, project: activeProject, notes: outcome.notes });
+        afterOutcome(outcome, activeProject);
       } catch {
         // Any error is captured by session outcome
       } finally {
@@ -651,6 +651,7 @@ export function createHost(d: HostDeps): HostApi & {
         }
         isBusy = false;
         isStopping = false;
+        if (runPendingAutoResume()) return;
         void tick();
         if (!isBusy) {
           notifyIfIdle();
@@ -723,7 +724,7 @@ export function createHost(d: HostDeps): HostApi & {
           },
           latestAwaiting.id
         );
-        void notify(d.cfg, { kind: outcome.status as NotifyKind, project: activeProject, notes: outcome.notes });
+        afterOutcome(outcome, activeProject);
       } catch {
         // Any error is captured by session outcome
       } finally {
@@ -736,6 +737,7 @@ export function createHost(d: HostDeps): HostApi & {
         }
         isBusy = false;
         isStopping = false;
+        if (runPendingAutoResume()) return;
         void tick();
         if (!isBusy) {
           notifyIfIdle();
@@ -744,6 +746,27 @@ export function createHost(d: HostDeps): HostApi & {
     })();
 
     return { ok: true };
+  }
+
+  // Plan 6 Task 2: lượt hỏng vì agent hết hạn mức → tự Tiếp tục (tối đa 2 lần/phiên) để người dự phòng ngồi thay,
+  // không báo ntfy cho lần đó. Hết người thì phiên dừng với lý do bình thường và có báo.
+  const autoResumes = new Map<number, number>();
+  let pendingAutoResume = false;
+  function afterOutcome(outcome: SessionOutcome, project: string): void {
+    const sid = outcome.sessionId;
+    const used = sid != null ? autoResumes.get(sid) ?? 0 : 0;
+    if (outcome.status === 'needs_owner' && sid != null && outcome.notes[0]?.startsWith('usage_limit_hit:') && used < 2) {
+      autoResumes.set(sid, used + 1);
+      pendingAutoResume = true;
+      return;
+    }
+    void notify(d.cfg, { kind: outcome.status as NotifyKind, project, notes: outcome.notes });
+  }
+  function runPendingAutoResume(): boolean {
+    if (!pendingAutoResume) return false;
+    pendingAutoResume = false;
+    void resume();
+    return true;
   }
 
   async function resume(): Promise<{ ok: boolean; status?: number; error?: string }> {
@@ -813,7 +836,7 @@ export function createHost(d: HostDeps): HostApi & {
           },
           target.id
         );
-        void notify(d.cfg, { kind: outcome.status as NotifyKind, project: activeProject, notes: outcome.notes });
+        afterOutcome(outcome, activeProject);
       } catch {
         // Any error is captured by session outcome
       } finally {
@@ -826,6 +849,7 @@ export function createHost(d: HostDeps): HostApi & {
         }
         isBusy = false;
         isStopping = false;
+        if (runPendingAutoResume()) return;
         void tick();
         if (!isBusy) {
           notifyIfIdle();

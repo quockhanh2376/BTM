@@ -47,4 +47,10 @@ seats:
 ## Hết Energy
 - `seats_backup` khai báo người ngồi thay cho từng ghế, theo thứ tự. Người chính hết Energy hoặc mất đăng nhập thì người kế tiếp còn Energy ngồi thay, miễn không vi phạm luật cứng.
 - Không còn ai thì phiên dừng với `all_agents_exhausted`, kèm lý do của từng người.
-- Lượt đang chạy mà bị lỗi hạn mức thì lượt đó báo lỗi. Bấm "Tiếp tục" để BTM chọn lại người ngồi ghế.
+- Lượt đang chạy mà agent báo hết hạn mức thì BTM ghi agent đó hết tới giờ hồi và tự Tiếp tục (tối đa 2 lần/phiên) bằng người dự phòng.
+- `seats_backup` đặt được theo project trong `team/project.yaml` (đọc từ `main`). Nếu có, nó ghi đè giá trị trong `btm.config.yaml`.
+  ```yaml
+  seats_backup:
+    dev: [jenny]
+    qc: [elon]
+  ```

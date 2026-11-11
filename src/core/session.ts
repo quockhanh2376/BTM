@@ -2,11 +2,13 @@ import { realpathSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstat
 import { relative, isAbsolute, join, basename } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { checkForbiddenEnv } from '../config.ts';
-import { effectiveSeats, type Store, type TurnResult } from '../store/db.ts';
+import { effectiveSeats, readProjectSeats, type Store, type TurnResult } from '../store/db.ts';
 import type { Runner } from '../runner/run.ts';
 import { loadTickets, checkReady, type Ticket, type TicketState, TicketError } from '../ticket/ticket.ts';
 import { readProjectKey } from '../ticket/goal.ts';
 import { runGate } from '../gate/gate.ts';
+import { detectUsageLimit, usageLimitedKey } from '../agents/usage-limit.ts';
+import { formatHHmm } from '../energy/monitor.ts';
 import { git, commitAll, headSha } from '../git.ts';
 import { parseTicketQcResult } from '../qc/result.ts';
 import { parseAuditResult } from '../audit/result.ts';
@@ -395,16 +397,28 @@ async function processGoal(
 
   // Plan 5 Task 7: người chính hết Energy/đăng nhập → người dự phòng (seats_backup) còn Energy và không vi phạm
   // luật cứng (exclude). Không còn ai → phiên dừng với all_agents_exhausted. Không có dự phòng → như cũ.
+  // Người dự phòng: team/project.yaml (main) ghi đè btm.config.yaml; chỉ agent có ghế đó trong can_sit.
+  const projectBackups = readProjectSeats(d.repo, d.cfg.git?.protected_branch || 'main').backups;
+  function backupsFor(seat: Seat): string[] {
+    const list = projectBackups[seat] ?? d.cfg.seats_backup?.[seat] ?? [];
+    return list.filter((a) => Object.hasOwn(d.cfg.agents, a) && d.cfg.agents[a]!.can_sit.includes(seat));
+  }
+
   async function pickSeatAgent(
     seat: Seat,
     primary: string,
     exclude: Set<string> = new Set()
   ): Promise<{ agent: string } | { agent: null; notes: string[] }> {
-    const backups = (d.cfg.seats_backup?.[seat] ?? []).filter((a) => a !== primary);
+    const backups = backupsFor(seat).filter((a) => a !== primary);
     const reasons: string[] = [];
     for (const agent of [primary, ...backups]) {
       if (exclude.has(agent)) {
         reasons.push(`${agent}: hard rule`);
+        continue;
+      }
+      const limitedUntil = d.store.getSetting(usageLimitedKey(agent));
+      if (limitedUntil && Date.parse(limitedUntil) > Date.now()) {
+        reasons.push(`usage_limited:${agent} resets ${formatHHmm(limitedUntil)}`);
         continue;
       }
       if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
@@ -1285,7 +1299,7 @@ async function processGoal(
         }
       } catch {}
       const qcRule = d.cfg.rules.coder_cannot_qc_same_task;
-      const qcHasSub = (d.cfg.seats_backup?.qc ?? []).some((a) => !coders.has(a));
+      const qcHasSub = backupsFor('qc').some((a) => !coders.has(a));
       if (qcRule && coders.has(qcAgent) && !qcHasSub) {
         d.store.recordHandoffFailure(sessionId, ticket.id, 'coder_cannot_qc_same_task');
         return {
@@ -1512,7 +1526,7 @@ async function processGoal(
       }
     } catch {}
   }
-  const auditHasSub = (d.cfg.seats_backup?.audit ?? []).some((a) => !goalCoders.has(a));
+  const auditHasSub = backupsFor('audit').some((a) => !goalCoders.has(a));
   if (goalCoders.has(auditAgent) && !auditHasSub) {
     d.store.recordHandoffFailure(sessionId, `G${goal.n}`, 'auditor_is_coder');
     return {
@@ -1967,11 +1981,31 @@ async function processGoal(
   };
 }
 
+// Plan 6 Task 2: CLI báo hết hạn mức → ghi agent hết tới giờ hồi (pickSeatAgent bỏ qua agent đó), kết thúc lượt
+// bằng lỗi usage_limit_hit:<agent>; host tự Tiếp tục để người dự phòng ngồi thay.
+function withUsageLimit(d: SessionDeps): SessionDeps {
+  const run = d.runner;
+  return {
+    ...d,
+    runner: async (seat, agentId, prompt, cwd, logFile, options) => {
+      const out = await run(seat, agentId, prompt, cwd, logFile, options);
+      const tool = d.cfg.agents[agentId]?.tool;
+      const hit = tool ? detectUsageLimit(tool, out, new Date()) : null;
+      if (hit) {
+        d.store.setSetting(usageLimitedKey(agentId), hit.resetsAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString());
+        throw new Error(`usage_limit_hit:${agentId}`);
+      }
+      return out;
+    },
+  };
+}
+
 export async function runSession(
   d: SessionDeps,
   goals: Array<string | { n: number }>,
   optsOrApproved?: boolean | RunSessionOpts
 ): Promise<SessionOutcome> {
+  d = withUsageLimit(d);
   if (recoverInterruptedTurn(d.store, d.repo)) {
     return {
       status: 'needs_owner',
@@ -2139,6 +2173,7 @@ export async function resumeSession(
   d: SessionDeps,
   sessionId: number
 ): Promise<SessionOutcome> {
+  d = withUsageLimit(d);
   if (recoverInterruptedTurn(d.store, d.repo)) {
     return {
       status: 'needs_owner',

@@ -163,20 +163,21 @@ type SeatCfg = {
   git?: { protected_branch?: string };
 };
 
-const projectSeatsCache = new Map<string, { sha: string; seats: Partial<Record<Seat, string>>; warn: string[] }>();
+const projectSeatsCache = new Map<string, { sha: string; seats: Partial<Record<Seat, string>>; backups: Partial<Record<Seat, string[]>>; warn: string[] }>();
 
 // Đội hình theo project trong team/project.yaml – đọc từ nhánh được bảo vệ (main), không từ working tree:
 // agent sửa được working tree nhưng không sửa được main.
-export function readProjectSeats(repo: string, protectedBranch = 'main'): { seats: Partial<Record<Seat, string>>; warnings: string[] } {
+export function readProjectSeats(repo: string, protectedBranch = 'main'): { seats: Partial<Record<Seat, string>>; backups: Partial<Record<Seat, string[]>>; warnings: string[] } {
   let sha: string;
   try {
     sha = git(repo, 'rev-parse', '-q', '--verify', `refs/heads/${protectedBranch}^{commit}`).trim();
   } catch {
-    return { seats: {}, warnings: [] };
+    return { seats: {}, backups: {}, warnings: [] };
   }
   const hit = projectSeatsCache.get(repo);
-  if (hit && hit.sha === sha) return { seats: hit.seats, warnings: hit.warn };
+  if (hit && hit.sha === sha) return { seats: hit.seats, backups: hit.backups, warnings: hit.warn };
   let seats: Partial<Record<Seat, string>> = {};
+  let backups: Partial<Record<Seat, string[]>> = {};
   const warn: string[] = [];
   let text = '';
   try {
@@ -186,7 +187,7 @@ export function readProjectSeats(repo: string, protectedBranch = 'main'): { seat
   }
   if (text) {
     try {
-      const doc = parseYaml(text) as { seats?: unknown } | null;
+      const doc = parseYaml(text) as { seats?: unknown; seats_backup?: unknown } | null;
       const raw = doc && typeof doc === 'object' ? doc.seats : undefined;
       if (raw !== undefined && raw !== null) {
         if (typeof raw !== 'object' || Array.isArray(raw)) {
@@ -198,13 +199,22 @@ export function readProjectSeats(repo: string, protectedBranch = 'main'): { seat
           }
         }
       }
+      // Plan 6 Task 2: seats_backup theo project (ghi đè btm.config.yaml), cùng nguồn main.
+      const rawB = doc && typeof doc === 'object' ? doc.seats_backup : undefined;
+      if (rawB && typeof rawB === 'object' && !Array.isArray(rawB)) {
+        for (const [k, v] of Object.entries(rawB as Record<string, unknown>)) {
+          if ((SEATS as string[]).includes(k) && Array.isArray(v) && v.every((x) => typeof x === 'string')) backups[k as Seat] = v as string[];
+          else warn.push(`team/project.yaml: ignored seats_backup.${k}`);
+        }
+      }
     } catch {
       seats = {};
+      backups = {};
       warn.push('team/project.yaml: invalid YAML, using default team');
     }
   }
-  projectSeatsCache.set(repo, { sha, seats, warn });
-  return { seats, warnings: warn };
+  projectSeatsCache.set(repo, { sha, seats, backups, warn });
+  return { seats, backups, warnings: warn };
 }
 
 // Thứ tự: dashboard theo project > team/project.yaml (main) > dashboard cũ (không theo project) > btm.config.yaml.
@@ -224,7 +234,7 @@ export function resolveSeats(
     if (valid(seat, id)) seats[seat] = id;
     else warnings.push(`Ignored ${source}: ${seat} = "${id}" (unknown or not allowed)`);
   };
-  const fromFile = proj ? readProjectSeats(proj, cfg.git?.protected_branch || 'main') : { seats: {}, warnings: [] };
+  const fromFile = proj ? readProjectSeats(proj, cfg.git?.protected_branch || 'main') : { seats: {}, backups: {}, warnings: [] };
   warnings.push(...fromFile.warnings);
   for (const seat of SEATS) {
     apply(seat, store?.getSetting(seatSettingKey(null, seat)), 'legacy override');

@@ -133,11 +133,11 @@
 
 **Trạng thái Task 7 (Cheki 2026-11-10):**
 - Đã làm: thay ghế trước lượt theo Energy và đăng nhập, áp luật cứng cho cả người ngồi thay; hết cả thì `needs_owner` với `all_agents_exhausted` kèm lý do từng người; dashboard có nhãn "ngồi thay".
-- Chưa làm:
-  - lỗi hạn mức giữa lượt chưa tự chạy lại (lượt báo lỗi, anh bấm Tiếp tục thì BTM chọn lại người);
-  - `seats_backup` theo project;
-  - dừng/khoá phiên như nút Dừng;
-  - giờ hồi sớm nhất.
+- Bổ sung ở Plan 6 Task 2 (2026-11-11):
+  - lỗi hạn mức giữa lượt: lượt kết thúc `usage_limit_hit:<agent>`, ghi agent hết tới giờ hồi, host tự Tiếp tục (tối đa 2 lần/phiên) để người dự phòng ngồi thay;
+  - `seats_backup` theo project (`team/project.yaml` trên main);
+  - lý do dừng có giờ hồi từng agent (`usage_limited:<agent> resets HH:mm`, `energy:… resets HH:mm`).
+- Còn để ngỏ: chưa khoá phiên như nút Dừng; phiên dừng ở `needs_owner` và gửi ntfy.
 
 ### Task 8: Dọn cấu hình CLI của agent trước mỗi lượt (review P45 M1)
 
