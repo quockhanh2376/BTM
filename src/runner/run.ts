@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
-import { createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { appendFileSync, createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { buildArgv } from './argv.ts';
 import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerKillAll, workerReset, wrapForWorker } from '../isolation/worker.ts';
-import { importTurn, isIsolated, readWorkerOut, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
+import { importTurn, isIsolated, readWorkerOut, STATUS_FILE, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
 
 export interface ProcResult {
   exitCode: number | null;
@@ -384,6 +384,19 @@ export type Runner = (
   options?: { signal?: AbortSignal; images?: string[] }
 ) => Promise<TurnOutput>;
 
+// Plan 6 Task 7 (không cách ly): file trạng thái agent ghi không được vào commit.
+function excludeStatusFile(repo: string): void {
+  try {
+    const f = join(repo, '.git', 'info', 'exclude');
+    const cur = existsSync(f) ? readFileSync(f, 'utf8') : '';
+    if (cur.split(/\r?\n/).includes(STATUS_FILE)) return;
+    mkdirSync(dirname(f), { recursive: true });
+    appendFileSync(f, `${cur && !cur.endsWith('\n') ? '\n' : ''}${STATUS_FILE}\n`);
+  } catch {
+    // không có .git (test) – bỏ qua
+  }
+}
+
 export interface Isolation {
   /** Dọn cấu hình CLI agent tự cài (giữ đăng nhập) trước mỗi lượt. */
   reset: (cfg: Config, agentId: string) => void;
@@ -434,6 +447,7 @@ export function makeRunner(
         : `${absLogFile}.out`;
     // cwd = checkout tin cậy; agent chạy trong workspace riêng của mình.
     const runCwd = isolated ? workspacePath(cfg, agentId, cwd) : cwd;
+    if (!isolated) excludeStatusFile(cwd);
 
     const argv = buildArgv(agent.tool, prompt, {
       seat,

@@ -147,3 +147,20 @@ describe('P4.5: syncWorkspace + importTurn (checkout tin cậy, workspace riêng
     expect(readWorkerOut(c.cfg, 'elon', direct)).toBe('');
   });
 });
+
+describe('P6-T7: dòng trạng thái của agent', () => {
+  it('sync xoá trạng thái cũ và loại .btm-status khỏi git; import không commit nó; đọc qua worker đã làm sạch', async () => {
+    const { readWorkerStatus, cleanStatus } = await import('../src/isolation/trusted.ts');
+    const c = setup();
+    syncWorkspace(c.cfg, 'elon', c.checkout, direct);
+    writeFileSync(join(c.ws, '.btm-status'), 'old\n');
+    syncWorkspace(c.cfg, 'elon', c.checkout, direct);
+    expect(existsSync(join(c.ws, '.btm-status'))).toBe(false);
+    writeFileSync(join(c.ws, '.btm-status'), '\n  running tests\u0007 for GTM-0001\nsecond line\n');
+    expect(readWorkerStatus(c.cfg, 'elon', c.checkout, direct)).toBe('running tests for GTM-0001');
+    writeFileSync(join(c.ws, 'b.txt'), 'b\n');
+    expect(importTurn(c.cfg, 'elon', c.checkout, direct).ok).toBe(true);
+    expect(existsSync(join(c.checkout, '.btm-status'))).toBe(false);
+    expect(cleanStatus('x'.repeat(500))).toHaveLength(200);
+  });
+});
