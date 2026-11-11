@@ -932,7 +932,18 @@ describe('HTTP Server & SSE', () => {
       expect(store.getTicketState(project, 'GTM-0001')?.state).toBe('returned');
       expect(store.getGoal(project, n)?.state).toBe('in_progress');
       expect(store.getSession(sessionId)?.status).toBe('needs_owner');
+      expect(store.getTicketState(project, 'GTM-0001')?.fix_rounds).toBe(0);
+      // phiên needs_owner vừa tạo đang chờ → trả về lần nữa bị từ chối, không chồng phiên
+      store.setTicketState(project, 'GTM-0001', 'passed', 'jenny', 'qc passed');
+      store.addLineNote(project, 'GTM-0001', 'src/a.ts', 2, 'nữa');
+      expect((await post('/api/tickets/GTM-0001/return', {})).status).toBe(409);
       host.busy = vi.fn().mockReturnValue(true);
+      expect((await post('/api/tickets/GTM-0001/return', {})).status).toBe(409);
+    });
+    it('Return từ chối ticket chưa xong (in_dev)', async () => {
+      const { project } = seed();
+      store.setTicketState(project, 'GTM-0001', 'in_dev', 'jacky', 'dev');
+      store.addLineNote(project, 'GTM-0001', 'src/a.ts', 1, 'x');
       expect((await post('/api/tickets/GTM-0001/return', {})).status).toBe(409);
     });
     it('trả lời câu hỏi: lần đầu ok, lần hai 409, câu hỏi project khác 404', async () => {

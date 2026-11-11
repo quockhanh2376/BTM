@@ -32,6 +32,7 @@ export function parseUnifiedDiff(text: string, maxLines = MAX_DIFF_LINES): Ticke
   const files: DiffFile[] = [];
   let file: DiffFile | null = null;
   let hunk: DiffHunk | null = null;
+  let inHunks = false;
   let oldNo = 0;
   let newNo = 0;
   let count = 0;
@@ -41,20 +42,22 @@ export function parseUnifiedDiff(text: string, maxLines = MAX_DIFF_LINES): Ticke
       file = { path: '', hunks: [] };
       files.push(file);
       hunk = null;
+      inHunks = false;
       continue;
     }
     if (!file) continue;
-    if (raw.startsWith('+++ ')) {
+    // Header file chỉ hợp lệ trước @@ đầu tiên: dòng thêm "++ x" trong hunk không được đổi tên file hiển thị.
+    if (!inHunks && raw.startsWith('+++ ')) {
       const p = raw.slice(4);
       if (p !== '/dev/null') file.path = p.replace(/^b\//, '');
       continue;
     }
-    if (raw.startsWith('--- ')) {
+    if (!inHunks && raw.startsWith('--- ')) {
       const p = raw.slice(4);
       if (!file.path && p !== '/dev/null') file.path = p.replace(/^a\//, '');
       continue;
     }
-    if (raw.startsWith('Binary files ')) {
+    if (!inHunks && raw.startsWith('Binary files ')) {
       file.binary = true;
       const m = / and (?:b\/)?(.+) differ$/.exec(raw);
       if (m && m[1] !== '/dev/null' && !file.path) file.path = m[1]!;
@@ -66,6 +69,7 @@ export function parseUnifiedDiff(text: string, maxLines = MAX_DIFF_LINES): Ticke
       newNo = +h[2]!;
       hunk = { header: raw, lines: [] };
       file.hunks.push(hunk);
+      inHunks = true;
       continue;
     }
     if (!hunk) continue;
@@ -83,10 +87,22 @@ export function parseUnifiedDiff(text: string, maxLines = MAX_DIFF_LINES): Ticke
   return { files, truncated };
 }
 
-export function ticketDiff(repo: string, base: string, branch: string): TicketDiff {
+// Diff của đúng ticket: base → commit cuối có tiêu đề "<ticket>: …" (bỏ commit của ticket làm sau trên cùng nhánh).
+export function ticketDiff(repo: string, base: string, branch: string, ticketId?: string): TicketDiff {
   if (!SHA_RE.test(base)) throw new Error('bad base');
   if (!/^[A-Za-z0-9._/-]+$/.test(branch) || branch.startsWith('-')) throw new Error('bad branch');
-  const buf = gitBuffer(repo, 'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--no-renames', '-U3', `${base}..refs/heads/${branch}`, '--');
+  let end = `refs/heads/${branch}`;
+  if (ticketId && /^[A-Z][A-Z0-9]*-\d{1,8}$/.test(ticketId)) {
+    const log = gitBuffer(repo, 'log', '--format=%H%x00%s', `${base}..${end}`).toString('utf8');
+    const own = log.split('\n').find((l) => l.split('\0')[1]?.startsWith(`${ticketId}: `));
+    if (own) end = own.split('\0')[0]!;
+  }
+  let buf: Buffer;
+  try {
+    buf = gitBuffer(repo, 'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--no-renames', '-U3', `${base}..${end}`, '--');
+  } catch {
+    return { files: [], truncated: true };
+  }
   const truncatedBytes = buf.length > MAX_DIFF_BYTES;
   const text = buf.subarray(0, MAX_DIFF_BYTES).toString('utf8');
   const d = parseUnifiedDiff(text);

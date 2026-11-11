@@ -33,6 +33,11 @@ describe('P6-T3: diff ticket', () => {
       { kind: '+', text: 'more', newLine: 3 },
     ]);
     expect(parseUnifiedDiff(text, 2).truncated).toBe(true);
+    // dòng thêm "++ x" trong hunk không được đổi tên file hiển thị; dòng xoá "-- x" (SQL) vẫn là dòng xoá
+    const sneaky = ['diff --git a/src/auth.ts b/src/auth.ts', '--- a/src/auth.ts', '+++ b/src/auth.ts', '@@ -1,1 +1,2 @@', '--- comment', '+++ src/harmless.ts', '+x'].join('\n');
+    const sd = parseUnifiedDiff(sneaky);
+    expect(sd.files.map((f) => f.path)).toEqual(['src/auth.ts']);
+    expect(sd.files[0]!.hunks[0]!.lines.map((l) => l.kind + l.text)).toEqual(['--- comment', '+++ src/harmless.ts', '+x']);
   });
 
   it('ticketDiff trên repo thật: base..nhánh goal; base không phải sha / nhánh lạ → lỗi', () => {
@@ -45,6 +50,12 @@ describe('P6-T3: diff ticket', () => {
     const d = ticketDiff(repo, base, 'goal/G1-x');
     expect(d.files[0]!.path).toBe('src/app.ts');
     expect(d.files[0]!.hunks[0]!.lines.map((l) => l.kind + l.text)).toEqual(['-export const a = 1;', '+export const a = 2;']);
+    // ticket làm sau commit lên cùng nhánh → diff của GTM-0001 không lẫn code của nó
+    writeFileSync(join(repo, 'src', 'later.ts'), 'x\n');
+    g('add', '.');
+    g('commit', '-qm', 'GTM-0002: later');
+    expect(ticketDiff(repo, base, 'goal/G1-x', 'GTM-0001').files.map((f) => f.path)).toEqual(['src/app.ts']);
+    expect(ticketDiff(repo, base, 'goal/G1-x').files.map((f) => f.path)).toEqual(['src/app.ts', 'src/later.ts']);
     expect(() => ticketDiff(repo, 'HEAD; rm', 'goal/G1-x')).toThrow('bad base');
     expect(() => ticketDiff(repo, base, '--output=/tmp/x')).toThrow('bad branch');
   });
@@ -64,7 +75,8 @@ describe('P6-T4: câu hỏi trong báo cáo Dev', () => {
     ].join('\n');
     expect(parseReportQuestions(md)).toEqual(['Có đổi tên API /v1 không?', 'Dùng PostgreSQL hay SQLite?', 'Bỏ  hỗ trợ IE?']);
     expect(parseReportQuestions('OK')).toEqual([]);
-    expect(parseReportQuestions('- Cần xác nhận: OK\n- Cần xác nhận: không\nCần xác nhận: none')).toEqual([]);
-    expect(parseReportQuestions(Array.from({ length: 9 }, (_, i) => `Cần xác nhận: q${i}`).join('\n'))).toHaveLength(5);
+    expect(parseReportQuestions('- Cần xác nhận: OK\n- Cần xác nhận: Không có câu hỏi\nCần xác nhận: xem https://x.io/a?b=1')).toEqual([]);
+    expect(parseReportQuestions('- **Cần xác nhận:** Dùng Redis?')).toEqual(['Dùng Redis?']);
+    expect(parseReportQuestions(Array.from({ length: 9 }, (_, i) => `Cần xác nhận: q${i}?`).join('\n'))).toHaveLength(5);
   });
 });

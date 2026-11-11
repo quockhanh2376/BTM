@@ -241,7 +241,7 @@ export function createServer(o: {
           return;
         }
         try {
-          sendJson(res, 200, ticketDiff(activeProject, row.base_sha, goal.branch));
+          sendJson(res, 200, ticketDiff(activeProject, row.base_sha, goal.branch, ticketId));
         } catch {
           sendJson(res, 500, { error: 'Diff failed' });
         }
@@ -600,7 +600,7 @@ export function createServer(o: {
         // Plan 6 Task 3: ghi chú dòng + trả ticket về Dev
         const ticketPostMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/(notes|return)$/);
         if (ticketPostMatch) {
-          if (o.host.busy?.()) {
+          if (ticketPostMatch[2] === 'return' && o.host.busy?.()) {
             sendJson(res, 409, { error: 'Session running' });
             return;
           }
@@ -635,11 +635,21 @@ export function createServer(o: {
             sendJson(res, 409, { error: 'Goal already merged' });
             return;
           }
+          if (!['passed', 'returned', 'failed'].includes(row.state)) {
+            sendJson(res, 409, { error: `Ticket is ${row.state}` });
+            return;
+          }
+          const waiting = o.store.getLatestSession('needs_owner', activeProject) ?? o.store.getLatestSession('awaiting_approval', activeProject);
+          if (waiting) {
+            sendJson(res, 409, { error: 'Another session is waiting – resume or finish it first' });
+            return;
+          }
           if (o.store.listLineNotes(activeProject, ticketId, true).length === 0) {
             sendJson(res, 400, { error: 'Add a note first' });
             return;
           }
-          o.store.setTicketState(activeProject, ticketId, 'returned', 'owner', 'owner_line_notes', row.fix_rounds, row.base_sha);
+          // Anh trả về: cấp lại đủ vòng sửa.
+          o.store.setTicketState(activeProject, ticketId, 'returned', 'owner', 'owner_line_notes', 0, row.base_sha);
           o.store.setGoalState(activeProject, goalN, 'in_progress', 'owner', `ticket ${ticketId} returned`);
           // Phiên mới cho goal ở needs_owner: anh bấm Resume là Dev làm lại với ghi chú.
           const sid = o.store.createSession([String(goalN)], activeProject);

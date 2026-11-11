@@ -11,7 +11,7 @@ import { detectUsageLimit, usageLimitedKey } from '../agents/usage-limit.ts';
 import { formatHHmm } from '../energy/monitor.ts';
 import { git, commitAll, headSha } from '../git.ts';
 import { parseTicketQcResult } from '../qc/result.ts';
-import { cleanQuestions, parseReportQuestions } from '../qc/questions.ts';
+import { parseReportQuestions } from '../qc/questions.ts';
 import { parseAuditResult } from '../audit/result.ts';
 import { pmTicketPrompt, devTicketPrompt, qcTicketPrompt, auditPrompt } from './prompts.ts';
 import { inboxPath } from '../server/inbox.ts';
@@ -399,11 +399,11 @@ async function processGoal(
   // Plan 5 Task 7: người chính hết Energy/đăng nhập → người dự phòng (seats_backup) còn Energy và không vi phạm
   // luật cứng (exclude). Không còn ai → phiên dừng với all_agents_exhausted. Không có dự phòng → như cũ.
   // Plan 6 Task 4: lưu câu hỏi mới (bỏ câu đã hỏi trước đó cho ticket này). true = có câu mới → chặn ticket.
-  function askQuestions(ticketId: string, seat: Seat, agent: string, items: string[]): boolean {
+  function askQuestions(ticketId: string, seat: Seat, agent: string, items: string[]): number {
     const asked = new Set(d.store.listQuestions(d.repo).filter((q) => q.ticket === ticketId).map((q) => q.text));
     const fresh = items.filter((text) => !asked.has(text));
     for (const text of fresh) d.store.addQuestion(d.repo, ticketId, seat, agent, text);
-    return fresh.length > 0;
+    return fresh.length;
   }
 
   // Người dự phòng: team/project.yaml (main) ghi đè btm.config.yaml; chỉ agent có ghế đó trong can_sit.
@@ -818,10 +818,14 @@ async function processGoal(
       continue;
     }
 
-    // Plan 6 Task 4: ticket còn câu hỏi chưa trả lời → chờ anh, các ticket khác chạy tiếp.
-    if (d.store.listQuestions(d.repo, 'open').some((q) => q.ticket === ticket.id)) {
-      tasks[ticket.id] = 'blocked';
-      continue;
+    // Plan 6 Task 4: ticket còn câu hỏi chưa trả lời → dừng goal chờ anh (không chạy ticket khác để commit các
+    // ticket không xen nhau trong base..HEAD).
+    {
+      const openQ = d.store.listQuestions(d.repo, 'open').filter((q) => q.ticket === ticket.id).length;
+      if (openQ > 0) {
+        tasks[ticket.id] = stored?.state ?? 'returned';
+        return { status: 'needs_owner', sessionId, tasks, notes: [`questions_open:${openQ}`, `Ticket ${ticket.id} waits for your answers`] };
+      }
     }
 
     // Check Definition of Ready
@@ -1153,22 +1157,21 @@ async function processGoal(
             ? 'ignored_list_failed'
             : (devCleanedCount > 0 ? `ignored_cleaned:${devCleanedCount}` : undefined)
         );
-        d.store.markLineNotesUsed(d.repo, ticket.id);
-        d.store.markQuestionsUsed(d.repo, ticket.id);
-        // Plan 6 Task 4: Dev hỏi → bỏ phần sửa chưa commit của lượt này (Dev làm lại theo câu trả lời), ticket chờ anh;
-        // base về null để lần sau tính từ HEAD mới (ticket khác có thể đã commit lên nhánh trong lúc chờ).
-        if (askQuestions(ticket.id, 'dev', devAgent, parseReportQuestions(readReport(join(d.repo, 'team', 'reports', `${ticket.id}-dev.md`))))) {
-          git(d.repo, 'reset', '-q', '--hard', 'HEAD');
-          git(d.repo, 'clean', '-fdq');
-          d.store.setTicketState(d.repo, ticket.id, 'blocked', devAgent, 'questions_open', fixRounds, null);
-          tasks[ticket.id] = 'blocked';
-          break;
-        }
         try {
           commitAll(d.repo, `${ticket.id}: dev implementation`, devAuthor);
         } catch (err) {
           const reason = err instanceof Error ? err.message : String(err);
           return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
+        }
+        d.store.markLineNotesUsed(d.repo, ticket.id);
+        d.store.markQuestionsUsed(d.repo, ticket.id);
+        // Plan 6 Task 4: Dev hỏi → giữ code đã commit, base giữ nguyên (QC sau vẫn xem toàn bộ base..HEAD), ticket
+        // về returned và goal dừng chờ anh trả lời; lần sau Dev làm tiếp với câu trả lời.
+        const newQ = askQuestions(ticket.id, 'dev', devAgent, parseReportQuestions(readReport(join(d.repo, 'team', 'reports', `${ticket.id}-dev.md`))));
+        if (newQ > 0) {
+          d.store.setTicketState(d.repo, ticket.id, 'returned', devAgent, 'questions_open', fixRounds, base);
+          tasks[ticket.id] = 'returned';
+          return { status: 'needs_owner', sessionId, tasks, notes: [`questions_open:${newQ}`, `Ticket ${ticket.id} waits for your answers`] };
         }
 
         const timeoutMs = (d.cfg.turn.timeout_minutes.dev ?? 0) * 60 * 1000;
@@ -1488,13 +1491,6 @@ async function processGoal(
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         return { status: 'needs_owner', sessionId, tasks, notes: [`commitAll error: ${reason}`] };
-      }
-
-      // QC hay ghi cả "all good" vào confirm → chỉ mục có dấu hỏi mới là câu hỏi.
-      if (askQuestions(ticket.id, 'qc', qcAgent, cleanQuestions(qcResult.confirm.filter((c) => c.includes('?'))))) {
-        d.store.setTicketState(d.repo, ticket.id, 'blocked', qcAgent, 'questions_open', fixRounds, null);
-        tasks[ticket.id] = 'blocked';
-        break;
       }
 
       if (qcResult.verdict === 'pass') {
@@ -2010,12 +2006,11 @@ async function processGoal(
 
   if (failedOrBlocked.size > 0) {
     const list = Array.from(failedOrBlocked).sort();
-    const openQ = d.store.listQuestions(d.repo, 'open').length;
     return {
       status: 'needs_owner',
       sessionId,
       tasks,
-      notes: [...(openQ > 0 ? [`questions_open:${openQ}`] : []), `Unfinished tickets (failed/blocked): ${list.join(', ')}`],
+      notes: [`Unfinished tickets (failed/blocked): ${list.join(', ')}`],
     };
   }
 
