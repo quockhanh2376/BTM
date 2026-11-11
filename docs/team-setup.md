@@ -54,3 +54,7 @@ seats:
     dev: [jenny]
     qc: [elon]
   ```
+
+## Lượt treo và dòng trạng thái (Plan 6)
+- `turn.idle_minutes` dừng lượt khi CLI không in gì N phút. Đặt riêng cho từng công cụ, ví dụ `{ codex-cli: 15, antigravity-cli: 15 }`. Mặc định tắt. Không bật cho Claude, vì `claude -p` chỉ in khi xong.
+- Dev ghi 1 dòng việc đang làm vào `.btm-status` ở gốc repo. Thẻ ghế đang chạy hiện dòng này thay cho dòng log cuối. File này không bao giờ vào commit.
