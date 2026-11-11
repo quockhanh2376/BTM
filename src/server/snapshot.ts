@@ -122,6 +122,8 @@ export interface Snapshot {
   accounts: AccountCard[];
   /** Đổi ghế bị bỏ qua (agent lạ, không được ngồi ghế, YAML lỗi). */
   seatWarnings: string[];
+  /** Plan 6 Task 4: câu hỏi chặn ticket đang chờ anh trả lời (project active). */
+  questions: Array<{ id: number; ticket: string; seat: string; agent: string | null; text: string }>;
   sshHint?: string;
 }
 
@@ -194,6 +196,12 @@ function readAgentStatus(cfg: Config, agent: string, project: string): string | 
   }
   statusCache.set(key, { at: Date.now(), text });
   return text || null;
+}
+
+function openQuestions(store: Store): Snapshot['questions'] {
+  const project = store.getActiveProject();
+  if (!project) return [];
+  return store.listQuestions(project, 'open').map((q) => ({ id: q.id, ticket: q.ticket, seat: q.seat, agent: q.agent, text: q.text }));
 }
 
 function getSeatEnergy(store: Store, agent: string, cfg?: Config): SeatCard['energy'] {
@@ -462,6 +470,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       notes,
       accounts,
       seatWarnings: resolveSeats(cfg, store).warnings,
+      questions: openQuestions(store),
       sshHint,
     };
   }
@@ -488,6 +497,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       notes,
       accounts,
       seatWarnings: resolveSeats(cfg, store).warnings,
+      questions: openQuestions(store),
       sshHint,
     };
   }
@@ -507,6 +517,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       notes,
       accounts,
       seatWarnings: resolveSeats(cfg, store).warnings,
+      questions: openQuestions(store),
       sshHint,
     };
   }
@@ -626,6 +637,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     notes,
     accounts,
     seatWarnings: resolveSeats(cfg, store).warnings,
+    questions: openQuestions(store),
     sshHint,
   };
 }

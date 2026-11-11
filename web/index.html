@@ -702,6 +702,68 @@
       min-width: 0;
     }
 
+    .diff-panel pre {
+      margin: 0;
+    }
+
+    .diff-file {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin: 8px 0;
+      overflow-x: auto;
+    }
+
+    .diff-file-name {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 8px;
+      background-color: var(--badge-bg);
+    }
+
+    .diff-line {
+      display: flex;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      white-space: pre;
+    }
+
+    .diff-line button {
+      min-width: 52px;
+      text-align: right;
+      font: inherit;
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      border-right: 1px solid var(--border);
+      padding: 0 6px;
+      cursor: pointer;
+    }
+
+    .diff-line button:disabled {
+      cursor: default;
+    }
+
+    .diff-line .diff-text {
+      padding: 0 8px;
+    }
+
+    .diff-add .diff-text::before { content: '+ '; }
+    .diff-del .diff-text::before { content: '- '; }
+    .diff-ctx .diff-text::before { content: '  '; }
+    .diff-add { background-color: rgba(46, 160, 67, 0.15); }
+    .diff-del { background-color: rgba(248, 81, 73, 0.15); }
+
+    .question-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
     .energy-warn {
       display: inline-block;
       font-size: 12px;
@@ -1911,6 +1973,21 @@
       </div>
     </section>
 
+    <!-- Plan 6 Task 4: câu hỏi chặn ticket -->
+    <section class="card" id="questions-section" style="display: none;">
+      <h2 class="section-title" data-i18n="q.title">Questions</h2>
+      <div id="questions-list"></div>
+    </section>
+
+    <!-- Plan 6 Task 3: diff ticket -->
+    <section class="card diff-panel" id="diff-panel" style="display: none;" aria-live="polite">
+      <h2 class="section-title" id="diff-title">Diff</h2>
+      <div id="diff-body"></div>
+      <div id="diff-notes"></div>
+      <button id="diff-return-btn" class="btn btn-danger btn-sm" type="button" data-i18n="diff.return">Return to Dev</button>
+      <button id="diff-close-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="diff.close">Close</button>
+    </section>
+
     <!-- Khung lệnh -->
     <section class="card cmd-section">
       <h2 class="section-title" data-i18n="cmd.title">Command</h2>
@@ -2116,7 +2193,29 @@
           'acc.effortFor': 'Effort for {agent}',
           'acc.save': 'Save',
           'acc.saveFor': 'Save model and effort for {agent}',
-          'acc.saved': 'Saved for {agent} (applies next turn)'
+          'acc.saved': 'Saved for {agent} (applies next turn)',
+          'q.title': 'Questions',
+          'q.from': '{ticket} · {seat} ({agent})',
+          'q.placeholder': 'Your answer…',
+          'q.answer': 'Answer',
+          'q.answerFor': 'Answer question {id}',
+          'q.answered': 'Answered – press Resume to continue',
+          'diff.open': 'Diff',
+          'diff.openFor': 'Show diff for {ticket}',
+          'diff.title': 'Diff · {ticket}',
+          'diff.loading': 'Loading diff…',
+          'diff.error': "Can't load diff",
+          'diff.empty': 'No changes',
+          'diff.binary': 'Binary file',
+          'diff.truncated': 'Diff truncated (too large)',
+          'diff.close': 'Close',
+          'diff.notePrompt': 'Note for {path}:{line}',
+          'diff.noteSaved': 'Note saved',
+          'diff.notes': 'Your notes ({n})',
+          'diff.return': 'Return to Dev',
+          'diff.confirmReturn': 'Return {ticket} to Dev with your notes?',
+          'diff.returned': '{ticket} returned to Dev – press Resume',
+          'diff.lineNote': 'Add note on line {line}'
         }
       };
       var LANG = 'en';
@@ -2442,6 +2541,172 @@
         var hhmm = eng.soonestReset ? formatHHmm(eng.soonestReset) : '';
         chip.textContent = tx('energy.low') + (hhmm ? tx('energy.resets', { time: hhmm }) : '');
         return chip;
+      }
+
+      // ===== Plan 6 Task 4: câu hỏi chặn ticket =====
+      function renderQuestions(questions) {
+        var section = document.getElementById('questions-section');
+        var list = document.getElementById('questions-list');
+        if (!section || !list) return;
+        var active = document.activeElement;
+        if (active && list.contains(active) && active.tagName === 'TEXTAREA') return;
+        clearChildren(list);
+        if (!Array.isArray(questions) || questions.length === 0) {
+          section.style.display = 'none';
+          return;
+        }
+        section.style.display = 'block';
+        questions.forEach(function (q) {
+          var item = document.createElement('div');
+          item.className = 'question-item';
+          var head = document.createElement('div');
+          head.className = 'account-detail';
+          head.textContent = tx('q.from', { ticket: q.ticket, seat: SEAT_LABELS[q.seat] || q.seat, agent: q.agent || '—' });
+          item.appendChild(head);
+          var text = document.createElement('div');
+          text.textContent = q.text;
+          item.appendChild(text);
+          var area = document.createElement('textarea');
+          area.className = 'form-textarea';
+          area.rows = 2;
+          area.maxLength = 2000;
+          area.placeholder = tx('q.placeholder');
+          area.setAttribute('aria-label', tx('q.answerFor', { id: q.id }));
+          item.appendChild(area);
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn-primary btn-sm';
+          btn.textContent = tx('q.answer');
+          btn.addEventListener('click', async function () {
+            if (!area.value.trim()) return;
+            try {
+              var res = await postJson('/api/questions/' + q.id + '/answer', { text: area.value.trim() });
+              if (res && res.error) showFeedback(topFeedback, res.error, true);
+              else showFeedback(topFeedback, tx('q.answered'), false);
+            } catch (err) {
+              showFeedback(topFeedback, err.message, true);
+            }
+          });
+          item.appendChild(btn);
+          list.appendChild(item);
+        });
+      }
+
+      // ===== Plan 6 Task 3: diff ticket + ghi chú dòng =====
+      var diffTicket = null;
+      async function openDiff(ticketId) {
+        diffTicket = ticketId;
+        var panel = document.getElementById('diff-panel');
+        var body = document.getElementById('diff-body');
+        var title = document.getElementById('diff-title');
+        if (!panel || !body) return;
+        panel.style.display = 'block';
+        if (title) title.textContent = tx('diff.title', { ticket: ticketId });
+        clearChildren(body);
+        var loading = document.createElement('div');
+        loading.className = 'empty-placeholder';
+        loading.textContent = tx('diff.loading');
+        body.appendChild(loading);
+        panel.scrollIntoView({ block: 'start' });
+        try {
+          var res = await fetch('/api/tickets/' + encodeURIComponent(ticketId) + '/diff', { headers: { 'x-btm': '1' } });
+          if (!res.ok) throw new Error(tx('diff.error'));
+          var diff = await res.json();
+          clearChildren(body);
+          renderDiff(body, diff);
+        } catch (err) {
+          clearChildren(body);
+          var e = document.createElement('div');
+          e.className = 'empty-placeholder';
+          e.textContent = err.message || tx('diff.error');
+          body.appendChild(e);
+        }
+        loadDiffNotes();
+      }
+
+      function renderDiff(body, diff) {
+        if (!diff || !Array.isArray(diff.files) || diff.files.length === 0) {
+          var none = document.createElement('div');
+          none.className = 'empty-placeholder';
+          none.textContent = tx('diff.empty');
+          body.appendChild(none);
+          return;
+        }
+        if (diff.truncated) {
+          var tr0 = document.createElement('div');
+          tr0.className = 'seat-warnings';
+          tr0.textContent = tx('diff.truncated');
+          body.appendChild(tr0);
+        }
+        diff.files.forEach(function (f) {
+          var box = document.createElement('div');
+          box.className = 'diff-file';
+          var name = document.createElement('div');
+          name.className = 'diff-file-name';
+          name.textContent = f.path + (f.binary ? ' · ' + tx('diff.binary') : '');
+          box.appendChild(name);
+          (f.hunks || []).forEach(function (h) {
+            var hh = document.createElement('div');
+            hh.className = 'diff-line diff-ctx account-detail';
+            hh.textContent = h.header;
+            box.appendChild(hh);
+            (h.lines || []).forEach(function (l) {
+              var row = document.createElement('div');
+              row.className = 'diff-line ' + (l.kind === '+' ? 'diff-add' : (l.kind === '-' ? 'diff-del' : 'diff-ctx'));
+              var num = document.createElement('button');
+              num.type = 'button';
+              num.textContent = l.newLine != null ? String(l.newLine) : '';
+              if (l.newLine == null) {
+                num.disabled = true;
+              } else {
+                num.setAttribute('aria-label', tx('diff.lineNote', { line: l.newLine }));
+                num.addEventListener('click', function () { addDiffNote(f.path, l.newLine); });
+              }
+              row.appendChild(num);
+              var txt = document.createElement('span');
+              txt.className = 'diff-text';
+              txt.textContent = l.text;
+              row.appendChild(txt);
+              box.appendChild(row);
+            });
+          });
+          body.appendChild(box);
+        });
+      }
+
+      async function addDiffNote(path, line) {
+        if (!diffTicket) return;
+        var text = window.prompt(tx('diff.notePrompt', { path: path, line: line }));
+        if (!text || !text.trim()) return;
+        try {
+          var res = await postJson('/api/tickets/' + encodeURIComponent(diffTicket) + '/notes', { path: path, line: line, text: text.trim() });
+          if (res && res.error) showFeedback(topFeedback, res.error, true);
+          else showFeedback(topFeedback, tx('diff.noteSaved'), false);
+        } catch (err) {
+          showFeedback(topFeedback, err.message, true);
+        }
+        loadDiffNotes();
+      }
+
+      async function loadDiffNotes() {
+        var box = document.getElementById('diff-notes');
+        if (!box || !diffTicket) return;
+        clearChildren(box);
+        try {
+          var res = await fetch('/api/tickets/' + encodeURIComponent(diffTicket) + '/notes', { headers: { 'x-btm': '1' } });
+          var notes = res.ok ? await res.json() : [];
+          var open = notes.filter(function (n) { return !n.used; });
+          var h = document.createElement('div');
+          h.className = 'account-detail';
+          h.textContent = tx('diff.notes', { n: open.length });
+          box.appendChild(h);
+          open.forEach(function (n) {
+            var li = document.createElement('div');
+            li.className = 'account-detail';
+            li.textContent = n.path + ':' + n.line + ' – ' + n.text;
+            box.appendChild(li);
+          });
+        } catch (e) {}
       }
 
       function renderSeatWarnings(warnings) {
@@ -3013,6 +3278,19 @@
               // Format: #<number>/<of> · <tiêu đề>
               titleSpan.textContent = '#' + t.number + '/' + t.of + ' · ' + (t.title || '');
               tdTitle.appendChild(titleSpan);
+              var diffBtn = document.createElement('button');
+              diffBtn.type = 'button';
+              diffBtn.className = 'btn btn-secondary btn-sm';
+              diffBtn.style.marginLeft = '8px';
+              diffBtn.textContent = tx('diff.open');
+              diffBtn.setAttribute('aria-label', tx('diff.openFor', { ticket: t.id }));
+              (function (ticketId) {
+                diffBtn.addEventListener('click', function (ev) {
+                  ev.stopPropagation();
+                  openDiff(ticketId);
+                });
+              })(t.id);
+              tdTitle.appendChild(diffBtn);
 
               if (t.type || t.size) {
                 var meta = document.createElement('span');
@@ -3671,6 +3949,7 @@
         // Accounts
         renderAccounts(state.accounts, state.sshHint);
         renderSeatWarnings(state.seatWarnings);
+        renderQuestions(state.questions);
       }
 
       function renderAccounts(accounts, sshHint) {
@@ -3834,6 +4113,29 @@
           });
         }
       });
+
+      var diffCloseBtn = document.getElementById('diff-close-btn');
+      if (diffCloseBtn) {
+        diffCloseBtn.addEventListener('click', function () {
+          var panel = document.getElementById('diff-panel');
+          if (panel) panel.style.display = 'none';
+          diffTicket = null;
+        });
+      }
+      var diffReturnBtn = document.getElementById('diff-return-btn');
+      if (diffReturnBtn) {
+        diffReturnBtn.addEventListener('click', async function () {
+          if (!diffTicket) return;
+          if (!confirm(tx('diff.confirmReturn', { ticket: diffTicket }))) return;
+          try {
+            var res = await postJson('/api/tickets/' + encodeURIComponent(diffTicket) + '/return', {});
+            if (res && res.error) showFeedback(topFeedback, res.error, true);
+            else showFeedback(topFeedback, tx('diff.returned', { ticket: diffTicket }), false);
+          } catch (err) {
+            showFeedback(topFeedback, err.message, true);
+          }
+        });
+      }
 
       if (stopBtn) {
         stopBtn.addEventListener('click', async function () {

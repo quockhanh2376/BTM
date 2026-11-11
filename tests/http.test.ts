@@ -897,6 +897,56 @@ describe('HTTP Server & SSE', () => {
     });
   });
 
+  describe('P6-T3/T4: ghi chú dòng, trả ticket về Dev, trả lời câu hỏi', () => {
+    const post = (path: string, body: unknown) => fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'x-btm': '1', 'content-type': 'application/json', Origin: `http://127.0.0.1:${port}` },
+      body: JSON.stringify(body),
+    });
+    function seed() {
+      const project = '/tmp/btm-http-p6';
+      store.setActiveProject(project);
+      const g = store.createGoal(project, 'Goal');
+      store.upsertTicket(project, { id: 'GTM-0001', goal: `G${g.n}`, number: 1, of: 1, title: 'T', type: 'feat', size: 'S', scope: ['src/'], acceptance: ['a'], done_when: 'd' } as any);
+      store.setTicketState(project, 'GTM-0001', 'passed', 'jenny', 'qc passed', 0, 'abc1234');
+      store.setGoalState(project, g.n, 'qc_done', 'core', 'all passed');
+      return { project, n: g.n };
+    }
+    it('ghi chú: lưu + đọc lại; dữ liệu sai → 400; ticket lạ → 404', async () => {
+      const { project } = seed();
+      expect((await post('/api/tickets/GTM-0001/notes', { path: 'src/a.ts', line: 3, text: 'đổi tên' })).status).toBe(200);
+      expect((await post('/api/tickets/GTM-0001/notes', { path: 'src/a.ts', line: 0, text: 'x' })).status).toBe(400);
+      expect((await post('/api/tickets/GTM-0001/notes', { path: 'src/a.ts', line: 1, text: 'x'.repeat(1001) })).status).toBe(400);
+      expect((await post('/api/tickets/GTM-0099/notes', { path: 'a', line: 1, text: 'x' })).status).toBe(404);
+      const list = await (await fetch(`${baseUrl}/api/tickets/GTM-0001/notes`, { headers: { 'x-btm': '1' } })).json();
+      expect(list.map((n: any) => [n.path, n.line, n.text])).toEqual([['src/a.ts', 3, 'đổi tên']]);
+      expect(store.listLineNotes(project, 'GTM-0001', true)).toHaveLength(1);
+    });
+    it('Return to Dev: cần ghi chú; ticket returned, goal in_progress, phiên needs_owner mới; đang chạy → 409', async () => {
+      const { project, n } = seed();
+      expect((await post('/api/tickets/GTM-0001/return', {})).status).toBe(400);
+      store.addLineNote(project, 'GTM-0001', 'src/a.ts', 1, 'sửa');
+      const r = await post('/api/tickets/GTM-0001/return', {});
+      expect(r.status).toBe(200);
+      const { sessionId } = await r.json();
+      expect(store.getTicketState(project, 'GTM-0001')?.state).toBe('returned');
+      expect(store.getGoal(project, n)?.state).toBe('in_progress');
+      expect(store.getSession(sessionId)?.status).toBe('needs_owner');
+      host.busy = vi.fn().mockReturnValue(true);
+      expect((await post('/api/tickets/GTM-0001/return', {})).status).toBe(409);
+    });
+    it('trả lời câu hỏi: lần đầu ok, lần hai 409, câu hỏi project khác 404', async () => {
+      const { project } = seed();
+      const id = store.addQuestion(project, 'GTM-0001', 'dev', 'jacky', 'SQLite?');
+      const other = store.addQuestion('/other', 'X-0001', 'dev', 'jacky', 'q');
+      expect((await post(`/api/questions/${id}/answer`, { text: 'Yes' })).status).toBe(200);
+      expect(store.getQuestion(id)?.answer).toBe('Yes');
+      expect((await post(`/api/questions/${id}/answer`, { text: 'No' })).status).toBe(409);
+      expect((await post(`/api/questions/${other}/answer`, { text: 'x' })).status).toBe(404);
+      expect((await post(`/api/questions/${id}/answer`, { text: '' })).status).toBe(400);
+    });
+  });
+
   describe('P5-T5: POST /api/agent (model + effort theo agent)', () => {
     const post = (body: unknown) => fetch(`${baseUrl}/api/agent`, {
       method: 'POST',

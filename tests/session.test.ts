@@ -4390,3 +4390,60 @@ describe('P6-T2: hết hạn mức giữa lượt → tiếp tục bằng ngư�
     store.close();
   });
 });
+
+describe('P6-T3/T4: câu hỏi chặn ticket, ghi chú của anh vào lượt Dev', () => {
+  it('Dev hỏi "Cần xác nhận" → ticket blocked, ticket khác vẫn chạy, phiên dừng questions_open; trả lời → Dev nhận câu trả lời', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '1', 'src/b.ts': '1' });
+    const { deps, store } = makeDeps(repo);
+    const prompts: string[] = [];
+    const t1 = { id: 'GTM-0001', goal: 'G1', number: 1, of: 2 };
+    const t2 = { id: 'GTM-0002', goal: 'G1', number: 2, of: 2 };
+    const { runner } = createFakeRunner([
+      (_s, _a, _p, cwd) => {
+        writeTicketFile(cwd, { ...t1, scope: ['src/app.ts'] } as any);
+        writeTicketFile(cwd, { ...t2, scope: ['src/b.ts'] } as any);
+      },
+      (_s, agent, _p, cwd) => {
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+        writeDevReport(cwd, t1, agent, 'Dùng SQLite hay PostgreSQL?');
+      },
+      (_s, agent, _p, cwd) => {
+        writeFileSync(join(cwd, 'src', 'b.ts'), 'export const b = 2;\n');
+        writeDevReport(cwd, t2, agent);
+      },
+      () => makeQcResponse(t2, 'pass'),
+    ]);
+    deps.runner = runner;
+    deps.gate = () => ({ ok: true as const });
+    const out = await runSession(deps, ['Build feature'], { approved: true });
+    expect(out.status).toBe('needs_owner');
+    expect(out.notes[0]).toBe('questions_open:1');
+    expect(out.tasks['GTM-0001']).toBe('blocked');
+    expect(out.tasks['GTM-0002']).toBe('passed');
+    const q = store.listQuestions(repo, 'open');
+    expect(q.map((x) => [x.ticket, x.seat, x.text])).toEqual([['GTM-0001', 'dev', 'Dùng SQLite hay PostgreSQL?']]);
+
+    // Phiên kế: câu hỏi chưa trả lời → ticket vẫn chờ, không chạy Dev
+    store.answerQuestion(q[0]!.id, 'SQLite');
+    store.addLineNote(repo, 'GTM-0001', 'src/app.ts', 1, 'đổi tên biến app');
+    const { runner: r2, calls } = createFakeRunner([
+      (_s, agent, prompt, cwd) => {
+        prompts.push(prompt);
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 3;\n');
+        writeDevReport(cwd, t1, agent, 'Dùng SQLite hay PostgreSQL?'); // câu cũ lặp lại → không hỏi lại
+      },
+      () => makeQcResponse(t1, 'pass'),
+    ]);
+    deps.runner = r2;
+    const sid = store.createSession(['1'], repo);
+    store.setSessionStatus(sid, 'needs_owner');
+    const out2 = await resumeSession(deps, sid);
+    expect(calls.map((c) => c.seat)).toEqual(['dev', 'qc']);
+    expect(prompts[0]).toContain('Anh Zon trả lời: SQLite');
+    expect(prompts[0]).toContain('Anh Zon (src/app.ts:1): đổi tên biến app');
+    expect(out2.tasks['GTM-0001']).toBe('passed');
+    expect(store.listQuestions(repo, 'used')).toHaveLength(1);
+    expect(store.listLineNotes(repo, 'GTM-0001', true)).toHaveLength(0);
+    store.close();
+  });
+});

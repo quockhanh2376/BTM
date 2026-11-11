@@ -11,6 +11,30 @@ import { parse as parseYaml } from 'yaml';
 
 export type TurnResult = 'ok' | 'timeout' | 'error' | 'rejected';
 export type BoardState = 'pending' | 'in_dev' | 'awaiting_qc' | 'passed' | 'returned' | 'failed' | 'blocked';
+export interface LineNote {
+  id: number;
+  ticket: string;
+  path: string;
+  line: number;
+  text: string;
+  used: boolean;
+  created_at: string;
+}
+
+export type QuestionState = 'open' | 'answered' | 'used';
+
+export interface QuestionRow {
+  id: number;
+  project: string;
+  ticket: string;
+  seat: string;
+  agent: string | null;
+  text: string;
+  answer: string | null;
+  state: QuestionState;
+  created_at: string;
+}
+
 export type GoalState = 'open' | 'in_progress' | 'qc_done' | 'audit_passed' | 'approved' | 'merged';
 
 export interface GoalRow {
@@ -117,6 +141,16 @@ export interface Store {
   /** Đổi đường dẫn project ở mọi bảng + key setting `…:<path>` (btm isolate). */
   renameProject(oldPath: string, newPath: string): void;
   getSetting(key: string): string | null;
+  /** Plan 6 Task 3: ghi chú dòng của anh trên diff ticket. */
+  addLineNote(project: string, ticket: string, path: string, line: number, text: string): number;
+  listLineNotes(project: string, ticket: string, onlyUnused?: boolean): LineNote[];
+  markLineNotesUsed(project: string, ticket: string): void;
+  /** Plan 6 Task 4: câu hỏi chặn ticket. state: open → answered → used. */
+  addQuestion(project: string, ticket: string, seat: string, agent: string | null, text: string): number;
+  listQuestions(project: string, state?: QuestionState): QuestionRow[];
+  getQuestion(id: number): QuestionRow | null;
+  answerQuestion(id: number, answer: string): void;
+  markQuestionsUsed(project: string, ticket: string): void;
   setSetting(key: string, value: string): void;
   setSessionTasks(sessionId: number, taskIds: string[]): void;
   getSessionTasks(sessionId: number): string[];
@@ -407,6 +441,29 @@ export function openStore(file: string): Store {
     CREATE TABLE IF NOT EXISTS project_counters (
       project TEXT PRIMARY KEY,
       next_ticket_seq INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS line_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT NOT NULL,
+      ticket TEXT NOT NULL,
+      path TEXT NOT NULL,
+      line INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT NOT NULL,
+      ticket TEXT NOT NULL,
+      seat TEXT NOT NULL,
+      agent TEXT,
+      text TEXT NOT NULL,
+      answer TEXT,
+      state TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );
   `);
 
@@ -792,7 +849,7 @@ export function openStore(file: string): Store {
   });
 
   const renameProject = db.transaction((oldPath: string, newPath: string) => {
-    for (const t of ['sessions', 'notes', 'goals', 'tickets', 'ticket_history', 'project_counters']) {
+    for (const t of ['sessions', 'notes', 'goals', 'tickets', 'ticket_history', 'project_counters', 'line_notes', 'questions']) {
       db.prepare(`UPDATE ${t} SET project = ? WHERE project = ?`).run(newPath, oldPath);
     }
     db.prepare('UPDATE active_project SET path = ? WHERE path = ?').run(newPath, oldPath);
@@ -1041,6 +1098,46 @@ export function openStore(file: string): Store {
         status: r.status as QueueItem['status'],
         created_at: String(r.created_at),
       }));
+    },
+
+    addLineNote(project: string, ticket: string, path: string, line: number, text: string): number {
+      const info = db.prepare('INSERT INTO line_notes (project, ticket, path, line, text, used, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)')
+        .run(project, ticket, path, line, text, new Date().toISOString());
+      return Number(info.lastInsertRowid);
+    },
+
+    listLineNotes(project: string, ticket: string, onlyUnused = false): LineNote[] {
+      const rows = db.prepare(`SELECT id, ticket, path, line, text, used, created_at FROM line_notes WHERE project = ? AND ticket = ?${onlyUnused ? ' AND used = 0' : ''} ORDER BY path, line, id`)
+        .all(project, ticket) as Array<Omit<LineNote, 'used'> & { used: number }>;
+      return rows.map((r) => ({ ...r, used: r.used === 1 }));
+    },
+
+    markLineNotesUsed(project: string, ticket: string): void {
+      db.prepare('UPDATE line_notes SET used = 1 WHERE project = ? AND ticket = ? AND used = 0').run(project, ticket);
+    },
+
+    addQuestion(project: string, ticket: string, seat: string, agent: string | null, text: string): number {
+      const info = db.prepare("INSERT INTO questions (project, ticket, seat, agent, text, state, created_at) VALUES (?, ?, ?, ?, ?, 'open', ?)")
+        .run(project, ticket, seat, agent, text, new Date().toISOString());
+      return Number(info.lastInsertRowid);
+    },
+
+    listQuestions(project: string, state?: QuestionState): QuestionRow[] {
+      return (state
+        ? db.prepare('SELECT * FROM questions WHERE project = ? AND state = ? ORDER BY id').all(project, state)
+        : db.prepare('SELECT * FROM questions WHERE project = ? ORDER BY id').all(project)) as QuestionRow[];
+    },
+
+    getQuestion(id: number): QuestionRow | null {
+      return (db.prepare('SELECT * FROM questions WHERE id = ?').get(id) as QuestionRow | undefined) ?? null;
+    },
+
+    answerQuestion(id: number, answer: string): void {
+      db.prepare("UPDATE questions SET answer = ?, state = 'answered' WHERE id = ? AND state = 'open'").run(answer, id);
+    },
+
+    markQuestionsUsed(project: string, ticket: string): void {
+      db.prepare("UPDATE questions SET state = 'used' WHERE project = ? AND ticket = ? AND state = 'answered'").run(project, ticket);
     },
 
     getSetting(key: string): string | null {

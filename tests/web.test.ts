@@ -1475,3 +1475,17 @@ describe('P6-T7: dòng trạng thái trên thẻ ghế', () => {
     expect(html).toContain("lastLineEl.textContent = cardData.agentStatus || cardData.lastLine || '—';");
   });
 });
+
+describe('P6-T3/T4: dashboard diff + câu hỏi', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('có khung diff, nút Diff trên ticket, ghi chú theo dòng mới, Return to Dev có xác nhận; câu hỏi có ô trả lời', () => {
+    expect(html).toContain('id="diff-panel"');
+    expect(html).toContain("diffBtn.textContent = tx('diff.open');");
+    expect(html).toContain("'/api/tickets/' + encodeURIComponent(diffTicket) + '/notes'");
+    expect(html).toContain("if (!confirm(tx('diff.confirmReturn', { ticket: diffTicket }))) return;");
+    expect(html).toContain("txt.textContent = l.text;");
+    expect(html).toContain('id="questions-section"');
+    expect(html).toContain("postJson('/api/questions/' + q.id + '/answer'");
+    expect(html).toContain('text.textContent = q.text;');
+  });
+});

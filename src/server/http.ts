@@ -7,6 +7,7 @@ import { EffortSchema, ModelSchema, type Config, type Seat } from '../config.ts'
 import { agentEffortKey, agentModelKey } from '../agents/model.ts';
 import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
+import { ticketDiff } from './diff.ts';
 import { commitAll } from '../git.ts';
 import { inboxPath, detectImage, readInboxFile } from './inbox.ts';
 import type { createMonitor } from '../energy/monitor.ts';
@@ -213,6 +214,37 @@ export function createServer(o: {
         }
         const history = o.store.ticketHistory(activeProject, ticketId);
         sendJson(res, 200, history);
+        return;
+      }
+
+      // Plan 6 Task 3: diff ticket + ghi chú dòng
+      const ticketDiffMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/(diff|notes)$/);
+      if (method === 'GET' && ticketDiffMatch) {
+        const activeProject = o.store.getActiveProject();
+        if (!activeProject) {
+          sendJson(res, 404, { error: 'No active project' });
+          return;
+        }
+        const ticketId = ticketDiffMatch[1]!;
+        if (ticketDiffMatch[2] === 'notes') {
+          sendJson(res, 200, o.store.listLineNotes(activeProject, ticketId));
+          return;
+        }
+        const row = o.store.listTickets(activeProject).find((t) => t.id === ticketId);
+        const goal = row ? o.store.getGoal(activeProject, parseInt(row.goal.replace(/^G/, ''), 10)) : null;
+        if (!row || !goal) {
+          sendJson(res, 404, { error: 'Unknown ticket' });
+          return;
+        }
+        if (!row.base_sha) {
+          sendJson(res, 400, { error: 'Ticket has no base yet' });
+          return;
+        }
+        try {
+          sendJson(res, 200, ticketDiff(activeProject, row.base_sha, goal.branch));
+        } catch {
+          sendJson(res, 500, { error: 'Diff failed' });
+        }
         return;
       }
 
@@ -561,6 +593,80 @@ export function createServer(o: {
           if (monitor) {
             await monitor.refresh(Object.keys(o.cfg.agents), true);
           }
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+
+        // Plan 6 Task 3: ghi chú dòng + trả ticket về Dev
+        const ticketPostMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/(notes|return)$/);
+        if (ticketPostMatch) {
+          if (o.host.busy?.()) {
+            sendJson(res, 409, { error: 'Session running' });
+            return;
+          }
+          const activeProject = o.store.getActiveProject();
+          if (!activeProject) {
+            sendJson(res, 400, { error: 'No active project' });
+            return;
+          }
+          const ticketId = ticketPostMatch[1]!;
+          const row = o.store.listTickets(activeProject).find((t) => t.id === ticketId);
+          const goalN = row ? parseInt(row.goal.replace(/^G/, ''), 10) : NaN;
+          const goal = row ? o.store.getGoal(activeProject, goalN) : null;
+          if (!row || !goal) {
+            sendJson(res, 404, { error: 'Unknown ticket' });
+            return;
+          }
+          if (ticketPostMatch[2] === 'notes') {
+            const parsed = z.object({
+              path: z.string().min(1).max(500),
+              line: z.number().int().min(1).max(10_000_000),
+              text: z.string().trim().min(1).max(1000),
+            }).strict().safeParse(body);
+            if (!parsed.success) {
+              sendJson(res, 400, { error: 'Invalid note' });
+              return;
+            }
+            const id = o.store.addLineNote(activeProject, ticketId, parsed.data.path, parsed.data.line, parsed.data.text);
+            sendJson(res, 200, { ok: true, id });
+            return;
+          }
+          if (goal.state === 'approved' || goal.state === 'merged') {
+            sendJson(res, 409, { error: 'Goal already merged' });
+            return;
+          }
+          if (o.store.listLineNotes(activeProject, ticketId, true).length === 0) {
+            sendJson(res, 400, { error: 'Add a note first' });
+            return;
+          }
+          o.store.setTicketState(activeProject, ticketId, 'returned', 'owner', 'owner_line_notes', row.fix_rounds, row.base_sha);
+          o.store.setGoalState(activeProject, goalN, 'in_progress', 'owner', `ticket ${ticketId} returned`);
+          // Phiên mới cho goal ở needs_owner: anh bấm Resume là Dev làm lại với ghi chú.
+          const sid = o.store.createSession([String(goalN)], activeProject);
+          o.store.setSessionStatus(sid, 'needs_owner');
+          sendJson(res, 200, { ok: true, sessionId: sid });
+          return;
+        }
+
+        // Plan 6 Task 4: anh trả lời câu hỏi chặn ticket
+        const answerMatch = pathname.match(/^\/api\/questions\/(\d{1,9})\/answer$/);
+        if (answerMatch) {
+          const parsed = z.object({ text: z.string().trim().min(1).max(2000) }).strict().safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: 'Invalid answer' });
+            return;
+          }
+          const q = o.store.getQuestion(parseInt(answerMatch[1]!, 10));
+          const activeProject = o.store.getActiveProject();
+          if (!q || q.project !== activeProject) {
+            sendJson(res, 404, { error: 'Unknown question' });
+            return;
+          }
+          if (q.state !== 'open') {
+            sendJson(res, 409, { error: 'Already answered' });
+            return;
+          }
+          o.store.answerQuestion(q.id, parsed.data.text);
           sendJson(res, 200, { ok: true });
           return;
         }
