@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, appendFileSync, mkdirSync, writeFileSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import type { Config, Seat } from '../config.ts';
-import { effectiveSeats, type Store } from '../store/db.ts';
+import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import type { Runner, TurnOutput } from '../runner/run.ts';
 import type { HostApi } from './http.ts';
 import { runSession, resumeSession } from '../core/session.ts';
@@ -985,7 +985,7 @@ export function createHost(d: HostDeps): HostApi & {
       };
     }
     const current = effectiveSeats(d.cfg, d.store)[seat];
-    d.store.setSetting(`seat:${seat}`, agent);
+    d.store.setSetting(seatSettingKey(d.store.getActiveProject(), seat), agent);
     console.log(`Đổi ghế ${seat}: ${current} → ${agent}`);
     return { ok: true };
   }

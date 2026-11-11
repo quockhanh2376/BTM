@@ -132,3 +132,31 @@
   - sync → commit → import end-to-end dưới user thật OK; main không bị đổi; file tin cậy 640 btm-read.
 - Sửa killall: kill -1 giết cả sudo cha → đổi sang pgrep theo real uid.
 - Chờ Zon: đăng nhập 3 CLI (mỗi user 1 CLI), rồi Task 6 switch + restart.
+
+## 2026-11-10 – P4.5 đã bật trên VM (Cheki, Zon đồng ý)
+- Deploy bản 01f7574 (PR #8). Sao lưu `/var/lib/btm/btm.db.bak-isolate*`.
+- Chạy switch: `/var/lib/btm` 700, `UMask=0027`.
+- Bật config (3 dòng trong `btm.config.yaml` trên VM, file đó giờ hiện là đã sửa).
+- `btm isolate`: go-to-the-moon → `/srv/btm-repos/go-to-the-moon` (main bbf6b28, quyền 2750 agent:btm-read).
+- Dashboard 200. Energy/đăng nhập đọc dưới btm-elon/jacky/jenny OK. jenny Energy "unknown" tới khi chạy lượt đầu.
+- Thử tấn công thật (`team/bin/p45-attack-check.mjs`, repo nháp): 12/12 PASS. Gồm:
+  - ghi `/var/lib/btm`, checkout tin cậy, code BTM: bị chặn;
+  - đọc `btm.db`, token của agent khác: bị chặn;
+  - `nohup`/`setsid` bị giết;
+  - main và `.git/config` tin cậy không đổi;
+  - filter git không chạy;
+  - symlink bị chặn;
+  - FIFO không treo.
+- Tiếp: Plan 5.
+
+## 2026-11-10 – Plan 5 code xong (Cheki, Zon duyệt plan + để Cheki code)
+- Nhánh `plan5-flexible-team`:
+  - Task 1–5, 7, 8, 6;
+  - review 1 (`team/reviews/P5-review-1.md`): đã sửa H1 H2 M1 M2 L1 L3.
+- VM 738/738 ×3.
+- Kiểm reset thật trên VM:
+  - xoá được cấu hình độc kể cả sau `chmod`;
+  - bỏ MCP server cài thêm;
+  - đăng nhập 3 CLI vẫn ổn.
+- Task 7 còn thiếu (ghi trong plan): chạy lại lượt khi lỗi hạn mức giữa lượt; `seats_backup` theo project.
+- agy lưu đăng nhập ở `~/.gemini/antigravity-cli/antigravity-oauth-token` (chỉ xem tên file), nên phần sao lưu JSON làm được.

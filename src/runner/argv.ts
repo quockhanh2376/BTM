@@ -1,4 +1,4 @@
-import type { Seat, Tool } from '../config.ts';
+import type { Effort, Seat, Tool } from '../config.ts';
 
 export interface ArgvOpts {
   seat: Seat;
@@ -6,6 +6,9 @@ export interface ArgvOpts {
   allow: string[];
   outFile: string;
   images?: string[];
+  /** Không có → model mặc định của CLI. Đã kiểm ModelSchema (không cần quote thêm cho argv). */
+  model?: string;
+  effort?: Effort;
 }
 
 function shQuote(s: string): string {
@@ -20,14 +23,20 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
           allow: o.allow.map((cmd) => `command(${cmd})`),
         },
       });
-      const cmd = `agy -p ${shQuote(prompt)} --mode accept-edits --sandbox --settings ${shQuote(json)} --print-timeout ${o.timeoutMin}m`;
+      const modelArg = o.model ? ` --model ${shQuote(o.model)}` : '';
+      const effortArg = o.effort ? ` --effort ${shQuote(o.effort)}` : '';
+      const cmd = `agy -p ${shQuote(prompt)} --mode accept-edits --sandbox --settings ${shQuote(json)} --print-timeout ${o.timeoutMin}m${modelArg}${effortArg}`;
       return ['script', '-qec', cmd, '/dev/null'];
     }
     case 'codex-cli': {
       const imageArgs = o.images && o.images.length > 0 ? o.images.flatMap((img) => ['-i', img]) : [];
+      // Codex chỉ có low/medium/high.
+      const codexEffort = o.effort === 'xhigh' || o.effort === 'max' ? 'high' : o.effort;
       return [
         'codex',
         'exec',
+        ...(o.model ? ['-m', o.model] : []),
+        ...(codexEffort ? ['-c', `model_reasoning_effort="${codexEffort}"`] : []),
         '--sandbox',
         o.seat === 'qc' ? 'read-only' : 'workspace-write',
         '-o',
@@ -38,11 +47,13 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
       ];
     }
     case 'claude-code': {
+      const flags = [...(o.model ? ['--model', o.model] : []), ...(o.effort ? ['--effort', o.effort] : [])];
       if (o.seat === 'qc') {
-        return ['claude', '-p', prompt, '--allowedTools', 'Read'];
+        return ['claude', ...flags, '-p', prompt, '--allowedTools', 'Read'];
       }
       return [
         'claude',
+        ...flags,
         '-p',
         prompt,
         '--permission-mode',

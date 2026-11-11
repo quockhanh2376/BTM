@@ -52,6 +52,19 @@ agents:
     tool: codex-cli
     command: codex
     can_sit: [qc, dev]
+  # Thêm agent (Plan 5): mỗi agent một user Linux btm-<id>, xem docs/team-setup.md. Ví dụ:
+  # kai:
+  #   tool: antigravity-cli
+  #   command: agy
+  #   needs_pty: true
+  #   model: gemini-3.8-flash-high      # bỏ trống = model mặc định của CLI; đổi được trên dashboard
+  #   effort: medium                    # low|medium|high|xhigh|max (Codex tối đa high)
+  #   can_sit: [audit, dev]
+
+# Người ngồi thay khi người chính hết Energy/đăng nhập, theo thứ tự; hết cả → phiên dừng (all_agents_exhausted).
+# seats_backup:
+#   dev: [jenny]
+#   qc: [elon]
 
 rules:
   coder_cannot_qc_same_task: true

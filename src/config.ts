@@ -56,11 +56,20 @@ export const SeatsSchema = z.object({
   audit: z.string().default(''),
 }).strict();
 
+export const EffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+export type Effort = z.infer<typeof EffortSchema>;
+// Model đi thẳng vào argv của CLI: chỉ chữ/số và . _ : -
+export const ModelSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/);
+
 export const AgentConfigSchema = z.object({
   tool: ToolSchema,
   command: z.string(),
   needs_pty: z.boolean().optional(),
   can_sit: z.array(SeatSchema).nonempty(),
+  /** Không đặt → model mặc định của CLI (không truyền cờ model). */
+  model: ModelSchema.optional(),
+  /** Không đặt → medium (agentEffort). */
+  effort: EffortSchema.optional(),
 }).strict();
 
 export const RulesSchema = z.object({
@@ -121,6 +130,13 @@ const BaseConfigSchema = z.object({
   turn: TurnSchema,
   seats: SeatsSchema,
   agents: z.record(z.string(), AgentConfigSchema),
+  /** Plan 5 Task 7: người ngồi thay khi người chính hết Energy/đăng nhập, theo thứ tự. */
+  seats_backup: z.object({
+    pm: z.array(z.string()).optional(),
+    dev: z.array(z.string()).optional(),
+    qc: z.array(z.string()).optional(),
+    audit: z.array(z.string()).optional(),
+  }).strict().optional(),
   rules: RulesSchema,
   energy: EnergySchema,
   login: LoginSchema,
@@ -131,6 +147,22 @@ const BaseConfigSchema = z.object({
 }).strict();
 
 export const ConfigSchema = BaseConfigSchema.superRefine((cfg, ctx) => {
+  for (const [seat, ids] of Object.entries(cfg.seats_backup ?? {}) as [Seat, string[] | undefined][]) {
+    for (const id of ids ?? []) {
+      const agent = Object.hasOwn(cfg.agents, id) ? cfg.agents[id] : undefined;
+      if (!agent || !agent.can_sit.includes(seat)) {
+        ctx.addIssue({ code: 'custom', message: `seats_backup.${seat}: agent '${id}' không có hoặc không được ngồi ghế này`, path: ['seats_backup', seat] });
+      }
+    }
+  }
+  // Cách ly: agent id thành tên user Linux <worker_prefix><id>.
+  if (cfg.host.worker_prefix) {
+    for (const id of Object.keys(cfg.agents)) {
+      if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(`${cfg.host.worker_prefix}${id}`)) {
+        ctx.addIssue({ code: 'custom', message: `Agent id '${id}' is not a valid Linux user name suffix`, path: ['agents', id] });
+      }
+    }
+  }
   const seatKeys: Seat[] = ['pm', 'dev', 'qc'];
   if (cfg.seats.audit) {
     seatKeys.push('audit');

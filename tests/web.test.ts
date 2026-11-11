@@ -1395,3 +1395,29 @@ describe('Web Dashboard (web/index.html)', () => {
   });
 
 });
+
+describe('P5-T5: dashboard model/effort, user riêng, cảnh báo đội hình', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('có ô model + effort, lưu qua /api/agent, Codex chỉ 3 mức', () => {
+    expect(html).toContain("postJson('/api/agent'");
+    expect(html).toContain("acc.tool === 'codex-cli' ? EFFORTS.slice(0, 3) : EFFORTS");
+    expect(html).toMatch(/aria-label', 'Model cho '/);
+  });
+  it('lệnh đăng nhập dùng user riêng của agent (kiểm tên user), mặc định agent', () => {
+    expect(html).toContain("getLoginCommand(acc.tool, sshTarget, acc.user)");
+    expect(html).toContain("/^[a-z_][a-z0-9_-]{0,31}$/.test(user || '') ? user : 'agent'");
+  });
+  it('ghế audit có select; cảnh báo đội hình hiển thị bằng textContent; không vẽ lại khi đang gõ', () => {
+    expect(html).toContain('id="audit-agent-select"');
+    expect(html).toContain('id="seat-warnings"');
+    expect(html).toContain("el.textContent = 'Đội hình: '");
+    expect(html).toContain('container.contains(active)');
+  });
+});
+
+describe('P5-T7: nhãn ngồi thay', () => {
+  it('thẻ ghế hiện agent dự phòng đã ngồi thay', () => {
+    const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+    expect(html).toContain("if (cardData.substitute) toolParts.push('lượt cuối: ' + cardData.substitute + ' ngồi thay');");
+  });
+});

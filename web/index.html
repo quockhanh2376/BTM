@@ -666,6 +666,37 @@
       color: var(--text-muted);
     }
 
+    .account-model {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .account-model input,
+    .account-model select {
+      font: inherit;
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background-color: var(--bg);
+      color: var(--text);
+    }
+
+    .account-model input {
+      width: 190px;
+    }
+
+    .seat-warnings {
+      background-color: var(--badge-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
     .account-cmd-wrap {
       display: flex;
       align-items: center;
@@ -1564,6 +1595,7 @@
   <div class="container">
     <!-- Disconnection banner -->
     <div id="conn-banner" class="conn-banner" style="display: none;">Mất kết nối, đang thử lại…</div>
+    <div id="seat-warnings" class="seat-warnings" role="status" style="display: none;"></div>
 
     <!-- Thanh phiên -->
     <header class="card session-bar">
@@ -2202,15 +2234,76 @@
         return sshHostFor(host, hint);
       }
 
-      function getLoginCommand(tool, sshTarget) {
+      var SEAT_LABELS = { pm: 'PM', dev: 'Dev', qc: 'QC', audit: 'Audit' };
+      var EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+      function getLoginCommand(tool, sshTarget, user) {
         var t = (tool || '').toLowerCase();
+        var u = /^[a-z_][a-z0-9_-]{0,31}$/.test(user || '') ? user : 'agent';
         if (t === 'claude-code' || t === 'claude') {
-          return 'ssh -t ' + sshTarget + ' "sudo -iu agent claude auth login"';
+          return 'ssh -t ' + sshTarget + ' "sudo -iu ' + u + ' claude auth login"';
         }
         if (t === 'codex-cli' || t === 'codex') {
-          return 'ssh -t ' + sshTarget + ' "sudo -iu agent codex login --device-auth"';
+          return 'ssh -t ' + sshTarget + ' "sudo -iu ' + u + ' codex login --device-auth"';
         }
-        return 'ssh -t ' + sshTarget + ' "sudo -iu agent agy"';
+        return 'ssh -t ' + sshTarget + ' "sudo -iu ' + u + ' agy"';
+      }
+
+      function renderSeatWarnings(warnings) {
+        var el = document.getElementById('seat-warnings');
+        if (!el) return;
+        if (Array.isArray(warnings) && warnings.length > 0) {
+          el.textContent = 'Đội hình: ' + warnings.join(' · ');
+          el.style.display = 'block';
+        } else {
+          el.textContent = '';
+          el.style.display = 'none';
+        }
+      }
+
+      function buildModelControls(acc) {
+        var wrap = document.createElement('div');
+        wrap.className = 'account-model';
+
+        var modelInput = document.createElement('input');
+        modelInput.type = 'text';
+        modelInput.value = acc.model || '';
+        modelInput.placeholder = 'model mặc định của CLI';
+        modelInput.maxLength = 80;
+        modelInput.setAttribute('aria-label', 'Model cho ' + acc.agent);
+        wrap.appendChild(modelInput);
+
+        var effortSel = document.createElement('select');
+        effortSel.setAttribute('aria-label', 'Mức suy luận cho ' + acc.agent);
+        var allowed = acc.tool === 'codex-cli' ? EFFORTS.slice(0, 3) : EFFORTS;
+        allowed.forEach(function (e) {
+          var opt = document.createElement('option');
+          opt.value = e;
+          opt.textContent = e;
+          effortSel.appendChild(opt);
+        });
+        effortSel.value = allowed.indexOf(acc.effort) >= 0 ? acc.effort : 'medium';
+        wrap.appendChild(effortSel);
+
+        var saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'btn btn-secondary btn-sm';
+        saveBtn.textContent = 'Lưu';
+        saveBtn.setAttribute('aria-label', 'Lưu model và mức suy luận cho ' + acc.agent);
+        saveBtn.addEventListener('click', async function () {
+          try {
+            var res = await postJson('/api/agent', { agent: acc.agent, model: modelInput.value.trim(), effort: effortSel.value });
+            if (res && res.error) {
+              showFeedback(topFeedback, res.error, true);
+            } else {
+              showFeedback(topFeedback, 'Đã lưu model/effort cho ' + acc.agent + ' (áp từ lượt kế)', false);
+            }
+          } catch (err) {
+            showFeedback(topFeedback, err.message, true);
+          }
+        });
+        wrap.appendChild(saveBtn);
+        return wrap;
       }
 
       // 4. API Communication
@@ -3125,7 +3218,15 @@
           var lastLineEl = document.getElementById(seatKey + '-last-line');
 
           if (titleEl) titleEl.textContent = formatAgentDisplayName(cardData.agent, seatKey);
-          if (toolEl) toolEl.textContent = cardData.tool || '—';
+          if (toolEl) {
+            var toolParts = [cardData.tool || '—'];
+            if (cardData.model) toolParts.push(cardData.model);
+            if (cardData.substitute) toolParts.push('lượt cuối: ' + cardData.substitute + ' ngồi thay');
+            if (Array.isArray(cardData.also) && cardData.also.length > 0) {
+              toolParts.push('kiêm ' + cardData.also.map(function (x) { return SEAT_LABELS[x] || x; }).join(', '));
+            }
+            toolEl.textContent = toolParts.join(' · ');
+          }
 
           if (cardData.status === 'running') {
             if (spinnerEl) setDisplay(spinnerEl, true, 'inline-block');
@@ -3367,11 +3468,15 @@
 
         // Accounts
         renderAccounts(state.accounts, state.sshHint);
+        renderSeatWarnings(state.seatWarnings);
       }
 
       function renderAccounts(accounts, sshHint) {
         var container = document.getElementById('accounts-list');
         if (!container) return;
+        // Đang gõ model / chọn effort: không vẽ lại kẻo mất chữ đang nhập.
+        var active = document.activeElement;
+        if (active && container.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT') && !active.readOnly) return;
         clearChildren(container);
 
         if (!Array.isArray(accounts) || accounts.length === 0) {
@@ -3398,8 +3503,9 @@
 
           var toolEl = document.createElement('span');
           toolEl.className = 'account-tool';
-          toolEl.textContent = acc.tool || '';
+          toolEl.textContent = (acc.tool || '') + (acc.user ? ' · ' + acc.user : '');
           info.appendChild(toolEl);
+          info.appendChild(buildModelControls(acc));
 
           var lDisp = getLoginDisplay(acc.login);
           var loginWrap = document.createElement('div');
@@ -3427,7 +3533,7 @@
           var cmdWrap = document.createElement('div');
           cmdWrap.className = 'account-cmd-wrap';
 
-          var cmdStr = getLoginCommand(acc.tool, sshTarget);
+          var cmdStr = getLoginCommand(acc.tool, sshTarget, acc.user);
           var codeEl = document.createElement('input');
           codeEl.type = 'text';
           codeEl.readOnly = true;

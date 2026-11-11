@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import type { Ticket } from '../ticket/ticket.ts';
 import { changedFiles, git } from '../git.ts';
 import type { Config } from '../config.ts';
-import { workerKillAll, wrapForWorker } from '../isolation/worker.ts';
+import { workerKillAll, workerReset, wrapForWorker } from '../isolation/worker.ts';
 import { isIsolated, syncWorkspace, workspacePath } from '../isolation/trusted.ts';
 
 export interface GateResult {
@@ -19,6 +19,8 @@ export interface GateOptions {
   /** Cách ly: lệnh gate chạy dưới user + trong workspace của agent Dev của ticket (code của chính Dev). */
   agentId?: string;
   killAll?: (cfg: Config, agentId: string) => void;
+  /** Cách ly: dọn cấu hình agent tự cài (npmrc, gitconfig…) trước khi chạy lệnh gate. */
+  reset?: (cfg: Config, agentId: string) => void;
   /** Cách ly: đồng bộ workspace của worker về HEAD checkout tin cậy trước khi chạy lệnh (test thay được). */
   sync?: (cfg: Config, agentId: string, checkout: string) => void;
 }
@@ -121,6 +123,11 @@ export function runGate(
     reasons.push('ticket_tampered');
   }
 
+  // 1c. team/project.yaml quyết định ai ngồi ghế nào → agent không được sửa (kể cả khi scope có liệt kê)
+  if (changed.includes('team/project.yaml')) {
+    reasons.push('project_config_tampered');
+  }
+
   // 2. file ngoài scope (luôn cho phép team/reports/) → out_of_scope:<file>
   const allowedScope = [...ticket.scope, 'team/reports/'];
   const outFiles = outsideScope(changed, allowedScope);
@@ -187,6 +194,7 @@ export function runGate(
     try {
       if (!gateAgent) throw new Error('gate agent missing');
       (gateOpts!.killAll ?? workerKillAll)(gateCfg!, gateAgent);
+      (gateOpts!.reset ?? workerReset)(gateCfg!, gateAgent);
       (gateOpts!.sync ?? ((c, a, k) => syncWorkspace(c, a, k)))(gateCfg!, gateAgent, repo);
     } catch {
       reasons.push('gate_sync_failed');

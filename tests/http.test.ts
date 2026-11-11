@@ -897,6 +897,31 @@ describe('HTTP Server & SSE', () => {
     });
   });
 
+  describe('P5-T5: POST /api/agent (model + effort theo agent)', () => {
+    const post = (body: unknown) => fetch(`${baseUrl}/api/agent`, {
+      method: 'POST',
+      headers: { 'x-btm': '1', 'content-type': 'application/json', Origin: `http://127.0.0.1:${port}` },
+      body: JSON.stringify(body),
+    });
+    it('lưu model + effort vào setting; model rỗng = mặc định CLI', async () => {
+      const r = await post({ agent: 'jacky', model: 'gemini-3.8-flash-high', effort: 'high' });
+      expect(r.status).toBe(200);
+      expect(store.getSetting('agent_model:jacky')).toBe('gemini-3.8-flash-high');
+      expect(store.getSetting('agent_effort:jacky')).toBe('high');
+      expect((await post({ agent: 'jacky', model: '' })).status).toBe(200);
+      expect(store.getSetting('agent_model:jacky')).toBe('');
+    });
+    it('model lạ, effort lạ, agent lạ, Codex xhigh → 400; đang chạy → 409', async () => {
+      expect((await post({ agent: 'jacky', model: 'x;rm -rf /' })).status).toBe(400);
+      expect((await post({ agent: 'jacky', effort: 'ultra' })).status).toBe(400);
+      expect((await post({ agent: 'ghost', effort: 'low' })).status).toBe(400);
+      expect((await post({ agent: 'jenny', effort: 'xhigh' })).status).toBe(400);
+      host.busy = vi.fn().mockReturnValue(true);
+      expect((await post({ agent: 'jacky', effort: 'low' })).status).toBe(409);
+      expect(store.getSetting('agent_effort:jacky')).toBeNull();
+    });
+  });
+
   describe('POST /api/seat', () => {
     it('returns 409 when host is busy', async () => {
       host.busy = vi.fn().mockReturnValue(true);

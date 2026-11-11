@@ -84,10 +84,50 @@ done
 exit 3   # vẫn còn tiến trình sau 10 lần → BTM báo lỗi
 EOF
 
-  # sudoers: agent chỉ được chạy đúng 2 wrapper dưới user thuộc nhóm btm-workers, không mật khẩu, không giữ env.
+  install_file /usr/local/bin/btm-worker-reset 755 <<'EOF'
+#!/bin/bash
+# Plan 5 Task 8: trước mỗi lượt (và trước gate), xoá cấu hình/hướng dẫn agent có thể tự cài vào home (git, npm,
+# shell, CLI, MCP), dựng lại file shell từ mẫu. GIỮ đăng nhập: ~/.claude/.credentials.json, ~/.codex/auth.json,
+# ~/.gemini/antigravity-cli/antigravity-oauth-token, installation_id; ~/.claude.json giữ nhưng bỏ mcpServers/allowedTools.
+# Xoá không được (agent chmod) → thoát 3, BTM huỷ lượt.
+set -u
+case "$(id -un)" in btm-*) ;; *) echo "phải chạy dưới user btm-<agent>" >&2; exit 2;; esac
+cd "$HOME" || exit 2
+targets=(.gitconfig .config/git .npmrc .yarnrc .yarnrc.yml .bash_aliases .bash_profile .bash_login .bash_logout .local/bin
+  .claude/CLAUDE.md .claude/settings.json .claude/settings.local.json .claude/commands .claude/agents
+  .claude/hooks .claude/output-styles .claude/skills .claude/plugins .claude/projects
+  .codex/config.toml .codex/AGENTS.md .codex/AGENTS.override.md .codex/prompts .codex/rules .codex/skills .agents
+  .gemini/GEMINI.md .gemini/settings.json .gemini/extensions .gemini/commands
+  .gemini/antigravity-cli/settings.json .gemini/config/mcp_config.json)
+chmod -R u+rwX . 2>/dev/null
+rm -rf -- "${targets[@]}"
+for t in "${targets[@]}"; do [ -e "$t" ] || [ -L "$t" ] && { echo "không xoá được $t" >&2; exit 3; }; done
+cp /etc/skel/.bashrc .bashrc && cp /etc/skel/.profile .profile || exit 3
+echo 'export PATH=/opt/btm-cli/bin:$PATH DISABLE_AUTOUPDATER=1' | tee -a .bashrc >> .profile
+if [ -f .claude.json ]; then
+  python3 - <<'PY' || exit 3
+import json, os
+p = os.path.expanduser('~/.claude.json')
+d = json.load(open(p))
+d.pop('mcpServers', None)
+for v in (d.get('projects') or {}).values():
+    if isinstance(v, dict):
+        for k in ('mcpServers', 'allowedTools', 'enabledMcpjsonServers', 'mcpContextUris'):
+            v.pop(k, None)
+tmp = p + '.btm-tmp'
+with open(tmp, 'w') as f:
+    json.dump(d, f)
+os.chmod(tmp, 0o600)
+os.replace(tmp, p)
+PY
+fi
+exit 0
+EOF
+
+  # sudoers: agent chỉ được chạy đúng 3 wrapper dưới user thuộc nhóm btm-workers, không mật khẩu, không giữ env.
   local sud; sud="$(mktemp)"
   cat > "$sud" <<'EOF'
-agent ALL=(%btm-workers) NOPASSWD: /usr/local/bin/btm-worker-exec, /usr/local/bin/btm-worker-killall
+agent ALL=(%btm-workers) NOPASSWD: /usr/local/bin/btm-worker-exec, /usr/local/bin/btm-worker-killall, /usr/local/bin/btm-worker-reset
 EOF
   if [ "$DRY" = 1 ]; then echo "+ ghi /etc/sudoers.d/btm:"; sed 's/^/    /' "$sud"
   else visudo -cf "$sud" >/dev/null && install -o root -g root -m 440 "$sud" /etc/sudoers.d/btm; fi

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { agentEffort, agentModel } from '../src/agents/model.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -172,5 +173,37 @@ describe('Runner Argv', () => {
         buildArgv('unknown-tool' as any, 'prompt', defaultOpts)
       ).toThrow(/Unsupported tool/);
     });
+  });
+});
+
+describe('P5-T2: model + effort', () => {
+  const base = { seat: 'dev' as const, timeoutMin: 5, allow: ['npm test'], outFile: '/tmp/o' };
+  it('claude: --model/--effort trước -p; không model → chỉ effort', () => {
+    expect(buildArgv('claude-code', 'x', { ...base, model: 'opus', effort: 'high' }).slice(0, 6)).toEqual(['claude', '--model', 'opus', '--effort', 'high', '-p']);
+    expect(buildArgv('claude-code', 'x', { ...base, seat: 'qc', effort: 'medium' })).toEqual(['claude', '--effort', 'medium', '-p', 'x', '--allowedTools', 'Read']);
+  });
+  it('codex: -m + model_reasoning_effort; xhigh/max → high', () => {
+    const a = buildArgv('codex-cli', 'x', { ...base, model: 'gpt-6-luna', effort: 'max' });
+    expect(a.slice(0, 6)).toEqual(['codex', 'exec', '-m', 'gpt-6-luna', '-c', 'model_reasoning_effort="high"']);
+    expect(buildArgv('codex-cli', 'x', { ...base, effort: 'low' })).not.toContain('-m');
+  });
+  it('agy: --model/--effort trong chuỗi lệnh', () => {
+    const cmd = buildArgv('antigravity-cli', 'x', { ...base, model: 'gemini-3.8-flash-medium', effort: 'xhigh' })[2]!;
+    expect(cmd).toContain(" --model 'gemini-3.8-flash-medium' --effort 'xhigh'");
+    expect(buildArgv('antigravity-cli', 'x', base)[2]).not.toContain('--model');
+  });
+});
+
+describe('P5-T2: agentModel/agentEffort', () => {
+  const cfg = { agents: { elon: { tool: 'claude-code', command: 'claude', can_sit: ['pm'], model: 'opus' }, jenny: { tool: 'codex-cli', command: 'codex', can_sit: ['qc'] } } } as any;
+  const store = (m: Record<string, string>) => ({ getSetting: (k: string) => (k in m ? m[k]! : null) });
+  it('setting dashboard ghi đè config; giá trị lạ bị bỏ qua; mặc định medium', () => {
+    expect(agentModel(cfg, null, 'elon')).toBe('opus');
+    expect(agentModel(cfg, store({ 'agent_model:elon': 'sonnet' }), 'elon')).toBe('sonnet');
+    expect(agentModel(cfg, store({ 'agent_model:elon': '' }), 'elon')).toBeUndefined();
+    expect(agentModel(cfg, store({ 'agent_model:elon': 'x;rm' }), 'elon')).toBe('opus');
+    expect(agentEffort(cfg, null, 'jenny')).toBe('medium');
+    expect(agentEffort(cfg, store({ 'agent_effort:jenny': 'high' }), 'jenny')).toBe('high');
+    expect(agentEffort(cfg, store({ 'agent_effort:jenny': 'ultra' }), 'jenny')).toBe('medium');
   });
 });

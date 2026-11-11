@@ -7,6 +7,7 @@ import type { LoginHealth, LoginState } from '../energy/login.ts';
 import type { Ticket, TicketState, TicketType, TicketSize } from '../ticket/ticket.ts';
 import { goalBranch } from '../ticket/goal.ts';
 import { git } from '../git.ts';
+import { parse as parseYaml } from 'yaml';
 
 export type TurnResult = 'ok' | 'timeout' | 'error' | 'rejected';
 export type BoardState = 'pending' | 'in_dev' | 'awaiting_qc' | 'passed' | 'returned' | 'failed' | 'blocked';
@@ -150,35 +151,95 @@ export interface Store {
   close(): void;
 }
 
-export function effectiveSeats(
-  cfg: {
-    seats: Record<Seat, string>;
-    agents?: Record<string, { can_sit: Seat[] }>;
-  },
-  store?: Pick<Store, 'getSetting'> | null
-): Record<Seat, string> {
-  const seats: Record<Seat, string> = { ...cfg.seats };
-  if (!store) return seats;
-  for (const s of ['pm', 'dev', 'qc'] as const) {
-    const val = store.getSetting(`seat:${s}`);
-    if (val) {
-      if (cfg.agents) {
-        if (
-          Object.hasOwn(cfg.agents, val) &&
-          cfg.agents[val]?.can_sit?.includes(s)
-        ) {
-          seats[s] = val;
+const SEATS: Seat[] = ['pm', 'dev', 'qc', 'audit'];
+
+export function seatSettingKey(project: string | null | undefined, seat: Seat): string {
+  return project ? `seat:${project}:${seat}` : `seat:${seat}`;
+}
+
+type SeatCfg = {
+  seats: Record<Seat, string>;
+  agents?: Record<string, { can_sit: Seat[] }>;
+  git?: { protected_branch?: string };
+};
+
+const projectSeatsCache = new Map<string, { sha: string; seats: Partial<Record<Seat, string>>; warn: string[] }>();
+
+// Đội hình theo project trong team/project.yaml – đọc từ nhánh được bảo vệ (main), không từ working tree:
+// agent sửa được working tree nhưng không sửa được main.
+export function readProjectSeats(repo: string, protectedBranch = 'main'): { seats: Partial<Record<Seat, string>>; warnings: string[] } {
+  let sha: string;
+  try {
+    sha = git(repo, 'rev-parse', '-q', '--verify', `refs/heads/${protectedBranch}^{commit}`).trim();
+  } catch {
+    return { seats: {}, warnings: [] };
+  }
+  const hit = projectSeatsCache.get(repo);
+  if (hit && hit.sha === sha) return { seats: hit.seats, warnings: hit.warn };
+  let seats: Partial<Record<Seat, string>> = {};
+  const warn: string[] = [];
+  let text = '';
+  try {
+    text = git(repo, 'show', `${sha}:team/project.yaml`);
+  } catch {
+    text = '';
+  }
+  if (text) {
+    try {
+      const doc = parseYaml(text) as { seats?: unknown } | null;
+      const raw = doc && typeof doc === 'object' ? doc.seats : undefined;
+      if (raw !== undefined && raw !== null) {
+        if (typeof raw !== 'object' || Array.isArray(raw)) {
+          warn.push('team/project.yaml: seats phải là bảng ghế → agent');
         } else {
-          console.log(
-            `Bỏ qua override ghế ${s} = "${val}": agent không có trong cfg.agents hoặc can_sit không chứa ghế (dùng mặc định "${cfg.seats[s]}")`
-          );
+          for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+            if ((SEATS as string[]).includes(k) && typeof v === 'string') seats[k as Seat] = v.trim();
+            else warn.push(`team/project.yaml: bỏ qua seats.${k}`);
+          }
         }
-      } else {
-        seats[s] = val;
       }
+    } catch {
+      seats = {};
+      warn.push('team/project.yaml: YAML lỗi, dùng đội hình mặc định');
     }
   }
-  return seats;
+  projectSeatsCache.set(repo, { sha, seats, warn });
+  return { seats, warnings: warn };
+}
+
+// Thứ tự: dashboard theo project > team/project.yaml (main) > dashboard cũ (không theo project) > btm.config.yaml.
+// Agent lạ hoặc không có ghế trong can_sit → bỏ qua, ghi cảnh báo. Áp cho cả 4 ghế (audit '' = không có Audit).
+export function resolveSeats(
+  cfg: SeatCfg,
+  store?: Pick<Store, 'getSetting'> & Partial<Pick<Store, 'getActiveProject'>> | null,
+  project?: string | null
+): { seats: Record<Seat, string>; warnings: string[] } {
+  const seats: Record<Seat, string> = { ...cfg.seats };
+  const warnings: string[] = [];
+  const proj = project ?? store?.getActiveProject?.() ?? null;
+  const valid = (seat: Seat, id: string) =>
+    !cfg.agents || (Object.hasOwn(cfg.agents, id) && Boolean(cfg.agents[id]?.can_sit?.includes(seat)));
+  const apply = (seat: Seat, id: string | null | undefined, source: string) => {
+    if (!id) return;
+    if (valid(seat, id)) seats[seat] = id;
+    else warnings.push(`Bỏ qua ${source}: ghế ${seat} = "${id}" (agent không có hoặc không được ngồi ghế này)`);
+  };
+  const fromFile = proj ? readProjectSeats(proj, cfg.git?.protected_branch || 'main') : { seats: {}, warnings: [] };
+  warnings.push(...fromFile.warnings);
+  for (const seat of SEATS) {
+    apply(seat, store?.getSetting(seatSettingKey(null, seat)), 'đổi ghế cũ');
+    apply(seat, fromFile.seats[seat], 'team/project.yaml');
+    if (proj) apply(seat, store?.getSetting(seatSettingKey(proj, seat)), 'đổi ghế trên dashboard');
+  }
+  return { seats, warnings };
+}
+
+export function effectiveSeats(
+  cfg: SeatCfg,
+  store?: Pick<Store, 'getSetting'> & Partial<Pick<Store, 'getActiveProject'>> | null,
+  project?: string | null
+): Record<Seat, string> {
+  return resolveSeats(cfg, store, project).seats;
 }
 
 const openStores = new Set<Store>();

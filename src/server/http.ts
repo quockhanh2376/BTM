@@ -3,8 +3,9 @@ import type { Socket } from 'node:net';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import { z } from 'zod';
-import type { Config, Seat } from '../config.ts';
-import { effectiveSeats, type Store } from '../store/db.ts';
+import { EffortSchema, ModelSchema, type Config, type Seat } from '../config.ts';
+import { agentEffortKey, agentModelKey } from '../agents/model.ts';
+import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
 import { commitAll } from '../git.ts';
 import { inboxPath, detectImage, readInboxFile } from './inbox.ts';
@@ -564,6 +565,36 @@ export function createServer(o: {
           return;
         }
 
+        if (pathname === '/api/agent') {
+          const AgentBodySchema = z.object({
+            agent: z.string(),
+            model: z.union([z.literal(''), ModelSchema]).optional(),
+            effort: EffortSchema.optional(),
+          }).strict();
+          const parsed = AgentBodySchema.safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: 'Model hoặc effort không hợp lệ' });
+            return;
+          }
+          if (o.host.busy?.()) {
+            sendJson(res, 409, { error: 'Phiên/lượt đang chạy' });
+            return;
+          }
+          const { agent, model, effort } = parsed.data;
+          if (!Object.hasOwn(o.cfg.agents, agent)) {
+            sendJson(res, 400, { error: `Agent "${agent}" không tồn tại` });
+            return;
+          }
+          if (o.cfg.agents[agent]!.tool === 'codex-cli' && (effort === 'xhigh' || effort === 'max')) {
+            sendJson(res, 400, { error: 'Codex chỉ có effort low/medium/high' });
+            return;
+          }
+          if (model !== undefined) o.store.setSetting(agentModelKey(agent), model);
+          if (effort !== undefined) o.store.setSetting(agentEffortKey(agent), effort);
+          sendJson(res, 200, { ok: true, agent, model: model ?? null, effort: effort ?? null });
+          return;
+        }
+
         if (pathname === '/api/seat') {
           const SeatBodySchema = z.object({
             seat: z.string(),
@@ -600,7 +631,7 @@ export function createServer(o: {
             }
           } else {
             const current = effectiveSeats(o.cfg, o.store)[seat as Seat];
-            o.store.setSetting(`seat:${seat}`, agent);
+            o.store.setSetting(seatSettingKey(o.store.getActiveProject(), seat as Seat), agent);
             console.log(`Đổi ghế ${seat}: ${current} → ${agent}`);
           }
           sendJson(res, 200, { ok: true, seat, agent });

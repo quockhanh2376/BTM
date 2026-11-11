@@ -24,3 +24,8 @@ Luật: **1 API key ↔ đúng 1 agent, 1 agent ↔ tối đa 1 key**, không ba
 ### Thay ghế khi hết Energy (anh Zon 2026-11-10)
 Agent hết hạn mức → agent dự phòng (Codex, Grok, …) ngồi thay ghế đó; hết cả → **Dừng** phiên. Thay mục 4 "không tự đổi" cho phần **agent** (vẫn không xoay vòng tài khoản của cùng một agent). Luật cứng coder ≠ QC/Audit vẫn áp cho người thay. Plan 5 Task 7.
 Nút "Dừng khẩn cấp" đổi tên thành **"Dừng"**. Song ngữ EN/VI: để sau.
+
+### Sau Plan 4.5 (Cheki 2026-11-10)
+- Tài khoản giờ tách theo user Linux `btm-<agent>`: mỗi agent có home riêng, nên bỏ `account_env`.
+- Thêm agent mới gồm 3 việc: khai báo trong config, tạo user (`isolation-setup.sh prep` với `BTM_AGENTS`), rồi đăng nhập dưới user đó.
+- Plan 5 thêm Task 8: dọn cấu hình CLI của agent trước mỗi lượt, để agent đổi ghế không mang theo cấu hình tự sửa.

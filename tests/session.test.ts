@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
 import { loadConfig, type Config, type Seat } from '../src/config.ts';
-import { openStore, effectiveSeats, type Store } from '../src/store/db.ts';
+import { openStore, effectiveSeats, resolveSeats, type Store } from '../src/store/db.ts';
 import { tmpRepo } from './helpers.ts';
 import { git, commitAll, headSha } from '../src/git.ts';
 import * as gitModule from '../src/git.ts';
@@ -1113,32 +1113,23 @@ describe('Goal & Ticket Session Coordinator', () => {
     store.close();
   });
 
-  it('effectiveSeats ignores override if agent not in cfg.agents or can_sit does not contain seat, and logs', () => {
+  it('effectiveSeats ignores override if agent not in cfg.agents or can_sit does not contain seat, and warns', () => {
     const repo = tmpRepo({});
     const { store, cfg } = makeDeps(repo);
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     store.setSetting('seat:dev', 'unknown_agent');
-    const eff1 = effectiveSeats(cfg, store);
-    expect(eff1.dev).toBe(cfg.seats.dev);
-    expect(logSpy).toHaveBeenCalled();
-
-    logSpy.mockClear();
+    expect(effectiveSeats(cfg, store).dev).toBe(cfg.seats.dev);
+    expect(resolveSeats(cfg, store).warnings.join(' ')).toContain('unknown_agent');
 
     store.setSetting('seat:dev', 'elon');
-    const eff2 = effectiveSeats(cfg, store);
-    expect(eff2.dev).toBe(cfg.seats.dev);
-    expect(logSpy).toHaveBeenCalled();
-
-    logSpy.mockClear();
+    expect(effectiveSeats(cfg, store).dev).toBe(cfg.seats.dev);
+    expect(resolveSeats(cfg, store).warnings.join(' ')).toContain('"elon"');
 
     for (const dangerous of ['__proto__', 'constructor', 'toString']) {
       store.setSetting('seat:dev', dangerous);
-      const eff3 = effectiveSeats(cfg, store);
-      expect(eff3.dev).toBe(cfg.seats.dev);
+      expect(effectiveSeats(cfg, store).dev).toBe(cfg.seats.dev);
     }
 
-    logSpy.mockRestore();
     store.close();
   });
 
@@ -4280,5 +4271,65 @@ Yêu cầu đóng note nhưng commit lỗi
       store.close();
     });
 
+  });
+});
+
+describe('P5-T7: thay ghế khi hết Energy', () => {
+  it('Dev chính hết Energy → dự phòng jenny code; QC jenny là coder → dự phòng elon QC', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '1' });
+    const { deps, store } = makeDeps(repo, { seats_backup: { dev: ['jenny'], qc: ['elon'] } } as any);
+    const calls: string[] = [];
+    const { runner } = createFakeRunner([
+      (_seat, agent, _prompt, cwd) => {
+        calls.push(`pm:${agent}`);
+        writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+      },
+      (_seat, agent, _prompt, cwd) => {
+        calls.push(`dev:${agent}`);
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+        writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+      },
+      (_seat, agent) => {
+        calls.push(`qc:${agent}`);
+        return makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass');
+      },
+    ]);
+    deps.runner = runner;
+    deps.gate = (agent: string) => (agent === 'jacky' ? { ok: false as const, reason: 'energy:5h còn 3%, hồi lúc 19:57' } : { ok: true as const });
+    await runSession(deps, ['Build feature'], { approved: true });
+    expect(calls).toEqual(['pm:elon', 'dev:jenny', 'qc:elon']);
+    store.close();
+  });
+
+  it('mọi người ngồi được ghế Dev đều hết → dừng với all_agents_exhausted, Dev không chạy', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '1' });
+    const { deps, store } = makeDeps(repo, { seats_backup: { dev: ['jenny'] } } as any);
+    let devCalled = false;
+    const { runner } = createFakeRunner([
+      (_seat, _agent, _prompt, cwd) => {
+        writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+      },
+      () => {
+        devCalled = true;
+        return { exitCode: 0, output: '' };
+      },
+    ]);
+    deps.runner = runner;
+    deps.gate = (agent: string) => (agent === 'elon' ? { ok: true as const } : { ok: false as const, reason: `energy:${agent} hết` });
+    const outcome = await runSession(deps, ['Build feature'], { approved: true });
+    expect(outcome.status).toBe('needs_owner');
+    expect(devCalled).toBe(false);
+    expect(outcome.notes[0]).toBe('all_agents_exhausted');
+    expect(outcome.notes).toContain('energy:jacky hết');
+    expect(outcome.notes).toContain('energy:jenny hết');
+    store.close();
+  });
+
+  it('config: seats_backup trỏ agent lạ hoặc không được ngồi ghế → lỗi', async () => {
+    const { ConfigSchema } = await import('../src/config.ts');
+    const base = loadConfig('btm.config.yaml');
+    expect(ConfigSchema.safeParse({ ...base, seats_backup: { dev: ['jenny'] } }).success).toBe(true);
+    expect(ConfigSchema.safeParse({ ...base, seats_backup: { dev: ['ghost'] } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ ...base, seats_backup: { dev: ['elon'] } }).success).toBe(false);
   });
 });
