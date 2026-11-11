@@ -83,12 +83,33 @@ export function syncWorkspace(cfg: Config, agentId: string, checkout: string, ex
   const branch = currentBranch(checkout);
   const sha = git(checkout, 'rev-parse', 'HEAD').trim();
   runWorker(cfg, agentId, dir, ['mkdir', '-p', ws], exec);
-  runWorker(cfg, agentId, dir, ['rm', '-rf', join(ws, '.git'), workerOutFile(cfg, agentId)], exec);
+  runWorker(cfg, agentId, dir, ['rm', '-rf', join(ws, '.git'), workerOutFile(cfg, agentId), join(ws, STATUS_FILE)], exec);
   runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'init', '-q'], exec);
+  // Plan 6 Task 7: file trạng thái của agent không bao giờ vào commit.
+  runWorker(cfg, agentId, ws, ['sh', '-c', 'mkdir -p "$2/.git/info" && printf "%s\\n" "$1" >> "$2/.git/info/exclude"', 'sh', STATUS_FILE, ws], exec);
   runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'fetch', '-q', '--no-tags', '--update-head-ok', checkout, '+refs/heads/*:refs/heads/*'], exec);
   runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'checkout', '-q', '-f', '-B', branch, sha], exec);
   // -ff: xoá cả repo lồng (gitlink) agent để lại, không thì mọi lượt sau bị bundle_unsafe.
   runWorker(cfg, agentId, ws, [...W_GIT, '-C', ws, 'clean', '-ffdq'], exec);
+}
+
+export const STATUS_FILE = '.btm-status';
+
+// Một dòng, bỏ ký tự điều khiển, tối đa 200 ký tự (agent viết – không tin cậy).
+export function cleanStatus(raw: string): string {
+  const line = raw.split(/\r?\n/).find((l) => l.trim()) ?? '';
+  return line.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 200);
+}
+
+// Đọc dòng trạng thái agent tự ghi trong workspace, qua worker (chỉ file thường, timeout ngắn).
+export function readWorkerStatus(cfg: Config, agentId: string, checkout: string, exec: ExecFn = execFileSync): string {
+  try {
+    const f = join(workspacePath(cfg, agentId, checkout), STATUS_FILE);
+    const out = runWorker(cfg, agentId, userDir(cfg, agentId), ['sh', '-c', 'test -f "$1" && ! test -L "$1" && head -c 1000 -- "$1"', 'sh', f], exec, 3_000);
+    return cleanStatus(out.toString('utf8'));
+  } catch {
+    return '';
+  }
 }
 
 export function readWorkerOut(cfg: Config, agentId: string, exec: ExecFn = execFileSync): string {

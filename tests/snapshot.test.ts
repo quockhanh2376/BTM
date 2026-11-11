@@ -711,3 +711,26 @@ describe('P6-T5: cảnh báo Energy thấp, tài khoản xếp theo giới hạn
     store.close();
   });
 });
+
+describe('P6-T7: snapshot đọc .btm-status của ghế đang chạy (không cách ly)', () => {
+  it('ghế running → agentStatus từ file trạng thái; ghế khác không đọc', async () => {
+    const { buildSnapshot } = await import('../src/server/snapshot.ts');
+    const { openStore } = await import('../src/store/db.ts');
+    const { loadConfig } = await import('../src/config.ts');
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const repo = mkdtempSync(join(tmpdir(), 'btm-status-'));
+    writeFileSync(join(repo, '.btm-status'), 'editing src/app.ts\n');
+    const cfg = loadConfig('btm.config.yaml');
+    const store = openStore(':memory:');
+    store.setActiveProject(repo);
+    const sid = store.createSession(['G'], repo);
+    store.setSessionStatus(sid, 'running');
+    store.startTurn(sid, 'dev', 'jacky', 'GTM-0001');
+    const snap = buildSnapshot(store, cfg) as any;
+    expect(snap.seats.find((s: any) => s.seat === 'dev').agentStatus).toBe('editing src/app.ts');
+    expect(snap.seats.find((s: any) => s.seat === 'qc').agentStatus).toBeNull();
+    store.close();
+  });
+});

@@ -47,6 +47,13 @@ export const TurnSchema = z.object({
   max_parallel_agents: z.literal(1),
   commit_before_dev_turn: z.boolean(),
   max_fix_rounds: z.number().int().nonnegative(),
+  /** Plan 6 Task 6: dừng lượt khi CLI không in gì N phút. Chỉ đặt cho công cụ có in tiến độ (agy, codex);
+   *  claude -p chỉ in khi xong nên để trống. Mặc định tắt. */
+  idle_minutes: z.object({
+    'claude-code': z.number().positive().optional(),
+    'antigravity-cli': z.number().positive().optional(),
+    'codex-cli': z.number().positive().optional(),
+  }).strict().optional(),
 }).strict();
 
 export const SeatsSchema = z.object({

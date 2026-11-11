@@ -452,3 +452,29 @@ describe('P4.5-T2: runner dưới worker', () => {
   });
 
 });
+
+describe('P6-T6: phát hiện lượt treo (không ra output)', () => {
+  it.skipIf(process.platform === 'win32')('im lặng quá ngưỡng → bị giết, idleTimedOut; in đều → chạy hết', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'btm-idle-'));
+    const silent = await runProcess(['node', '-e', 'setTimeout(() => {}, 3000)'], { cwd: dir, timeoutMs: 10_000, logFile: join(dir, 'a.log'), idleTimeoutMs: 300 });
+    expect(silent.timedOut).toBe(true);
+    expect(silent.idleTimedOut).toBe(true);
+    const chatty = await runProcess(['node', '-e', 'let i=0;const t=setInterval(()=>{console.log(i);if(++i>8){clearInterval(t)}},100)'], { cwd: dir, timeoutMs: 10_000, logFile: join(dir, 'b.log'), idleTimeoutMs: 300 });
+    expect(chatty.timedOut).toBe(false);
+    expect(chatty.idleTimedOut).toBeUndefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('config: idle_minutes theo công cụ, mặc định tắt; runner truyền đúng ngưỡng của công cụ', async () => {
+    const base = loadConfig('btm.config.yaml');
+    expect(base.turn.idle_minutes).toBeUndefined();
+    const cfg = { ...base, turn: { ...base.turn, idle_minutes: { 'codex-cli': 15 } } } as any;
+    const seen: any[] = [];
+    const runner = makeRunner(cfg, undefined, (async (_argv: string[], o: any) => { seen.push(o.idleTimeoutMs); return { exitCode: 0, timedOut: false, durationMs: 1, output: '' }; }) as any);
+    const dir = mkdtempSync(join(tmpdir(), 'btm-idle2-'));
+    await runner('qc', 'jenny', 'x', dir, join(dir, 'q.log'));
+    await runner('pm', 'elon', 'x', dir, join(dir, 'p.log'));
+    expect(seen).toEqual([15 * 60 * 1000, 0]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

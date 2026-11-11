@@ -1468,3 +1468,10 @@ describe('P5-T9: UI tiếng Anh, bảng chuỗi', () => {
     expect(html).not.toMatch(/(var|let|const)\s+tx\b/);
   });
 });
+
+describe('P6-T7: dòng trạng thái trên thẻ ghế', () => {
+  it('ưu tiên agentStatus, không có thì dòng log cuối; chèn bằng textContent', () => {
+    const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+    expect(html).toContain("lastLineEl.textContent = cardData.agentStatus || cardData.lastLine || '—';");
+  });
+});

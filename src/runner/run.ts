@@ -1,15 +1,17 @@
 import { spawn } from 'node:child_process';
-import { createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { appendFileSync, createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { buildArgv } from './argv.ts';
 import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerKillAll, workerReset, wrapForWorker } from '../isolation/worker.ts';
-import { importTurn, isIsolated, readWorkerOut, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
+import { importTurn, isIsolated, readWorkerOut, STATUS_FILE, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
 
 export interface ProcResult {
   exitCode: number | null;
   timedOut: boolean;
+  /** Bị dừng vì không có output trong idleTimeoutMs (cũng đặt timedOut). */
+  idleTimedOut?: boolean;
   durationMs: number;
   output: string;
 }
@@ -70,6 +72,8 @@ export function runProcess(
     signal?: AbortSignal;
     /** Gọi khi hết giờ/huỷ: tiến trình chạy dưới user khác (sudo) BTM không tự giết được. */
     onKill?: () => void;
+    /** Plan 6 Task 6: không có byte output nào trong khoảng này → giết như hết giờ. 0/undefined = tắt. */
+    idleTimeoutMs?: number;
   }
 ): Promise<ProcResult> {
   return new Promise((resolve, reject) => {
@@ -97,6 +101,8 @@ export function runProcess(
     }
 
     let timedOut = false;
+    let idleTimedOut = false;
+    let idleTimer: NodeJS.Timeout | null = null;
     let aborted = false;
     let killInitiated = false;
     let timer: NodeJS.Timeout | null = null;
@@ -149,6 +155,10 @@ export function runProcess(
       if (timer) {
         clearTimeout(timer);
         timer = null;
+      }
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
       }
       if (groupCheckInterval) {
         clearInterval(groupCheckInterval);
@@ -203,6 +213,7 @@ export function runProcess(
         resolve({
           exitCode: childCloseCode,
           timedOut,
+          ...(idleTimedOut ? { idleTimedOut: true } : {}),
           durationMs,
           output,
         });
@@ -304,6 +315,17 @@ export function runProcess(
       }, o.timeoutMs);
     }
 
+    const armIdle = () => {
+      if (!o.idleTimeoutMs || o.idleTimeoutMs <= 0 || resolved) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        timedOut = true;
+        idleTimedOut = true;
+        killAll();
+      }, o.idleTimeoutMs);
+    };
+    armIdle();
+
     if (o.signal) {
       if (o.signal.aborted) {
         abortListener();
@@ -323,11 +345,13 @@ export function runProcess(
     };
 
     child.stdout?.on('data', (chunk: Buffer) => {
+      armIdle();
       outputChunks.push(chunk);
       writeLog(chunk);
     });
 
     child.stderr?.on('data', (chunk: Buffer) => {
+      armIdle();
       outputChunks.push(chunk);
       writeLog(chunk);
     });
@@ -359,6 +383,19 @@ export type Runner = (
   logFile: string,
   options?: { signal?: AbortSignal; images?: string[] }
 ) => Promise<TurnOutput>;
+
+// Plan 6 Task 7 (không cách ly): file trạng thái agent ghi không được vào commit.
+function excludeStatusFile(repo: string): void {
+  try {
+    const f = join(repo, '.git', 'info', 'exclude');
+    const cur = existsSync(f) ? readFileSync(f, 'utf8') : '';
+    if (cur.split(/\r?\n/).includes(STATUS_FILE)) return;
+    mkdirSync(dirname(f), { recursive: true });
+    appendFileSync(f, `${cur && !cur.endsWith('\n') ? '\n' : ''}${STATUS_FILE}\n`);
+  } catch {
+    // không có .git (test) – bỏ qua
+  }
+}
 
 export interface Isolation {
   /** Dọn cấu hình CLI agent tự cài (giữ đăng nhập) trước mỗi lượt. */
@@ -410,6 +447,7 @@ export function makeRunner(
         : `${absLogFile}.out`;
     // cwd = checkout tin cậy; agent chạy trong workspace riêng của mình.
     const runCwd = isolated ? workspacePath(cfg, agentId, cwd) : cwd;
+    if (!isolated) excludeStatusFile(cwd);
 
     const argv = buildArgv(agent.tool, prompt, {
       seat,
@@ -440,11 +478,13 @@ export function makeRunner(
         env: process.env,
         signal: options?.signal ?? defaultSignal,
         onKill: isolated ? () => killAll(cfg, agentId) : undefined,
+        idleTimeoutMs: (cfg.turn.idle_minutes?.[agent.tool] ?? 0) * 60 * 1000,
       });
     } finally {
       killAll(cfg, agentId);
     }
     let lastMessage = '';
+    if (result.idleTimedOut) result = { ...result, output: `${result.output}\n[btm] idle_timeout` };
     if (isolated) {
       try {
         const imp = isolation.importTurn(cfg, agentId, cwd);

@@ -1,4 +1,5 @@
-import { existsSync, statSync, openSync, readSync, closeSync, readFileSync } from 'node:fs';
+import { existsSync, statSync, openSync, readSync, closeSync, readFileSync, lstatSync } from 'node:fs';
+import { cleanStatus, isIsolated, readWorkerStatus, STATUS_FILE } from '../isolation/trusted.ts';
 import { join } from 'node:path';
 import type { Config, Effort, Seat, Tool } from '../config.ts';
 import { agentEffort, agentModel } from '../agents/model.ts';
@@ -66,6 +67,8 @@ export interface SeatCard {
   also?: Seat[];
   /** Lượt gần nhất của ghế do agent dự phòng ngồi thay (Plan 5 Task 7). */
   substitute?: string | null;
+  /** Dòng trạng thái agent đang chạy tự ghi (Plan 6 Task 7), đã làm sạch. */
+  agentStatus?: string | null;
 }
 
 export interface AccountCard {
@@ -169,6 +172,28 @@ export function lastLogLine(file: string | null): string {
   } catch {
     return '';
   }
+}
+
+// Plan 6 Task 7: đọc dòng trạng thái của agent đang chạy, cache 15 giây (đọc qua worker là lệnh đồng bộ).
+const statusCache = new Map<string, { at: number; text: string }>();
+function readAgentStatus(cfg: Config, agent: string, project: string): string | null {
+  const key = `${agent}|${project}`;
+  const hit = statusCache.get(key);
+  if (hit && Date.now() - hit.at < 15_000) return hit.text || null;
+  let text = '';
+  try {
+    if (isIsolated(cfg)) {
+      text = readWorkerStatus(cfg, agent, project);
+    } else {
+      const f = join(project, STATUS_FILE);
+      const st = lstatSync(f);
+      if (st.isFile() && st.size <= 64_000) text = cleanStatus(readFileSync(f, 'utf8').slice(0, 1000));
+    }
+  } catch {
+    text = '';
+  }
+  statusCache.set(key, { at: Date.now(), text });
+  return text || null;
 }
 
 function getSeatEnergy(store: Store, agent: string, cfg?: Config): SeatCard['energy'] {
@@ -531,6 +556,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       candidates,
       ...seatExtras(cfg, store, effSeats, seat, agent),
       substitute: lastTurn?.agent && lastTurn.agent !== agent ? lastTurn.agent : null,
+      agentStatus: status === 'running' && s.project && runningTurn?.agent ? readAgentStatus(cfg, runningTurn.agent, s.project) : null,
     };
   });
 

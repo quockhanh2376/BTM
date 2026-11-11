@@ -3452,7 +3452,7 @@
           if (taskEl) taskEl.textContent = cardData.taskId || '—';
           if (sinceEl) sinceEl.textContent = formatTime(cardData.since);
           if (turnsEl) turnsEl.textContent = String(cardData.turns || 0);
-          if (lastLineEl) lastLineEl.textContent = cardData.lastLine || '—';
+          if (lastLineEl) lastLineEl.textContent = cardData.agentStatus || cardData.lastLine || '—';
 
           // Login indicator
           var loginIndicator = document.getElementById(seatKey + '-login-indicator');
