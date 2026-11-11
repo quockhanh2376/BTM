@@ -165,3 +165,8 @@
 - Cheki tự merge mọi PR, kể cả PR plan, khi bộ test trên VM xanh. Vic và Qeen không merge.
 - Deploy và restart VM vẫn hỏi Zon.
 - PR #9 (Plan 5) đã merge (753f7aa).
+
+## 2026-11-11 – P6 Task 1+5 (Cheki)
+- Thông báo qua ntfy (decision 0004). URL topic nằm ở `/var/lib/btm/notify.url` (0600, user agent). Config trên VM đã bật `notify:` (sửa cục bộ như 3 dòng cách ly).
+- Chip "Sắp hết", tài khoản xếp theo giới hạn chặt nhất.
+- PR #16, VM 749/749 ×3, deploy 1b4ec60. Tin thử gửi ntfy trả 200.

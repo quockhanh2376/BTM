@@ -48,6 +48,6 @@
 | P45 (cách ly agent) | Cheki | XONG – PR #8 merged, VM deployed + thử tấn công 12/12 | docs/superpowers/plans/2026-11-10-btm-plan4-5-agent-isolation.md | team/reviews/P45-review-2.md |
 | P5 (đội hình linh hoạt) | Cheki | XONG – PR #9 merged, VM deployed; thiếu: tự chạy lại khi hết hạn mức giữa lượt | docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md | team/reviews/P5-review-1.md |
 | UI-Ok + model picker | Cheki | XONG – PR #11, #12 merged, VM deployed | – | – |
-| P6 (ý tưởng từ Orca, 7 task) | Cheki | waiting – làm từ từ; Task 1 chờ anh chọn kênh thông báo | docs/superpowers/plans/2026-11-11-btm-plan6-orca-ideas.md | – |
+| P6 (ý tưởng từ Orca, 7 task) | Cheki | Task 1+5 XONG (PR #16, VM deployed, ntfy bật); còn Task 2, 3, 4, 6, 7 – làm từ từ | docs/superpowers/plans/2026-11-11-btm-plan6-orca-ideas.md | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).
