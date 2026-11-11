@@ -153,11 +153,53 @@ Cùng một agent đổi ghế (vd jenny Dev ticket A → QC ticket B) không đ
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5:** Commit `feat: reset agent CLI config before each turn (P5 Task 8)`.
 
+
+### Task 9: App 100% tiếng Anh (thuật ngữ dev), sẵn chỗ cho bản tiếng Việt (anh Zon 2026-11-11)
+
+**Mục tiêu:** mọi chữ người dùng thấy trong app chuyển sang **tiếng Anh ngắn gọn**, dùng khoảng 100 thuật ngữ dev quen thuộc, để gọn và dễ hiểu. Chữ được gom vào **một bảng chuỗi** để sau này thêm bản tiếng Việt và nút EN/VI. Ước lượng hiện có khoảng 190 chuỗi tiếng Việt trong `web/index.html` và khoảng 12 file `src/` có thông báo hiện lên dashboard.
+
+**Phạm vi:**
+- **Đổi:** dashboard (`web/index.html`); các thông báo server trả về và hiện trên UI (lỗi API, `notes` của phiên, đèn đăng nhập và Energy, cảnh báo đội hình); tin ntfy; output dòng lệnh `btm`.
+- **Không đổi:** prompt gửi agent (Task riêng nếu cần), tài liệu `docs/`, `team/`, log nội bộ, mã lý do máy đọc (`needs_owner`, `coder_cannot_qc_same_task`… vốn đã là tiếng Anh).
+
+**Files:** Create `web/i18n.js` (bảng `STRINGS.en`, hàm `t(key, vars)`), `docs/glossary.md`; Modify `web/index.html`, `src/server/http.ts`, `src/server/host.ts`, `src/server/snapshot.ts`, `src/energy/login.ts`, `src/energy/quota.ts`, `src/core/session.ts` (chỉ `notes` hiện trên UI), `src/notify/notify.ts`, `src/cli.ts`; tests `tests/web.test.ts`, `tests/i18n.test.ts` và các test đang so khớp chuỗi tiếng Việt.
+
+**Interfaces – Produces:**
+- `web/i18n.js`: `const STRINGS = { en: { 'seat.pm': 'PM', 'login.ok': 'Ok', 'energy.low': 'Low · resets {time}', … } }`; `t(key, vars?)` trả `STRINGS[lang][key] ?? STRINGS.en[key] ?? key`; `lang` mặc định `en`, đọc từ `localStorage` (bọc try/catch). Bản `vi` thêm sau, không đổi code gọi.
+- Server không ghép câu tiếng Việt nữa. API trả **mã + tham số** (vd `{ code: 'energy_low', percent: 15, resetsAt }`), dashboard dịch bằng `t()`. Lỗi API trả `{ error: 'seat_not_allowed', detail: {...} }` kèm câu tiếng Anh mặc định.
+- `docs/glossary.md`: bảng khoảng 100 thuật ngữ (EN → nghĩa VI ngắn) dùng thống nhất toàn app, nhóm theo chủ đề:
+  - **team:** seat, agent, PM, Dev, QC, Audit, backup, substitute, multi-seat;
+  - **work:** project, goal, ticket, scope, report, turn, queue, session, round, fix notes;
+  - **git:** branch, main, commit, diff, merge, approve, protected, trusted checkout, workspace;
+  - **quality:** gate, build, lint, test, pass, fail, bug, review;
+  - **runtime:** model, effort, energy, quota, limit, reset, login, relogin, idle, timeout, stop, resume;
+  - **isolation:** sandbox, worker, reset.
+
+**Quy ước chữ:**
+- Câu ngắn, động từ trước: "Approve goal", "Stop session", "Resume".
+- Không viết tắt lạ. Giữ nguyên tên riêng của agent: Elon, Jacky, Jenny.
+- Ngày giờ theo định dạng hiện có.
+- Không hard-code chữ trong JS nữa, luôn gọi `t()`.
+
+- [ ] **Step 0:** Cheki trích toàn bộ chuỗi đang hiện trên UI ra bảng (key → VI hiện tại → EN đề xuất) để anh duyệt bản EN trước khi code (`docs/glossary.md` + bảng chuỗi).
+- [ ] **Step 1: Test:**
+  - `web/index.html` không còn chữ có dấu tiếng Việt ngoài `i18n.js` (test quét regex `[À-ỹ]`);
+  - mọi key dùng trong `t()` có trong `STRINGS.en`;
+  - `t()` thiếu key thì trả về chính key, không crash;
+  - API lỗi trả `error` là mã tiếng Anh;
+  - tin ntfy tiếng Anh;
+  - a11y (`aria-label`) cũng tiếng Anh;
+  - giữ nguyên các test hành vi cũ, chỉ đổi chuỗi so khớp.
+- [ ] **Step 2–4:** FAIL → implement → PASS. **Step 5:** Cheki mở dashboard demo chụp cả theme sáng và tối, kiểm chữ không tràn thẻ ở màn hẹp.
+- [ ] **Step 6:** Commit `feat: English UI with string table, ready for VI (P5 Task 9)`.
+
+**Sau Task 9 (song ngữ):** thêm `STRINGS.vi` theo cùng key, nút EN/VI trên thanh trên, nhớ lựa chọn trong `localStorage`. Không cần đổi server.
+
 ---
 
 ## Để sau
 
-Thêm/sửa agent ngay trên dashboard (hiện sửa `btm.config.yaml`); nhiều agent chạy song song (v2.0). Giao diện song ngữ Anh/Việt (nút EN/VI, nhớ lựa chọn trên trình duyệt) – anh Zon 2026-11-10, làm ở plan sau; từ giờ chuỗi giao diện mới gom về một chỗ để dễ dịch.
+Thêm/sửa agent ngay trên dashboard (hiện sửa `btm.config.yaml`); nhiều agent chạy song song (v2.0). Giao diện song ngữ Anh/Việt: Task 9 làm bản tiếng Anh + bảng chuỗi trước (anh Zon 2026-11-11); bản tiếng Việt và nút EN/VI làm sau trên cùng bảng chuỗi.
 
 Sao lưu/khôi phục tài khoản Antigravity (anh Zon 2026-11-10, làm khi app ổn định):
 - Script `deploy/agy-accounts.sh`, gồm các lệnh:
