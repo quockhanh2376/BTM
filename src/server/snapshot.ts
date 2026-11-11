@@ -196,7 +196,7 @@ function getSeatEnergy(store: Store, agent: string, cfg?: Config): SeatCard['ene
 function getSeatLogin(store: Store, agent: string): SeatCard['login'] {
   const h = store.latestLogin(agent);
   if (!h) {
-    return { state: 'unknown', detail: 'Chưa rõ' };
+    return { state: 'unknown', detail: 'Unknown' };
   }
   return {
     state: h.state,
@@ -558,7 +558,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     logEntries.push({
       at: turn.started_at,
       who: turn.agent,
-      text: turn.task_id ? `bắt đầu ${turn.task_id}` : 'bắt đầu',
+      text: turn.task_id ? `started ${turn.task_id}` : 'started',
     });
     if (turn.ended_at) {
       logEntries.push({

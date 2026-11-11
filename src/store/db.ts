@@ -190,17 +190,17 @@ export function readProjectSeats(repo: string, protectedBranch = 'main'): { seat
       const raw = doc && typeof doc === 'object' ? doc.seats : undefined;
       if (raw !== undefined && raw !== null) {
         if (typeof raw !== 'object' || Array.isArray(raw)) {
-          warn.push('team/project.yaml: seats phải là bảng ghế → agent');
+          warn.push('team/project.yaml: seats must map seat → agent');
         } else {
           for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
             if ((SEATS as string[]).includes(k) && typeof v === 'string') seats[k as Seat] = v.trim();
-            else warn.push(`team/project.yaml: bỏ qua seats.${k}`);
+            else warn.push(`team/project.yaml: ignored seats.${k}`);
           }
         }
       }
     } catch {
       seats = {};
-      warn.push('team/project.yaml: YAML lỗi, dùng đội hình mặc định');
+      warn.push('team/project.yaml: invalid YAML, using default team');
     }
   }
   projectSeatsCache.set(repo, { sha, seats, warn });
@@ -222,14 +222,14 @@ export function resolveSeats(
   const apply = (seat: Seat, id: string | null | undefined, source: string) => {
     if (!id) return;
     if (valid(seat, id)) seats[seat] = id;
-    else warnings.push(`Bỏ qua ${source}: ghế ${seat} = "${id}" (agent không có hoặc không được ngồi ghế này)`);
+    else warnings.push(`Ignored ${source}: ${seat} = "${id}" (unknown or not allowed)`);
   };
   const fromFile = proj ? readProjectSeats(proj, cfg.git?.protected_branch || 'main') : { seats: {}, warnings: [] };
   warnings.push(...fromFile.warnings);
   for (const seat of SEATS) {
-    apply(seat, store?.getSetting(seatSettingKey(null, seat)), 'đổi ghế cũ');
+    apply(seat, store?.getSetting(seatSettingKey(null, seat)), 'legacy override');
     apply(seat, fromFile.seats[seat], 'team/project.yaml');
-    if (proj) apply(seat, store?.getSetting(seatSettingKey(proj, seat)), 'đổi ghế trên dashboard');
+    if (proj) apply(seat, store?.getSetting(seatSettingKey(proj, seat)), 'dashboard override');
   }
   return { seats, warnings };
 }

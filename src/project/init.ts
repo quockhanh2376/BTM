@@ -122,13 +122,13 @@ export function initProject(
     try {
       const res = runOpenspec(openspecArgs, { cwd: projectPath, timeout: 60_000 });
       if (res && typeof res === 'object' && res.ok === false) {
-        const errorMsg = res.error || 'Khởi tạo openspec thất bại';
-        const warningContent = `# Cảnh báo: OpenSpec không thể khởi tạo\n\n${errorMsg}\n`;
+        const errorMsg = res.error || 'OpenSpec init failed';
+        const warningContent = `# Warning: OpenSpec could not initialize\n\n${errorMsg}\n`;
         writeFileSync(join(projectPath, 'docs', 'README-btm.md'), warningContent, 'utf8');
       }
     } catch (err: any) {
       const errorMsg = err?.message || String(err);
-      const warningContent = `# Cảnh báo: OpenSpec không thể khởi tạo\n\n${errorMsg}\n`;
+      const warningContent = `# Warning: OpenSpec could not initialize\n\n${errorMsg}\n`;
       writeFileSync(join(projectPath, 'docs', 'README-btm.md'), warningContent, 'utf8');
     }
 

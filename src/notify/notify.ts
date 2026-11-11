@@ -31,11 +31,11 @@ export function reasonCode(notes: string[] | undefined): string {
 }
 
 const LABEL: Record<NotifyKind, string> = {
-  needs_owner: 'Can anh xu ly',
-  awaiting_approval: 'Cho anh duyet',
-  done: 'Xong',
-  stopped: 'Da dung',
-  out_of_turns: 'Het luot',
+  needs_owner: 'Needs you',
+  awaiting_approval: 'Awaiting approval',
+  done: 'Done',
+  stopped: 'Stopped',
+  out_of_turns: 'Out of turns',
 };
 
 function defaultDeps(): NotifyDeps {
@@ -70,7 +70,7 @@ export async function notify(cfg: Config, ev: NotifyEvent, deps: NotifyDeps = de
     });
   } catch (err) {
     // Gửi lỗi không được làm hỏng phiên; không in URL (topic là bí mật).
-    deps.log(`[notify] gửi thất bại: ${err instanceof Error ? err.name : 'error'}`);
+    deps.log(`[notify] send failed: ${err instanceof Error ? err.name : 'error'}`);
   }
 }
 

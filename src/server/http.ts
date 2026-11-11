@@ -360,7 +360,7 @@ export function createServer(o: {
             return;
           }
           if (o.host.busy?.()) {
-            sendJson(res, 409, { ok: false, code: 'busy', error: 'Phiên/lượt đang chạy', message: 'Phiên/lượt đang chạy' });
+            sendJson(res, 409, { ok: false, code: 'busy', error: 'Session running', message: 'Session running' });
             return;
           }
           const match = parsed.data.goal.match(/^G?(\d+)$/i);
@@ -371,7 +371,7 @@ export function createServer(o: {
           } else {
             const activeProject = o.store.getActiveProject();
             if (!activeProject) {
-              sendJson(res, 409, { ok: false, code: 'not_ready', error: 'Chưa có dự án active', message: 'Chưa có dự án active' });
+              sendJson(res, 409, { ok: false, code: 'not_ready', error: 'No active project', message: 'No active project' });
               return;
             }
             resGoal = approveGoal(o.store, activeProject, o.cfg, goalNumber);
@@ -392,7 +392,7 @@ export function createServer(o: {
             return;
           }
           if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Phiên/lượt đang chạy' });
+            sendJson(res, 409, { error: 'Session running' });
             return;
           }
           if (o.host.resume) {
@@ -450,12 +450,12 @@ export function createServer(o: {
 
           const activeProject = o.store.getActiveProject();
           if (!activeProject) {
-            sendJson(res, 400, { error: 'Chưa có dự án active' });
+            sendJson(res, 400, { error: 'No active project' });
             return;
           }
 
           if (o.host.busy && o.host.busy()) {
-            sendJson(res, 409, { error: 'Đang có phiên chạy' });
+            sendJson(res, 409, { error: 'Session running' });
             return;
           }
 
@@ -497,7 +497,7 @@ export function createServer(o: {
           }
 
           const imageOpt = (ext && imgBuf) ? { ext, bytes: imgBuf } : undefined;
-          const initialGoal = `Xử lý ghi chú team N-${createdNoteId}: ${parsed.data.text.slice(0, 200)}`;
+          const initialGoal = `Team note N-${createdNoteId}: ${parsed.data.text.slice(0, 200)}`;
           let result: { ok: boolean; error?: string };
           try {
             result = await o.host.start([initialGoal], {
@@ -522,8 +522,8 @@ export function createServer(o: {
             try {
               o.store.deleteNote(createdNoteId);
             } catch {}
-            if (result.error === 'Đang có phiên chạy') {
-              sendJson(res, 409, { error: 'Đang có phiên chạy' });
+            if (result.error === 'Session running') {
+              sendJson(res, 409, { error: 'Session running' });
               return;
             }
             sendJson(res, 400, { error: result.error || 'Failed to start session' });
@@ -573,16 +573,16 @@ export function createServer(o: {
           }).strict();
           const parsed = AgentBodySchema.safeParse(body);
           if (!parsed.success) {
-            sendJson(res, 400, { error: 'Model hoặc effort không hợp lệ' });
+            sendJson(res, 400, { error: 'Invalid model or effort' });
             return;
           }
           if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Phiên/lượt đang chạy' });
+            sendJson(res, 409, { error: 'Session running' });
             return;
           }
           const { agent, model, effort } = parsed.data;
           if (!Object.hasOwn(o.cfg.agents, agent)) {
-            sendJson(res, 400, { error: `Agent "${agent}" không tồn tại` });
+            sendJson(res, 400, { error: `Unknown agent "${agent}"` });
             return;
           }
           if (model !== undefined) o.store.setSetting(agentModelKey(agent), model);
@@ -602,21 +602,21 @@ export function createServer(o: {
             return;
           }
           if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Phiên/lượt đang chạy' });
+            sendJson(res, 409, { error: 'Session running' });
             return;
           }
           const { seat, agent } = parsed.data;
           if (!Object.hasOwn(o.cfg.seats, seat)) {
-            sendJson(res, 400, { error: `Ghế "${seat}" không hợp lệ` });
+            sendJson(res, 400, { error: `Invalid seat "${seat}"` });
             return;
           }
           if (!Object.hasOwn(o.cfg.agents, agent)) {
-            sendJson(res, 400, { error: `Agent "${agent}" không thể ngồi ghế "${seat}"` });
+            sendJson(res, 400, { error: `${agent} can't sit in ${seat}` });
             return;
           }
           const agentCfg = o.cfg.agents[agent];
           if (!agentCfg || !agentCfg.can_sit.includes(seat as Seat)) {
-            sendJson(res, 400, { error: `Agent "${agent}" không thể ngồi ghế "${seat}"` });
+            sendJson(res, 400, { error: `${agent} can't sit in ${seat}` });
             return;
           }
           if (o.host.setSeat) {
@@ -628,7 +628,7 @@ export function createServer(o: {
           } else {
             const current = effectiveSeats(o.cfg, o.store)[seat as Seat];
             o.store.setSetting(seatSettingKey(o.store.getActiveProject(), seat as Seat), agent);
-            console.log(`Đổi ghế ${seat}: ${current} → ${agent}`);
+            console.log(`${seat} seat: ${current} → ${agent}`);
           }
           sendJson(res, 200, { ok: true, seat, agent });
           return;

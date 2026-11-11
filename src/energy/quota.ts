@@ -340,7 +340,7 @@ export async function readEnergy(
   const readAt = deps.now().toISOString();
 
   if (tool === 'claude-code') {
-    const defaultNote = 'Claude /usage không đọc được (lệnh chưa có trong tài liệu)';
+    const defaultNote = 'Claude /usage unavailable';
     try {
       const timeoutMs = deps.timeoutMs ?? 60_000;
       let timer: NodeJS.Timeout | undefined;
@@ -438,7 +438,7 @@ export async function readEnergy(
             status: 'unknown',
             windows: [],
             readAt,
-            note: 'Lệnh đọc hạn mức quá thời gian (timeout 60s)'
+            note: 'Quota check timed out (60s)'
           };
         }
         res = raceResult;
@@ -454,7 +454,7 @@ export async function readEnergy(
           status: 'unknown',
           windows: [],
           readAt,
-          note: 'Lệnh đọc hạn mức quá thời gian (timeout)'
+          note: 'Quota check timed out'
         };
       }
 
@@ -465,7 +465,7 @@ export async function readEnergy(
           status: 'unknown',
           windows: [],
           readAt,
-          note: `Lệnh agy /quota thất bại (exit code ${res.exitCode})${errorDetail}`
+          note: `agy /quota failed (exit ${res.exitCode})${errorDetail}`
         };
       }
 
@@ -476,7 +476,7 @@ export async function readEnergy(
           status: 'unknown',
           windows: [],
           readAt,
-          note: 'Không phân tích được hạn mức agy từ output'
+          note: "Couldn't parse agy quota"
         };
       }
 
@@ -512,7 +512,7 @@ export async function readEnergy(
           status: 'unknown',
           windows: [],
           readAt,
-          note: 'Không có dữ liệu hạn mức trong sessions codex'
+          note: 'No Codex quota data yet'
         };
       }
 
@@ -538,6 +538,6 @@ export async function readEnergy(
     status: 'unknown',
     windows: [],
     readAt,
-    note: `Công cụ ${tool} không hỗ trợ đọc hạn mức`
+    note: `Quota not supported for ${tool}`
   };
 }

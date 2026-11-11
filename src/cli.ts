@@ -833,7 +833,7 @@ Options:
 
       let releaseLock = acquireLock(cfg.host.data_dir);
       if (!releaseLock) {
-        console.error('Error: Another btm process is running (đang có phiên).');
+        console.error('Error: Another btm process is running (session active).');
         process.exitCode = 1;
         return 1;
       }
@@ -853,11 +853,11 @@ Options:
           const res = migrateProject(activeProject, key, protectedBranch, store);
           if (res.already) {
             console.log(
-              `Project already migrated with key "${key}". Đã chuyển sang ${protectedBranch}; nhánh cũ ${res.previousBranch} giữ nguyên.`
+              `Project already migrated with key "${key}". Switched to ${protectedBranch}; old branch ${res.previousBranch} kept.`
             );
           } else {
             console.log(
-              `Migrated project "${activeProject}" with key "${key}". Đã chuyển sang ${protectedBranch}; nhánh cũ ${res.previousBranch} giữ nguyên.`
+              `Migrated project "${activeProject}" with key "${key}". Switched to ${protectedBranch}; old branch ${res.previousBranch} kept.`
             );
           }
           process.exitCode = 0;
@@ -876,7 +876,7 @@ Options:
 
     if (command === 'isolate') {
       if (!cfg.host.worker_prefix || !cfg.host.trusted_root || !cfg.host.work_root) {
-        console.error('Error: host.worker_prefix, host.trusted_root và host.work_root phải được đặt trong config.');
+        console.error('Error: host.worker_prefix, host.trusted_root and host.work_root must be set in config.');
         process.exitCode = 1;
         return 1;
       }
@@ -897,18 +897,18 @@ Options:
         const oldPin = store.getSetting(protectedShaKey(active))?.trim() || '';
         const oldMain = git(active, 'rev-parse', `refs/heads/${protectedBranch}`).trim();
         if (oldPin && oldPin !== oldMain) {
-          console.error(`Error: ${protectedBranch} (${oldMain}) khác sha đã ghim (${oldPin}). Kiểm tra rồi chạy "btm main accept" trước.`);
+          console.error(`Error: ${protectedBranch} (${oldMain}) differs from the pinned sha (${oldPin}). Check it, then run "btm main accept" first.`);
           process.exitCode = 1;
           return 1;
         }
         if (store.getSetting(turnGuardKey(active))?.trim()) {
-          console.error('Error: còn lượt dở (turn guard). Chạy btm serve một lần để phục hồi rồi dừng lại trước khi isolate.');
+          console.error('Error: an unfinished turn exists (turn guard). Run btm serve once to recover, then stop it before isolate.');
           process.exitCode = 1;
           return 1;
         }
         const trusted = ensureTrustedCheckout(cfg, active);
         const mainSha = git(trusted, 'rev-parse', `refs/heads/${protectedBranch}`).trim();
-        if (mainSha !== oldMain) throw new Error(`checkout tin cậy có ${protectedBranch} ${mainSha} ≠ ${oldMain}`);
+        if (mainSha !== oldMain) throw new Error(`trusted checkout has ${protectedBranch} ${mainSha} ≠ ${oldMain}`);
         store.renameProject(active, trusted);
         store.setSetting(protectedShaKey(trusted), mainSha);
         console.log(`Isolated: active project ${active} → ${trusted} (main ${mainSha})`);

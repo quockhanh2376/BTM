@@ -160,7 +160,7 @@ export const ConfigSchema = BaseConfigSchema.superRefine((cfg, ctx) => {
     for (const id of ids ?? []) {
       const agent = Object.hasOwn(cfg.agents, id) ? cfg.agents[id] : undefined;
       if (!agent || !agent.can_sit.includes(seat)) {
-        ctx.addIssue({ code: 'custom', message: `seats_backup.${seat}: agent '${id}' không có hoặc không được ngồi ghế này`, path: ['seats_backup', seat] });
+        ctx.addIssue({ code: 'custom', message: `seats_backup.${seat}: agent '${id}' unknown or not allowed in this seat`, path: ['seats_backup', seat] });
       }
     }
   }
