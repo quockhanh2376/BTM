@@ -83,7 +83,7 @@ describe('Energy Monitor', () => {
       store.saveLogin({
         agent: 'jacky',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       });
 
       const monitor = createMonitor({
@@ -110,7 +110,7 @@ describe('Energy Monitor', () => {
       store.saveLogin({
         agent: 'jacky',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       });
 
       const monitor = createMonitor({
@@ -140,7 +140,7 @@ describe('Energy Monitor', () => {
       store.saveLogin({
         agent: 'jenny',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       });
 
       const monitor = createMonitor({
@@ -170,7 +170,7 @@ describe('Energy Monitor', () => {
       store.saveLogin({
         agent: 'jacky',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       });
 
       const monitor = createMonitor({
@@ -197,7 +197,7 @@ describe('Energy Monitor', () => {
       const mockCheckLogin = vi.fn().mockResolvedValue({
         agent: 'jacky',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       } as LoginHealth);
 
       const monitor = createMonitor({
@@ -276,7 +276,7 @@ describe('Energy Monitor', () => {
       const mockCheckLogin = vi.fn().mockResolvedValue({
         agent: 'jacky',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       } as LoginHealth);
 
       const monitor = createMonitor({
@@ -320,7 +320,7 @@ describe('Energy Monitor', () => {
       const mockCheckLogin = vi.fn().mockResolvedValue({
         agent: 'jacky',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       } as LoginHealth);
 
       const monitor = createMonitor({
@@ -361,7 +361,7 @@ describe('Energy Monitor', () => {
       const mockCheckLogin = vi.fn().mockResolvedValue({
         agent: 'jenny',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       } as LoginHealth);
 
       const monitor = createMonitor({
@@ -401,7 +401,7 @@ describe('Energy Monitor', () => {
       const mockCheckLogin = vi.fn().mockResolvedValue({
         agent: 'jacky',
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       } as LoginHealth);
 
       const monitor = createMonitor({
@@ -435,7 +435,7 @@ describe('Energy Monitor', () => {
   it('P4.5: cách ly → đọc hạn mức Codex trong home của user riêng của agent', async () => {
     const isoCfg = { ...cfg, host: { ...cfg.host, worker_prefix: 'btm-' } };
     const mockReadEnergy = vi.fn().mockResolvedValue({ agent: 'jenny', status: 'fresh', windows: [], readAt: '2026-11-08T15:00:00.000Z' });
-    const mockCheckLogin = vi.fn().mockResolvedValue({ agent: 'jenny', state: 'ok', detail: 'Ổn' });
+    const mockCheckLogin = vi.fn().mockResolvedValue({ agent: 'jenny', state: 'ok', detail: 'Ok' });
     const monitor = createMonitor({ cfg: isoCfg, store, readEnergy: mockReadEnergy, checkLogin: mockCheckLogin, now, run: vi.fn() as any });
     await monitor.refresh(['jenny']);
     expect(JSON.stringify(mockReadEnergy.mock.calls[0])).toContain('/home/btm-jenny/.codex');

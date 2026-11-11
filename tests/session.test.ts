@@ -2656,7 +2656,7 @@ Yêu cầu đóng note nhưng commit lỗi
     const mockCheckLogin = vi.fn(async (agent: string) => ({
       agent,
       state: 'ok' as const,
-      detail: 'Ổn',
+      detail: 'Ok',
     }));
 
     const monitor = createMonitor({

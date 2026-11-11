@@ -180,7 +180,7 @@ export async function checkLogin(
             return {
               agent,
               state: 'ok',
-              detail: 'Ổn',
+              detail: 'Ok',
               expiresAt: exp.toISOString(),
             };
           }
@@ -189,7 +189,7 @@ export async function checkLogin(
         return {
           agent,
           state: 'ok',
-          detail: 'Ổn',
+          detail: 'Ok',
         };
       }
 
@@ -233,7 +233,7 @@ export async function checkLogin(
         return {
           agent,
           state: 'ok',
-          detail: 'Ổn',
+          detail: 'Ok',
         };
       }
 
@@ -257,7 +257,7 @@ export async function checkLogin(
       return {
         agent,
         state: 'ok',
-        detail: 'Ổn',
+        detail: 'Ok',
       };
     }
 
