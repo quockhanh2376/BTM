@@ -137,6 +137,13 @@ const BaseConfigSchema = z.object({
     qc: z.array(z.string()).optional(),
     audit: z.array(z.string()).optional(),
   }).strict().optional(),
+  /** Plan 6 Task 1: thông báo ntfy. url_file chứa URL topic (https), ngoài git, 0600. */
+  notify: z.object({
+    url_file: z.string().refine(isAbsolute, 'notify.url_file must be an absolute path'),
+    dashboard_url: z.string().regex(/^https?:\/\/[^\s]+$/).optional(),
+    on: z.array(z.enum(['needs_owner', 'awaiting_approval', 'done', 'stopped', 'out_of_turns']))
+      .default(['needs_owner', 'awaiting_approval', 'out_of_turns']),
+  }).strict().optional(),
   rules: RulesSchema,
   energy: EnergySchema,
   login: LoginSchema,
