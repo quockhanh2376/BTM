@@ -66,6 +66,7 @@ function planImport(cfg: Config, store: Store, file: unknown) {
       return rejected.push({ entry: name, reason: 'files not allowed for this tool' });
     }
     const p: Planned = { key: accountKey(agent, slug), agent, slug, tool: tool as Tool, email: e.data.email ?? null, label: e.data.label ?? 'none', files: e.data.files };
+    if ([...fresh, ...conflicts].some((x) => x.key === p.key)) return rejected.push({ entry: name, reason: 'duplicate in file' });
     (store.getAccount(agent, slug) ? conflicts : fresh).push(p);
   });
   return { fresh, conflicts, rejected } as const;
@@ -175,12 +176,40 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
     }
     try {
       addWorkerUser(cfg, key, ctx.exec);
-      if (files) importTokens(cfg, key, tool, files, ctx.exec);
-      store.addAccount(agent, slug, { email: files ? emailFromTokens(tool, files) : null, active: true });
-      const login = files ? null : startLogin(cfg, key, tool, ctx.spawn);
-      send(res, 200, { key, loginId: login?.id ?? null });
+      if (files) {
+        importTokens(cfg, key, tool, files, ctx.exec);
+        store.addAccount(agent, slug, { email: emailFromTokens(tool, files), active: true });
+        return send(res, 200, { key, loginId: null }), true;
+      }
     } catch (err) {
-      send(res, 500, { error: (err as Error).message });
+      return send(res, 500, { error: (err as Error).message }), true;
+    }
+    // claude/codex: chỉ bật tài khoản khi đăng nhập xong; đang có đăng nhập khác → 409, chưa tạo dòng nào.
+    let login: { id: string };
+    try {
+      login = startLogin(cfg, key, tool, ctx.spawn, () => store.updateAccount(agent, slug, { active: true }));
+    } catch (err) {
+      return send(res, 409, { error: (err as Error).message }), true;
+    }
+    store.addAccount(agent, slug, { email: null, active: false });
+    send(res, 200, { key, loginId: login.id });
+    return true;
+  }
+
+  // Đăng nhập lại tài khoản có sẵn (claude/codex): xong thì bật.
+  const reloginM = pathname.match(/^\/api\/accounts\/([^/]+)\/login$/);
+  if (reloginM && KEY_RE.test(reloginM[1]!)) {
+    if (!isIsolated(cfg)) return send(res, 409, { error: 'isolation required' }), true;
+    if (ctx.busy()) return send(res, 409, { error: 'Session running' }), true;
+    const acc = findAccount(cfg, store, reloginM[1]!);
+    if (!acc) return send(res, 404, { error: 'No such account' }), true;
+    const tool = cfg.agents[acc.agent]!.tool;
+    if (tool === 'antigravity-cli') return send(res, 400, { error: 'agy: add the account again from JSON or sign in over ssh' }), true;
+    try {
+      const login = startLogin(cfg, reloginM[1]!, tool, ctx.spawn, () => store.updateAccount(acc.agent, acc.slug, { active: true }));
+      send(res, 200, { key: reloginM[1], loginId: login.id });
+    } catch (err) {
+      send(res, 409, { error: (err as Error).message });
     }
     return true;
   }

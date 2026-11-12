@@ -6,7 +6,7 @@ import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerUser } from '../isolation/worker.ts';
 import { readAgentModels } from '../energy/monitor.ts';
 import { effectiveSeats, resolveSeats, type Store, type GoalState, type QueueItem, type AccountLabel } from '../store/db.ts';
-import { accountKey, usableAccounts } from '../agents/accounts.ts';
+import { accountKey, accountLastKey, pickAccount, usableAccounts } from '../agents/accounts.ts';
 import { usageLimitedKey } from '../agents/usage-limit.ts';
 import { loadTickets, type Ticket, type TicketState, type TicketType, type TicketSize } from '../ticket/ticket.ts';
 import { readProjectKey } from '../ticket/goal.ts';
@@ -341,8 +341,8 @@ function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
       since: null,
       turns: 0,
       lastLine: '',
-      energy: getSeatEnergy(store, agent, cfg),
-      login: getSeatLogin(store, agent),
+      energy: getSeatEnergy(store, pickAccount(cfg, store, agent)?.key || agent, cfg),
+      login: getSeatLogin(store, pickAccount(cfg, store, agent)?.key || agent),
       candidates,
       ...seatExtras(cfg, store, effSeats, seat, agent),
     };
@@ -594,6 +594,8 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     const seatTurns = turns.filter((t) => t.seat === seat);
     const lastTurn = seatTurns.length > 0 ? seatTurns[seatTurns.length - 1] : null;
 
+    // Plan 7: đang chạy → tài khoản lượt này; rảnh → tài khoản lượt kế sẽ dùng.
+    const seatAccount = (status === 'running' ? store.getSetting(accountLastKey(agent)) : pickAccount(cfg, store, agent)?.key) || agent;
     const ticket = (status === 'running' && runningTurn?.seat === seat) ? (runningTurn.task_id ?? null) : null;
     const since = lastTurn?.started_at ?? null;
     const turnsCount = store.countTurns(s.id, seat);
@@ -609,12 +611,12 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       since,
       turns: turnsCount,
       lastLine,
-      energy: getSeatEnergy(store, agent, cfg),
-      login: getSeatLogin(store, agent),
+      energy: getSeatEnergy(store, seatAccount, cfg),
+      login: getSeatLogin(store, seatAccount),
       candidates,
       ...seatExtras(cfg, store, effSeats, seat, agent),
       substitute: lastTurn?.agent && lastTurn.agent !== agent ? lastTurn.agent : null,
-      agentStatus: status === 'running' && s.project && runningTurn?.agent ? readAgentStatus(cfg, runningTurn.agent, s.project) : null,
+      agentStatus: status === 'running' && s.project && runningTurn?.agent ? readAgentStatus(cfg, store.getSetting(accountLastKey(runningTurn.agent)) || runningTurn.agent, s.project) : null,
     };
   });
 

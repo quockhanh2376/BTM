@@ -20,6 +20,7 @@ describe('P7-T4: API tài khoản', () => {
   let busy = false;
   let execCalls: Array<{ file: string; args: string[]; input?: string }>;
   let spawned: string[][];
+  let children: EventEmitter[];
 
   beforeEach(async () => {
     store = openStore(':memory:');
@@ -28,6 +29,7 @@ describe('P7-T4: API tài khoản', () => {
     store.ensureDefaultAccounts(Object.keys(cfg.agents));
     execCalls = [];
     spawned = [];
+    children = [];
     busy = false;
     const exec = (file: string, args: string[], o?: { input?: string }) => {
       execCalls.push({ file, args, input: o?.input });
@@ -36,6 +38,7 @@ describe('P7-T4: API tài khoản', () => {
     const spawn = (file: string, args: string[]) => {
       spawned.push([file, ...args]);
       const ev = new EventEmitter();
+      children.push(ev);
       return { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), on: (e: string, f: any) => ev.on(e, f), kill: () => {} } as any;
     };
     server = createServer({ cfg, store, host: { busy: () => busy } as any, webFile: resolve(__dirname, '../web/index.html'), pollMs: 50, accountExec: exec as any, loginSpawn: spawn });
@@ -86,6 +89,20 @@ describe('P7-T4: API tài khoản', () => {
     const st = await (await fetch(`${base}/api/accounts/login/${loginId}`, { headers: { 'x-btm': '1' } })).json();
     expect(st).toMatchObject({ state: 'waiting', key: 'jenny-b' });
     expect((await fetch(`${base}/api/accounts/login/0000000000000000`, { headers: { 'x-btm': '1' } })).status).toBe(404);
+    // review M1: chưa đăng nhập xong → tài khoản tắt (không bị chọn chạy lượt); đăng nhập khác đang chạy → 409, không tạo dòng
+    expect(store.getAccount('jenny', 'b')?.active).toBe(false);
+    expect((await post('/api/accounts', { agent: 'jenny', slug: 'c' })).status).toBe(409);
+    expect(store.getAccount('jenny', 'c')).toBeNull();
+    children[0]!.emit('exit', 0);
+    expect(store.getAccount('jenny', 'b')?.active).toBe(true);
+    // đăng nhập lại tài khoản có sẵn; agy không hỗ trợ; tài khoản lạ 404
+    store.updateAccount('jenny', 'b', { active: false });
+    const again = await (await post('/api/accounts/jenny-b/login', {})).json();
+    expect(again.loginId).toMatch(/^[0-9a-f]{16}$/);
+    children[1]!.emit('exit', 1);
+    expect(store.getAccount('jenny', 'b')?.active).toBe(false);
+    expect((await post('/api/accounts/jacky/login', {})).status).toBe(400);
+    expect((await post('/api/accounts/jenny-zz/login', {})).status).toBe(404);
   });
 
   it('sửa: nhãn, bật/tắt, thứ tự; tài khoản lạ → 404', async () => {
@@ -122,12 +139,13 @@ describe('P7-T4: API tài khoản', () => {
         { agent: 'jacky', slug: 'e', tool: 'codex-cli', files: { '.codex/auth.json': SECRET } },
         { agent: 'ghost', slug: 'f', tool: 'codex-cli', files: { '.codex/auth.json': SECRET } },
         'garbage',
+        { agent: 'jenny', slug: 'c', tool: 'codex-cli', files: { '.codex/auth.json': 'other' } },
       ],
     };
     const dry = await (await post('/api/accounts/import', { file, dryRun: true })).json();
     expect(dry.new).toEqual(['jenny/c']);
     expect(dry.conflicts).toEqual(['jacky/b']);
-    expect(dry.rejected.map((x: any) => x.reason)).toEqual(['files not allowed for this tool', 'tool mismatch (antigravity-cli)', 'unknown worker on this machine', 'bad entry']);
+    expect(dry.rejected.map((x: any) => x.reason)).toEqual(['files not allowed for this tool', 'tool mismatch (antigravity-cli)', 'unknown worker on this machine', 'bad entry', 'duplicate in file']);
     expect(execCalls).toHaveLength(0);
     const real = await (await post('/api/accounts/import', { file })).json();
     expect(real.imported).toEqual(['jenny/c']);

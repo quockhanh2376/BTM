@@ -136,12 +136,12 @@ export function createMonitor(d: MonitorDeps): {
 
       // Danh sách model cho ô chọn trên dashboard: đọc dưới user của agent, tối đa 6 giờ/lần, lỗi thì giữ bản cũ.
       if (loginHealth.state === 'ok' || loginHealth.state === 'expiring') {
-        const cached = readAgentModels(d.store, agent);
+        const cached = readAgentModels(d.store, owner!); // Plan 7: danh sách model theo Worker, không theo tài khoản
         if (!cached || d.now().getTime() - cached.at > MODELS_TTL_MS) {
           try {
             const models = await (d.listModels ?? listModels)(agentCfg.tool, runnerFor(agent));
             if (models.length > 0) {
-              d.store.setSetting(agentModelsKey(agent), JSON.stringify({ at: d.now().getTime(), models }));
+              d.store.setSetting(agentModelsKey(owner!), JSON.stringify({ at: d.now().getTime(), models }));
             }
           } catch {}
         }

@@ -16,6 +16,7 @@ function fakeChild() {
     on: (e: string, fn: (...a: any[]) => void) => ev.on(e, fn),
     kill: vi.fn(),
     exit: (code: number) => ev.emit('exit', code),
+    fail: () => ev.emit('error', new Error('spawn sudo ENOENT')),
   };
   return { child, written };
 }
@@ -63,6 +64,27 @@ describe('P7-T4: đăng nhập trên dashboard', () => {
     vi.advanceTimersByTime(LOGIN_TIMEOUT_MS + 1);
     expect(loginState(id)).toMatchObject({ state: 'failed', error: 'timeout' });
     expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+  });
+
+  it('review L2: lỗi spawn không làm sập BTM → failed; onDone chỉ gọi khi thoát 0', async () => {
+    const { child } = fakeChild();
+    const done = vi.fn();
+    const { id } = startLogin(cfg, 'jenny-b', 'codex-cli', () => child as any, done);
+    child.exit(0);
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(loginState(id)?.state).toBe('done');
+    resetLoginFlows();
+    const c2 = fakeChild().child as any;
+    const done2 = vi.fn();
+    const r2 = startLogin(cfg, 'jenny-c', 'codex-cli', () => c2, done2);
+    c2.exit(1);
+    expect(done2).not.toHaveBeenCalled();
+    expect(loginState(r2.id)?.state).toBe('failed');
+    resetLoginFlows();
+    const c3 = fakeChild().child;
+    const r3 = startLogin(cfg, 'jenny-d', 'codex-cli', () => c3 as any);
+    expect(() => c3.fail()).not.toThrow(); // không có handler 'error' → EventEmitter sẽ throw (sập BTM)
+    expect(loginState(r3.id)).toMatchObject({ state: 'failed', error: 'login could not start' });
   });
 
   it('agy không đăng nhập trên dashboard được; không cách ly → lỗi', () => {

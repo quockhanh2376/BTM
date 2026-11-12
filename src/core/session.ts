@@ -1205,7 +1205,8 @@ async function processGoal(
         }
         const gateResult = runGate(d.repo, ticket, base, d.cfg.gate.commands, {
           cfg: d.cfg,
-          agentId: devAgent,
+          // Plan 7: gate chạy dưới đúng tài khoản Dev vừa code (không đụng tài khoản default có thể đang ngủ).
+          agentId: d.store.getSetting(accountLastKey(devAgent)) || devAgent,
           timeoutMs,
           require_report_schema: d.cfg.gate.require_report_schema,
         });
@@ -2061,7 +2062,7 @@ function withUsageLimit(d: SessionDeps): SessionDeps {
       const pre = chosen.get(agentId);
       chosen.delete(agentId);
       const key = pre && isUsable(d.store, pre, new Date()) ? pre : pickAccount(d.cfg, d.store, agentId)?.key;
-      if (!key) throw new Error(`usage_limit_hit:${agentId}`);
+      if (!key) throw new Error(soonestReset(d.store, agentId) ? `usage_limit_hit:${agentId}` : `no_usable_account:${agentId}`);
       const prev = d.store.getSetting(accountLastKey(agentId));
       if (prev && prev !== key) {
         send({ kind: 'account_switch', project: d.repo, notes: [`${agentId}:${slugOfKey(agentId, prev)}_to_${slugOfKey(agentId, key)}`] });

@@ -182,6 +182,7 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | acc.lbl.* | — / IDE / CLI / Plugin / Máy khác | — / IDE / CLI / Plugin / Other machine |
 | acc.st.* | Đang dùng / Kế tiếp / Bật, rảnh / Hết hạn mức · hồi {time} / Đang ngủ / Cần đăng nhập lại | In use / Next / Active, free / Usage limited · resets {time} / Sleeping / Re-login needed |
 | acc.copyLoginItem | Copy lệnh đăng nhập cho {key} | Copy login command for {key} |
+| acc.signIn / acc.signInFor | Đăng nhập / Đăng nhập {key} tại đây (xong thì bật) | Sign in / Sign in {key} here (turns it on when done) |
 | acc.empty | Chưa có thông tin tài khoản | No account info |
 | acc.loginCmd | Lệnh đăng nhập (cho {agent}) | Login command ({agent}) |
 | acc.copy | Sao chép | Copy |

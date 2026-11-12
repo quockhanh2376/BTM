@@ -2435,6 +2435,8 @@
           'acc.st.sleeping': 'Sleeping',
           'acc.st.relogin': 'Re-login needed',
           'acc.copyLoginItem': 'Copy login command for {key}',
+          'acc.signIn': 'Sign in',
+          'acc.signInFor': 'Sign in {key} here (turns it on when done)',
           'acc.empty': 'No account info',
           'acc.loginCmd': 'Login command',
           'acc.loginCmdFor': 'Login command ({agent})',
@@ -4490,6 +4492,24 @@
             b.addEventListener('click', function () { accountPost(a.key, { move: d[0] }); });
             ctrl.appendChild(b);
           });
+
+          if (worker.tool !== 'antigravity-cli') {
+            var signIn = document.createElement('button');
+            signIn.type = 'button';
+            signIn.className = 'btn btn-secondary btn-xs';
+            signIn.textContent = tx('acc.signIn');
+            signIn.setAttribute('aria-label', tx('acc.signInFor', { key: a.key }));
+            signIn.addEventListener('click', async function () {
+              try {
+                var res = await postJson('/api/accounts/' + encodeURIComponent(a.key) + '/login', {});
+                accAddPanel.hidden = false;
+                pollLogin(res.loginId, res.key);
+              } catch (err) {
+                showFeedback(topFeedback, err.message, true);
+              }
+            });
+            ctrl.appendChild(signIn);
+          }
 
           var copy = document.createElement('button');
           copy.type = 'button';

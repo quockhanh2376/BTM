@@ -137,8 +137,9 @@ if id "$u" >/dev/null 2>&1; then
   id -nG "$u" | tr ' ' '\n' | grep -qx btm-workers || { echo "user exists but is not a BTM worker" >&2; exit 3; }
   exit 0
 fi
-useradd -m -s /bin/bash "$u"
-usermod -aG btm-read,btm-workers "$u"
+# Đường dẫn sót lại từ user cũ có thể chứa symlink do agent đặt → không tạo đè (root sẽ đi theo symlink).
+for p in "/home/$u" "/srv/btm-work/$u"; do [ -e "$p" ] || [ -L "$p" ] && { echo "leftover $p – remove it first" >&2; exit 4; }; done
+useradd -m -s /bin/bash -G btm-read,btm-workers "$u"
 chmod 700 "/home/$u"
 for f in /etc/cron.deny /etc/at.deny; do grep -qsx "$u" "$f" || echo "$u" >> "$f"; done
 loginctl disable-linger "$u" 2>/dev/null || true
