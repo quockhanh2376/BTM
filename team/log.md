@@ -179,4 +179,4 @@
 ## 2026-11-12 – Team inbox gọn + xoá ghi chú (Cheki)
 - PR #25: xoá ghi chú (DB + file trên main, commit owner, cập nhật ghim; lịch sử git giữ file; bỏ qua note của phiên đang chờ). Inbox thu gọn mặc định, tự thu sau 3 phút. Thứ tự: Questions → Command → Accounts → ghế → Session goals → Inbox → Goals + Log → Diff.
 - Review 1: không High; Medium + 1 Low đã sửa, 1 Low ghi nhận (`team/reviews/inbox-cleanup-review-1.md`).
-- VM 784/784 ×3. Merge 6ffe28d. **Chưa deploy** (chờ anh Zon).
+- VM 784/784 ×3. Merge 6ffe28d. Deploy c6eb471 (anh Zon duyệt): dashboard 200, 3 agent "Ok".
