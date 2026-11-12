@@ -365,6 +365,37 @@
     .seat-card.is-holder {
       border: 2px solid var(--accent);
       box-shadow: 0 0 0 1px var(--accent);
+      position: relative;
+    }
+
+    /* Đốm sáng chạy quanh viền thẻ ghế đang làm (anh Zon 2026-11-12). Chỉ vẽ trên viền nhờ mask, không che nội dung. */
+    @property --glow-angle {
+      syntax: '<angle>';
+      inherits: false;
+      initial-value: 0deg;
+    }
+
+    .seat-card.is-holder::before {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      padding: 3px;
+      border-radius: 14px;
+      background: conic-gradient(from var(--glow-angle), transparent 0deg 250deg, rgba(255, 255, 255, 0.15) 290deg, #9ec5ff 330deg, #fff 352deg, transparent 360deg);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+      filter: drop-shadow(0 0 6px #9ec5ff) drop-shadow(0 0 2px #fff);
+      pointer-events: none;
+      animation: holder-glow 2.8s linear infinite;
+    }
+
+    @keyframes holder-glow {
+      to { --glow-angle: 360deg; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .seat-card.is-holder::before { animation: none; }
     }
 
     .seat-header {
