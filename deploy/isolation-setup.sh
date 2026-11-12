@@ -124,10 +124,35 @@ fi
 exit 0
 EOF
 
+  install_file /usr/local/bin/btm-account 755 <<'EOF'
+#!/bin/bash
+# Plan 7: tạo user cho tài khoản mới của Worker (btm-<agent>-<slug>), giống bước prep. Root, chỉ gọi qua sudo của user agent.
+# User đã tồn tại: chỉ kiểm tra là worker của BTM, KHÔNG ghi gì vào home của nó bằng root (có thể có symlink do agent đặt).
+# Đọc/ghi file token không ở đây: BTM chạy dưới chính user đó qua btm-worker-exec.
+set -euo pipefail
+[ "$#" -eq 2 ] && [ "$1" = add ] || { echo "usage: btm-account add <btm-user>" >&2; exit 2; }
+u="$2"
+[[ "$u" =~ ^btm-[a-z0-9-]{1,28}$ ]] || { echo "bad user" >&2; exit 2; }
+if id "$u" >/dev/null 2>&1; then
+  id -nG "$u" | tr ' ' '\n' | grep -qx btm-workers || { echo "user exists but is not a BTM worker" >&2; exit 3; }
+  exit 0
+fi
+useradd -m -s /bin/bash "$u"
+usermod -aG btm-read,btm-workers "$u"
+chmod 700 "/home/$u"
+for f in /etc/cron.deny /etc/at.deny; do grep -qsx "$u" "$f" || echo "$u" >> "$f"; done
+loginctl disable-linger "$u" 2>/dev/null || true
+install -d -o "$u" -g "$u" -m 700 "/srv/btm-work/$u"
+line='export PATH=/opt/btm-cli/bin:$PATH DISABLE_AUTOUPDATER=1'
+for f in .profile .bashrc; do echo "$line" >> "/home/$u/$f"; done
+EOF
+
   # sudoers: agent chỉ được chạy đúng 3 wrapper dưới user thuộc nhóm btm-workers, không mật khẩu, không giữ env.
+  # Plan 7: thêm đúng 1 lệnh root `btm-account add <user>` (script tự kiểm tên user).
   local sud; sud="$(mktemp)"
   cat > "$sud" <<'EOF'
 agent ALL=(%btm-workers) NOPASSWD: /usr/local/bin/btm-worker-exec, /usr/local/bin/btm-worker-killall, /usr/local/bin/btm-worker-reset
+agent ALL=(root) NOPASSWD: /usr/local/bin/btm-account add *
 EOF
   if [ "$DRY" = 1 ]; then echo "+ ghi /etc/sudoers.d/btm:"; sed 's/^/    /' "$sud"
   else visudo -cf "$sud" >/dev/null && install -o root -g root -m 440 "$sud" /etc/sudoers.d/btm; fi
