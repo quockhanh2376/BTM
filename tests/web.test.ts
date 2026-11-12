@@ -1493,7 +1493,7 @@ describe('P6-T3/T4: dashboard diff + câu hỏi', () => {
 describe('Inbox gọn + thứ tự dashboard (2026-11-12)', () => {
   const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
   it('thứ tự: Questions → Command → Accounts → ghế → Session goals → Inbox → Goals+Log → Diff', () => {
-    const ids = ['id="questions-section"', 'cmd-section', 'id="accounts-container"', 'id="seats-container"', 'goals-section"', 'id="inbox-section"', 'board-and-log-layout', 'id="diff-panel"'];
+    const ids = ['id="questions-section"', 'class="card cmd-section"', 'id="accounts-container"', 'id="seats-container"', 'class="card goals-section"', 'id="inbox-section"', 'class="board-and-log-layout"', 'id="diff-panel"'];
     const at = ids.map((s) => html.indexOf(s));
     expect(at.every((i) => i > 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
