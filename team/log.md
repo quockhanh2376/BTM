@@ -184,4 +184,5 @@
 ## 2026-11-12 – Plan 7: Accounts (Cheki)
 - Thiết kế cùng anh Zon: Worker = nhân vật có nhiều tài khoản (mỗi tài khoản 1 user Linux), thứ tự a → b, quay lại a khi qua giờ reset; Add Account trên dashboard; Export/Import JSON trần (decision 0005); tab All/BTM/IDE/CLI/Plugin.
 - PR #26 merge d9cdc0b. Review 1: 2 High + 3 Medium + 4 Low, đã sửa hết (`team/reviews/P7-review-1.md`). VM 815/815 ×3.
+- 2026-11-12: anh Zon xác nhận nhận được ntfy (web app ntfy.sh trên Windows). Tạo project nháp mini-game (key MG, /srv/btm-repos/mini-game) làm project đang chạy để thử G1.
 - Deploy 62b38ce (anh Zon duyệt): DB backup `btm.db.bak-plan7`; chạy lại prep (cài `btm-account` + 1 dòng sudoers); dashboard 200; 3 Worker có tài khoản default = user cũ, Ok, không phải đăng nhập lại; `p7-account-check.mjs` 18/18 PASS, đã xoá user thử. Chưa thử thật: thêm jacky/b bằng JSON, đăng nhập codex/claude trên dashboard, export → import.
