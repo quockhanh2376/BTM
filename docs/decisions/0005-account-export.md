@@ -15,6 +15,11 @@
   - antigravity-cli: `.gemini/antigravity-cli/antigravity-oauth-token`
 - Định dạng file agy (kiểm trên VM 2026-11-12, chỉ xem tên key): `{token: {access_token, token_type, refresh_token, expiry, expires_in}, auth_method, id_token_email}`. Nhập agy bằng `{email, refresh_token}` → dựng file với `access_token` rỗng, `expiry` đã qua để CLI tự làm mới.
 
+## Định dạng file (anh Zon chốt 2026-11-12: đồng bộ với danh sách tài khoản Antigravity)
+- File là **một mảng JSON**. Tài khoản agy: `{"email": "…", "refresh_token": "…"}` (tuỳ chọn `"agent"` khi máy có nhiều Worker agy; mặc định là Worker agy duy nhất). Tên tài khoản (slug) lấy từ phần trước `@` của email (a-z0-9, tối đa 12); email đã có ở Worker đó → ghi đè đúng tài khoản ấy (phải tick).
+- Tài khoản claude/codex trong cùng mảng: `{agent, slug, tool, email, label, files}`.
+- Import vẫn nhận file cũ `{version: 1, accounts: […]}` và bỏ qua dấu phẩy thừa trước `]`/`}`.
+
 ## Giới hạn
 - Ai có file export là dùng được mọi tài khoản trong đó: anh tự giữ file (không gửi qua chat/email, xoá khi xong).
 - claude/codex đổi refresh token khi làm mới: cùng một tài khoản chạy trên 2 máy thì 1 máy sẽ bị đăng xuất. BTM báo ntfy khi tài khoản đang bật bị đăng xuất; không có khoá chung giữa các máy.

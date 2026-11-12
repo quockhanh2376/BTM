@@ -1986,7 +1986,7 @@
       <div id="acc-import-panel" class="acc-panel" hidden aria-live="polite">
         <div id="acc-import-summary"></div>
         <div class="acc-panel-row">
-          <button id="acc-import-confirm" class="btn btn-primary btn-sm" type="button" data-i18n="acc.confirmImport">Import</button>
+          <button id="acc-import-confirm" class="btn btn-primary btn-sm" type="button" data-i18n="acc.confirmImport">Confirm import</button>
           <button id="acc-import-cancel" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.cancel">Cancel</button>
         </div>
       </div>
@@ -2411,7 +2411,7 @@
           'acc.cancel': 'Cancel',
           'acc.pasteCode': 'Paste code',
           'acc.send': 'Send',
-          'acc.confirmImport': 'Import',
+          'acc.confirmImport': 'Confirm import',
           'acc.badJson': 'Not valid JSON',
           'acc.created': 'Account {key} created',
           'acc.loginOpen': 'Open the link, sign in, then wait here',
@@ -4652,8 +4652,10 @@
       accImportFile.addEventListener('change', async function () {
         var f = accImportFile.files && accImportFile.files[0];
         if (!f) return;
+        var rawText = await f.text();
         try {
-          accImportData = JSON.parse(await f.text());
+          // Chấp nhận dấu phẩy thừa trước ] hoặc } (file Antigravity sửa tay hay có).
+          try { accImportData = JSON.parse(rawText); } catch (e1) { accImportData = JSON.parse(rawText.replace(/,\s*([\]}])/g, '$1')); }
         } catch (e) {
           showFeedback(topFeedback, tx('acc.badJson'), true);
           return;

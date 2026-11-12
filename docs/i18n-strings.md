@@ -162,7 +162,7 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | acc.agyPlaceholder | Dán {"email", "refresh_token"} hoặc chọn file JSON | Paste {"email": "…", "refresh_token": "…"} or choose a JSON file |
 | acc.create / acc.cancel / acc.send | Tạo / Huỷ / Gửi | Create / Cancel / Send |
 | acc.pasteCode | Dán mã | Paste code |
-| acc.confirmImport | Nhập | Import |
+| acc.confirmImport | Xác nhận nhập | Confirm import |
 | acc.badJson | JSON không hợp lệ | Not valid JSON |
 | acc.created | Đã tạo tài khoản {key} | Account {key} created |
 | acc.loginOpen | Mở link, đăng nhập rồi chờ ở đây | Open the link, sign in, then wait here |
