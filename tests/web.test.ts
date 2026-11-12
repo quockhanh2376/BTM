@@ -1493,7 +1493,7 @@ describe('P6-T3/T4: dashboard diff + câu hỏi', () => {
 describe('Inbox gọn + thứ tự dashboard (2026-11-12)', () => {
   const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
   it('thứ tự: Questions → Command → Accounts → ghế → Session goals → Inbox → Goals+Log → Diff', () => {
-    const ids = ['id="questions-section"', 'class="card cmd-section"', 'id="accounts-container"', 'id="seats-container"', 'class="card goals-section"', 'id="inbox-section"', 'class="board-and-log-layout"', 'id="diff-panel"'];
+    const ids = ['id="questions-section"', 'class="card cmd-section"', 'id="accounts-container"', 'id="seats-container"', 'id="inbox-section"', 'class="board-and-log-layout"', 'id="diff-panel"'];
     const at = ids.map((s) => html.indexOf(s));
     expect(at.every((i) => i > 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
@@ -1532,5 +1532,16 @@ describe('Đốm sáng quanh thẻ ghế đang làm (2026-11-12)', () => {
     expect(html).toContain('animation: holder-glow 2.8s linear infinite;');
     expect(html).not.toMatch(/\.seat-card\.is-holder::before \{ animation: none; \}/);
     expect(html).toContain('pointer-events: none;');
+  });
+});
+
+describe('Gộp Session goals vào khung hàng đợi (2026-11-12)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('không còn section Session goals; goal của phiên hiện "Goal G<n> · <tiêu đề>" trong cùng danh sách', () => {
+    expect(html).not.toContain('goals-section');
+    expect(html).not.toContain('id="goals-list"');
+    expect(html).toContain("'queue.title': 'Session & queue'");
+    expect(html).toContain("label.textContent = tx('queue.goal', { goal: text });");
+    expect(html).toContain("text = 'G' + text + (found && found.title ? ' · ' + found.title : '');");
   });
 });

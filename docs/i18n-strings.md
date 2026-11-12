@@ -38,8 +38,6 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 
 | key | VI hiện tại | EN đề xuất |
 |---|---|---|
-| goals.sessionTitle | Mục tiêu phiên | Session goals |
-| goals.sessionEmpty | Chưa có mục tiêu phiên | No session goals |
 | seat.idle | Rảnh | Idle |
 | seat.running | Đang chạy | Running |
 | seat.waiting | Chờ | Waiting |
@@ -108,8 +106,9 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | status.stopped | Đã dừng | Stopped |
 | status.refused | Bị từ chối | Refused |
 | status.error | Lỗi | Error |
-| queue.title | Hàng đợi | Queue |
-| queue.empty | Hàng đợi trống | Queue empty |
+| queue.title | Phiên & hàng đợi | Session & queue |
+| queue.goal | Goal {goal} | Goal {goal} |
+| queue.empty | Không có gì đang chạy hay chờ | Nothing running or queued |
 | queue.queued | Xếp hàng | Queued |
 | queue.cancelled | Đã hủy | Cancelled |
 | log.title | Nhật ký | Log |
