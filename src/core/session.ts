@@ -8,6 +8,8 @@ import { loadTickets, checkReady, type Ticket, type TicketState, TicketError } f
 import { readProjectKey } from '../ticket/goal.ts';
 import { runGate } from '../gate/gate.ts';
 import { detectUsageLimit, usageLimitedKey } from '../agents/usage-limit.ts';
+import { accountLastKey, isUsable, pickAccount, slugOfKey, soonestReset, usableAccounts } from '../agents/accounts.ts';
+import { notify as sendNotify, type NotifyEvent } from '../notify/notify.ts';
 import { formatHHmm } from '../energy/monitor.ts';
 import { git, commitAll, headSha } from '../git.ts';
 import { parseTicketQcResult } from '../qc/result.ts';
@@ -55,6 +57,10 @@ export interface SessionDeps {
     refresh(agents: string[], force?: boolean): Promise<void>;
     gate(agent: string): { ok: true } | { ok: false; reason: string };
   };
+  /** Plan 7: gửi ntfy (mặc định notify thật; test truyền vào). */
+  notify?: (ev: NotifyEvent) => void;
+  /** Plan 7: tài khoản pickSeatAgent đã chọn (qua gate energy) cho từng agent; runner dùng lại. */
+  chosenAccounts?: Map<string, string>;
 }
 
 export interface RunSessionOpts {
@@ -412,8 +418,7 @@ async function processGoal(
     const list = projectBackups[seat] ?? d.cfg.seats_backup?.[seat] ?? [];
     return list.filter((a) => {
       if (!Object.hasOwn(d.cfg.agents, a) || !d.cfg.agents[a]!.can_sit.includes(seat)) return false;
-      const until = d.store.getSetting(usageLimitedKey(a));
-      return !(until && Date.parse(until) > Date.now());
+      return pickAccount(d.cfg, d.store, a) !== null;
     });
   }
 
@@ -429,22 +434,32 @@ async function processGoal(
         reasons.push(`${agent}: hard rule`);
         continue;
       }
-      const limitedUntil = d.store.getSetting(usageLimitedKey(agent));
-      if (limitedUntil && Date.parse(limitedUntil) > Date.now()) {
-        reasons.push(`usage_limited:${agent} resets ${formatHHmm(limitedUntil)}`);
+      // Plan 7: thử lần lượt tài khoản dùng được của agent (giới hạn/đăng nhập), rồi gate energy theo tài khoản.
+      const accounts = usableAccounts(d.cfg, d.store, agent);
+      if (accounts.length === 0) {
+        const resets = soonestReset(d.store, agent);
+        reasons.push(resets ? `usage_limited:${agent} resets ${formatHHmm(resets)}` : `usage_limited:${agent}`);
         continue;
       }
-      if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
-        try {
-          await refreshFn([agent]);
-        } catch {}
+      let picked: string | null = null;
+      for (const acct of accounts) {
+        if (refreshFn && d.cfg.energy.read_on.includes('before_turn')) {
+          try {
+            await refreshFn([acct.key]);
+          } catch {}
+        }
+        const check = gateFn ? gateFn(acct.key) : ({ ok: true } as const);
+        if (check.ok) {
+          picked = acct.key;
+          break;
+        }
+        reasons.push(check.reason);
       }
-      const check = gateFn ? gateFn(agent) : ({ ok: true } as const);
-      if (check.ok) {
+      if (picked) {
+        d.chosenAccounts?.set(agent, picked);
         if (agent !== primary) console.log(`seat_substitute:${seat}:${primary}->${agent}`);
         return { agent };
       }
-      reasons.push(check.reason);
     }
     if (backups.length === 0) return { agent: null, notes: reasons };
     return { agent: null, notes: ['all_agents_exhausted', ...reasons] };
@@ -1190,7 +1205,8 @@ async function processGoal(
         }
         const gateResult = runGate(d.repo, ticket, base, d.cfg.gate.commands, {
           cfg: d.cfg,
-          agentId: devAgent,
+          // Plan 7: gate chạy dưới đúng tài khoản Dev vừa code (không đụng tài khoản default có thể đang ngủ).
+          agentId: d.store.getSetting(accountLastKey(devAgent)) || devAgent,
           timeoutMs,
           require_report_schema: d.cfg.gate.require_report_schema,
         });
@@ -2033,16 +2049,30 @@ function readReport(path: string): string {
 
 // Plan 6 Task 2: CLI báo hết hạn mức → ghi agent hết tới giờ hồi (pickSeatAgent bỏ qua agent đó), kết thúc lượt
 // bằng lỗi usage_limit_hit:<agent>; host tự Tiếp tục để người dự phòng ngồi thay.
+// Plan 7: chọn tài khoản cho lượt (tài khoản pickSeatAgent đã qua gate, nếu còn dùng được; không thì tài khoản đầu tiên
+// dùng được), chạy dưới user của tài khoản đó, đánh dấu giới hạn theo tài khoản. Đổi tài khoản so với lượt trước → ntfy.
 function withUsageLimit(d: SessionDeps): SessionDeps {
   const run = d.runner;
+  const chosen = d.chosenAccounts ?? new Map<string, string>();
+  const send = d.notify ?? ((ev: NotifyEvent) => void sendNotify(d.cfg, ev));
   return {
     ...d,
+    chosenAccounts: chosen,
     runner: async (seat, agentId, prompt, cwd, logFile, options) => {
-      const out = await run(seat, agentId, prompt, cwd, logFile, options);
+      const pre = chosen.get(agentId);
+      chosen.delete(agentId);
+      const key = pre && isUsable(d.store, pre, new Date()) ? pre : pickAccount(d.cfg, d.store, agentId)?.key;
+      if (!key) throw new Error(soonestReset(d.store, agentId) ? `usage_limit_hit:${agentId}` : `no_usable_account:${agentId}`);
+      const prev = d.store.getSetting(accountLastKey(agentId));
+      if (prev && prev !== key) {
+        send({ kind: 'account_switch', project: d.repo, notes: [`${agentId}:${slugOfKey(agentId, prev)}_to_${slugOfKey(agentId, key)}`] });
+      }
+      d.store.setSetting(accountLastKey(agentId), key);
+      const out = await run(seat, agentId, prompt, cwd, logFile, { ...options, account: key });
       const tool = d.cfg.agents[agentId]?.tool;
       const hit = tool ? detectUsageLimit(tool, out, new Date()) : null;
       if (hit) {
-        d.store.setSetting(usageLimitedKey(agentId), hit.resetsAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString());
+        d.store.setSetting(usageLimitedKey(key), hit.resetsAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString());
         throw new Error(`usage_limit_hit:${agentId}`);
       }
       return out;

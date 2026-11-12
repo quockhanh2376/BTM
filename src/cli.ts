@@ -19,6 +19,7 @@ import { makeRunner, type Runner } from './runner/run.ts';
 import { createHost } from './server/host.ts';
 import { createServer } from './server/http.ts';
 import { createMonitor } from './energy/monitor.ts';
+import { notify } from './notify/notify.ts';
 import { readEnergy } from './energy/quota.ts';
 import { checkLogin } from './energy/login.ts';
 
@@ -79,6 +80,7 @@ export async function serve(
 
   const dbPath = join(cfg.host.data_dir, 'btm.db');
   const store = openStore(dbPath);
+  store.ensureDefaultAccounts(Object.keys(cfg.agents)); // Plan 7: user hiện có = tài khoản default của Worker
 
   const runner = effectiveDeps?.runner ?? makeRunner(cfg, undefined, undefined, undefined, undefined, store);
   const hostFactory = effectiveDeps?.createHost ?? createHost;
@@ -91,6 +93,7 @@ export async function serve(
     checkLogin,
     now: () => new Date(),
     env: effectiveEnv,
+    notify: (ev) => void notify(cfg, ev),
   });
 
   const host = hostFactory({

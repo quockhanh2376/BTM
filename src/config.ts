@@ -82,7 +82,8 @@ export const AgentConfigSchema = z.object({
 export const RulesSchema = z.object({
   coder_cannot_qc_same_task: z.boolean(),
   auto_handoff_on_failure: z.boolean(),
-  auto_switch_accounts: z.literal(false),
+  // Plan 7: true = hết quota thì đổi sang tài khoản kế tiếp của cùng Worker; false = chỉ tài khoản đầu tiên đang bật.
+  auto_switch_accounts: z.boolean().default(true),
 }).strict();
 
 export const EnergySchema = z.object({

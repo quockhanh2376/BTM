@@ -20,6 +20,7 @@ import { approveGoal as approveGoalFn, type ApproveGoalResult } from '../ticket/
 import { createMonitor } from '../energy/monitor.ts';
 import { readEnergy } from '../energy/quota.ts';
 import { checkLogin } from '../energy/login.ts';
+import { activeAccountKeys, usableAccounts } from '../agents/accounts.ts';
 
 export interface HostDeps {
   cfg: Config;
@@ -50,6 +51,7 @@ export function createHost(d: HostDeps): HostApi & {
     checkLogin,
     now: () => new Date(),
     env: d.env,
+    notify: (ev) => void notify(d.cfg, ev),
   });
 
   let isBusy = false;
@@ -247,15 +249,27 @@ export function createHost(d: HostDeps): HostApi & {
         }
 
         let gateFailedReason: string | null = null;
-        if (monitor && agent) {
-          try {
-            await monitor.refresh([agent]);
-          } catch {
-            // refresh reject -> coi như unknown
-          }
-          const gateCheck = monitor.gate(agent);
-          if (!gateCheck.ok) {
-            gateFailedReason = gateCheck.reason;
+        // Plan 7: lệnh trực tiếp chạy dưới tài khoản dùng được đầu tiên của Worker qua được gate energy.
+        let account: string | undefined;
+        if (agent) {
+          const candidates = usableAccounts(d.cfg, d.store, agent);
+          if (candidates.length === 0) gateFailedReason = `usage_limited:${agent}`;
+          for (const c of candidates) {
+            if (monitor) {
+              try {
+                await monitor.refresh([c.key]);
+              } catch {
+                // refresh reject -> coi như unknown
+              }
+              const gateCheck = monitor.gate(c.key);
+              if (!gateCheck.ok) {
+                gateFailedReason = gateCheck.reason;
+                continue;
+              }
+            }
+            account = c.key;
+            gateFailedReason = null;
+            break;
           }
         }
 
@@ -288,6 +302,7 @@ export function createHost(d: HostDeps): HostApi & {
             try {
               output = await d.runner('dev', agent, prompt, activeProject, logFile, {
                 signal: abortController.signal,
+                account,
               });
             } catch (err: any) {
               runError = err;
@@ -398,6 +413,7 @@ export function createHost(d: HostDeps): HostApi & {
             try {
               output = await d.runner('qc', agent, prompt, activeProject, logFile, {
                 signal: abortController.signal,
+                account,
               });
             } catch (err: any) {
               runError = err;
@@ -761,7 +777,8 @@ export function createHost(d: HostDeps): HostApi & {
       outcome.status === 'needs_owner' &&
       sid != null &&
       outcome.notes[0]?.startsWith('usage_limit_hit:') &&
-      used < 2 &&
+      // Plan 7: mỗi tài khoản phụ đang bật cho thêm 1 lần đổi (a → b → c), ngoài 2 lần cho người dự phòng.
+      used < 2 + Math.max(0, activeAccountKeys(d.cfg, d.store).length - Object.keys(d.cfg.agents).length) &&
       d.store.getActiveProject() === project
     ) {
       autoResumes.set(sid, used + 1);

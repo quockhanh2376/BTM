@@ -4391,6 +4391,65 @@ describe('P6-T2: hết hạn mức giữa lượt → tiếp tục bằng ngư�
   });
 });
 
+describe('P7-T2: đổi tài khoản của cùng Worker trước khi đổi người', () => {
+  it('jacky/default hết quota → lượt sau chạy jacky-b (ntfy 1 lần); cả hai hết + dự phòng jenny → jenny', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '1' });
+    const { deps, store } = makeDeps(repo, { seats_backup: { dev: ['jenny'], qc: ['elon'] } } as any);
+    store.ensureDefaultAccounts(['elon', 'jacky', 'jenny']);
+    store.addAccount('jacky', 'b', { active: true });
+    store.addAccount('jacky', 'c', { active: false }); // ngủ: không bao giờ được chọn
+    const sent: string[] = [];
+    deps.notify = (ev) => sent.push(`${ev.kind}:${ev.notes?.[0]}`);
+    const quota = { exitCode: 1, output: 'error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 2h0m0s.' };
+    const { runner, calls } = createFakeRunner([
+      (_s, _a, _p, cwd) => { writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }); },
+      () => quota,
+      () => quota,
+      (_s, agent, _p, cwd) => {
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+        writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+      },
+      () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+    ]);
+    deps.runner = runner;
+    deps.gate = () => ({ ok: true as const });
+    const first = await runSession(deps, ['Build feature'], { approved: true });
+    expect(first.notes[0]).toBe('usage_limit_hit:jacky');
+    expect(store.getSetting('usage_limited_until:jacky')).toBeTruthy();
+    const second = await resumeSession(deps, first.sessionId!);
+    expect(second.notes[0]).toBe('usage_limit_hit:jacky');
+    expect(store.getSetting('usage_limited_until:jacky-b')).toBeTruthy();
+    await resumeSession(deps, first.sessionId!);
+    expect(calls.map((c) => `${c.seat}:${c.agentId}:${c.options?.account}`)).toEqual([
+      'pm:elon:elon', 'dev:jacky:jacky', 'dev:jacky:jacky-b', 'dev:jenny:jenny', 'qc:elon:elon',
+    ]);
+    expect(sent).toEqual(['account_switch:jacky:default_to_b']);
+    store.close();
+  });
+
+  it('gate energy của tài khoản đầu fail → dùng tài khoản kế tiếp của cùng Worker', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '1' });
+    const { deps, store } = makeDeps(repo);
+    store.ensureDefaultAccounts(['elon', 'jacky', 'jenny']);
+    store.addAccount('jacky', 'b', { active: true });
+    deps.notify = () => {};
+    const { runner, calls } = createFakeRunner([
+      (_s, _a, _p, cwd) => { writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }); },
+      (_s, agent, _p, cwd) => {
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const app = 2;\n');
+        writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+      },
+      () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+    ]);
+    deps.runner = runner;
+    deps.gate = (key) => (key === 'jacky' ? { ok: false as const, reason: 'energy:5h 3% left' } : { ok: true as const });
+    const out = await runSession(deps, ['Build feature'], { approved: true });
+    expect(out.tasks['GTM-0001']).toBe('passed');
+    expect(calls[1]!.options?.account).toBe('jacky-b');
+    store.close();
+  });
+});
+
 describe('P6-T3/T4: câu hỏi chặn ticket, ghi chú của anh vào lượt Dev', () => {
   it('Dev hỏi (có ?) → code giữ, ticket returned, goal dừng questions_open (ticket khác chưa chạy); trả lời → Dev làm tiếp, QC xem toàn bộ', async () => {
     const repo = tmpRepo({ 'src/app.ts': '1', 'src/b.ts': '1' });

@@ -23,6 +23,18 @@ export interface LineNote {
 
 export type QuestionState = 'open' | 'answered' | 'used';
 
+// Plan 7: mỗi Worker (agent) có nhiều tài khoản; mỗi tài khoản = 1 user Linux. Khoá tài khoản: agent (default) | agent-slug.
+export type AccountLabel = 'none' | 'ide' | 'cli' | 'plugin' | 'other';
+export interface AccountRow {
+  agent: string;
+  slug: string;
+  email: string | null;
+  label: AccountLabel;
+  active: boolean;
+  ord: number;
+  created_at: string;
+}
+
 export interface QuestionRow {
   id: number;
   project: string;
@@ -97,6 +109,18 @@ export interface NoteRow {
   session_id: number | null;
 }
 
+function toAccount(r: any): AccountRow {
+  return {
+    agent: String(r.agent),
+    slug: String(r.slug),
+    email: r.email === null || r.email === undefined ? null : String(r.email),
+    label: String(r.label) as AccountLabel,
+    active: Number(r.active) === 1,
+    ord: Number(r.ord),
+    created_at: String(r.created_at),
+  };
+}
+
 export interface Store {
   setActiveProject(path: string): void;
   getActiveProject(): string | null;
@@ -141,6 +165,13 @@ export interface Store {
   /** Đổi đường dẫn project ở mọi bảng + key setting `…:<path>` (btm isolate). */
   renameProject(oldPath: string, newPath: string): void;
   getSetting(key: string): string | null;
+  /** Plan 7: tài khoản của Worker (theo máy, không theo project). */
+  ensureDefaultAccounts(agents: string[]): void;
+  listAccounts(agent?: string): AccountRow[];
+  getAccount(agent: string, slug: string): AccountRow | null;
+  addAccount(agent: string, slug: string, opts: { email?: string | null; label?: AccountLabel; active: boolean }): AccountRow;
+  updateAccount(agent: string, slug: string, patch: Partial<Pick<AccountRow, 'email' | 'label' | 'active'>>): void;
+  moveAccount(agent: string, slug: string, dir: 'up' | 'down'): void;
   /** Plan 6 Task 3: ghi chú dòng của anh trên diff ticket. */
   addLineNote(project: string, ticket: string, path: string, line: number, text: string): number;
   listLineNotes(project: string, ticket: string, onlyUnused?: boolean): LineNote[];
@@ -452,6 +483,17 @@ export function openStore(file: string): Store {
       text TEXT NOT NULL,
       used INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS accounts (
+      agent TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      email TEXT,
+      label TEXT NOT NULL DEFAULT 'none',
+      active INTEGER NOT NULL,
+      ord INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (agent, slug)
     );
 
     CREATE TABLE IF NOT EXISTS questions (
@@ -1138,6 +1180,47 @@ export function openStore(file: string): Store {
 
     markQuestionsUsed(project: string, ticket: string): void {
       db.prepare("UPDATE questions SET state = 'used' WHERE project = ? AND ticket = ? AND state = 'answered'").run(project, ticket);
+    },
+
+    ensureDefaultAccounts(agents: string[]): void {
+      const ins = db.prepare("INSERT OR IGNORE INTO accounts (agent, slug, email, label, active, ord, created_at) VALUES (?, 'default', NULL, 'none', 1, 0, ?)");
+      const now = new Date().toISOString();
+      for (const a of agents) ins.run(a, now);
+    },
+
+    listAccounts(agent?: string): AccountRow[] {
+      const rows = (agent
+        ? db.prepare('SELECT * FROM accounts WHERE agent = ? ORDER BY ord, slug').all(agent)
+        : db.prepare('SELECT * FROM accounts ORDER BY agent, ord, slug').all()) as any[];
+      return rows.map(toAccount);
+    },
+
+    getAccount(agent: string, slug: string): AccountRow | null {
+      const row = db.prepare('SELECT * FROM accounts WHERE agent = ? AND slug = ?').get(agent, slug);
+      return row ? toAccount(row) : null;
+    },
+
+    addAccount(agent, slug, opts): AccountRow {
+      const max = db.prepare('SELECT MAX(ord) AS m FROM accounts WHERE agent = ?').get(agent) as { m: number | null };
+      db.prepare('INSERT INTO accounts (agent, slug, email, label, active, ord, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(agent, slug, opts.email ?? null, opts.label ?? 'none', opts.active ? 1 : 0, (max.m ?? -1) + 1, new Date().toISOString());
+      return toAccount(db.prepare('SELECT * FROM accounts WHERE agent = ? AND slug = ?').get(agent, slug));
+    },
+
+    updateAccount(agent, slug, patch): void {
+      if (patch.email !== undefined) db.prepare('UPDATE accounts SET email = ? WHERE agent = ? AND slug = ?').run(patch.email, agent, slug);
+      if (patch.label !== undefined) db.prepare('UPDATE accounts SET label = ? WHERE agent = ? AND slug = ?').run(patch.label, agent, slug);
+      if (patch.active !== undefined) db.prepare('UPDATE accounts SET active = ? WHERE agent = ? AND slug = ?').run(patch.active ? 1 : 0, agent, slug);
+    },
+
+    moveAccount(agent, slug, dir): void {
+      const list = (db.prepare('SELECT slug, ord FROM accounts WHERE agent = ? ORDER BY ord, slug').all(agent) as Array<{ slug: string; ord: number }>);
+      const i = list.findIndex((r) => r.slug === slug);
+      const j = dir === 'up' ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j]!, list[i]!];
+      const upd = db.prepare('UPDATE accounts SET ord = ? WHERE agent = ? AND slug = ?');
+      db.transaction(() => list.forEach((r, k) => upd.run(k, agent, r.slug)))();
     },
 
     getSetting(key: string): string | null {

@@ -424,6 +424,12 @@ describe('P4.5-T2: runner dưới worker', () => {
     expect(steps).toEqual(['kill', 'reset', 'sync', 'run', 'kill', 'import', 'kill']);
     expect(killed).toEqual(['jacky', 'jacky', 'jacky']);
     expect(ok.lastMessage).toBe('last:jacky');
+    // Plan 7: options.account → chạy dưới user + workspace của tài khoản đó; model vẫn theo Worker
+    killed.length = 0;
+    const acct = await runner('dev', 'jacky', 'x', dir, join(dir, 'b.log'), { account: 'jacky-b' });
+    expect(seen[1].slice(0, 6)).toEqual(['sudo', '-n', '-u', 'btm-jacky-b', '/usr/local/bin/btm-worker-exec', path.resolve(path.join('/srv/btm-work', 'btm-jacky-b', path.basename(dir)))]);
+    expect(killed).toEqual(['jacky-b', 'jacky-b', 'jacky-b']);
+    expect(acct.lastMessage).toBe('last:jacky-b');
     importOk = false;
     const bad = await runner('dev', 'jacky', 'x', dir, join(dir, 'c.log'));
     expect(bad.exitCode).toBe(1);

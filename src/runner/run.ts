@@ -381,7 +381,7 @@ export type Runner = (
   prompt: string,
   cwd: string,
   logFile: string,
-  options?: { signal?: AbortSignal; images?: string[] }
+  options?: { signal?: AbortSignal; images?: string[]; account?: string }
 ) => Promise<TurnOutput>;
 
 // Plan 6 Task 7 (không cách ly): file trạng thái agent ghi không được vào commit.
@@ -425,7 +425,7 @@ export function makeRunner(
     prompt: string,
     cwd: string,
     logFile: string,
-    options?: { signal?: AbortSignal; images?: string[] }
+    options?: { signal?: AbortSignal; images?: string[]; account?: string }
   ): Promise<TurnOutput> => {
     const agent = cfg.agents[agentId];
     if (!agent) {
@@ -436,17 +436,19 @@ export function makeRunner(
     const timeoutMs = timeoutMin * 60 * 1000;
     const allow = cfg.runner.agy_allow_commands;
 
+    // Plan 7: chạy dưới user của tài khoản được chọn (khoá tài khoản; mặc định = agent id). Model/effort vẫn theo Worker.
+    const w = options?.account ?? agentId;
     const absLogFile = resolve(logFile);
     mkdirSync(dirname(absLogFile), { recursive: true });
     const isolated = isIsolated(cfg);
     // Cách ly: file kết quả của CLI nằm trong thư mục riêng của worker; BTM đọc lại qua worker (không thư mục chung).
     const outFile = isolated
-      ? workerOutFile(cfg, agentId)
+      ? workerOutFile(cfg, w)
       : absLogFile.endsWith('.log')
         ? absLogFile.slice(0, -4) + '.out'
         : `${absLogFile}.out`;
     // cwd = checkout tin cậy; agent chạy trong workspace riêng của mình.
-    const runCwd = isolated ? workspacePath(cfg, agentId, cwd) : cwd;
+    const runCwd = isolated ? workspacePath(cfg, w, cwd) : cwd;
     if (!isolated) excludeStatusFile(cwd);
 
     const argv = buildArgv(agent.tool, prompt, {
@@ -462,38 +464,38 @@ export function makeRunner(
     let result: ProcResult;
     try {
       if (isolated) {
-        killAll(cfg, agentId);
+        killAll(cfg, w);
         try {
-          isolation.reset(cfg, agentId);
-          isolation.sync(cfg, agentId, cwd);
+          isolation.reset(cfg, w);
+          isolation.sync(cfg, w, cwd);
         } catch {
           const output = '[btm] sync_failed';
           return { exitCode: 1, timedOut: false, durationMs: 0, output, lastMessage: output };
         }
       }
-      result = await runProc(wrapForWorker(cfg, agentId, argv, runCwd), {
+      result = await runProc(wrapForWorker(cfg, w, argv, runCwd), {
         cwd,
         timeoutMs,
         logFile: absLogFile,
         env: process.env,
         signal: options?.signal ?? defaultSignal,
-        onKill: isolated ? () => killAll(cfg, agentId) : undefined,
+        onKill: isolated ? () => killAll(cfg, w) : undefined,
         idleTimeoutMs: (cfg.turn.idle_minutes?.[agent.tool] ?? 0) * 60 * 1000,
       });
     } finally {
-      killAll(cfg, agentId);
+      killAll(cfg, w);
     }
     let lastMessage = '';
     if (result.idleTimedOut) result = { ...result, output: `${result.output}\n[btm] idle_timeout` };
     if (isolated) {
       try {
-        const imp = isolation.importTurn(cfg, agentId, cwd);
+        const imp = isolation.importTurn(cfg, w, cwd);
         if (!imp.ok) result = { ...result, exitCode: result.exitCode || 1, output: `${result.output}
 [btm] ${imp.reason}` };
-        lastMessage = isolation.readOut(cfg, agentId);
+        lastMessage = isolation.readOut(cfg, w);
       } finally {
         // import/readOut chạy lệnh dưới worker: dọn mọi tiến trình chúng có thể để lại.
-        killAll(cfg, agentId);
+        killAll(cfg, w);
       }
     } else if (existsSync(outFile)) {
       try {

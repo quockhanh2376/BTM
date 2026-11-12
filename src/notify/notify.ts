@@ -5,7 +5,10 @@ import type { Config } from '../config.ts';
 // Plan 6 Task 1 (decision 0004): báo anh Zon qua ntfy khi phiên cần anh. Tin nhắn chỉ gồm mẫu cố định + mã lý do
 // đã lọc, không chép chữ tự do của agent. Địa chỉ topic nằm trong file ngoài git (0600, user agent).
 
-export type NotifyKind = 'needs_owner' | 'awaiting_approval' | 'done' | 'stopped' | 'out_of_turns';
+export type NotifyKind = 'needs_owner' | 'awaiting_approval' | 'done' | 'stopped' | 'out_of_turns' | 'account_switch' | 'account_logout';
+
+// Plan 7: tin về tài khoản luôn gửi khi đã cấu hình notify (anh Zon yêu cầu), không cần nằm trong notify.on.
+const ALWAYS: ReadonlySet<NotifyKind> = new Set(['account_switch', 'account_logout']);
 
 export interface NotifyEvent {
   kind: NotifyKind;
@@ -36,6 +39,8 @@ const LABEL: Record<NotifyKind, string> = {
   done: 'Done',
   stopped: 'Stopped',
   out_of_turns: 'Out of turns',
+  account_switch: 'Account switched',
+  account_logout: 'Account logged out (maybe used on another machine)',
 };
 
 function defaultDeps(): NotifyDeps {
@@ -49,7 +54,7 @@ function defaultDeps(): NotifyDeps {
 
 export async function notify(cfg: Config, ev: NotifyEvent, deps: NotifyDeps = defaultDeps()): Promise<void> {
   const n = cfg.notify;
-  if (!n || !n.on.includes(ev.kind)) return;
+  if (!n || (!ALWAYS.has(ev.kind) && !(n.on as string[]).includes(ev.kind))) return;
   const project = basename(ev.project || '-').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60) || '-';
   const reason = reasonCode(ev.notes);
   const key = `${ev.kind}|${project}|${reason}`;

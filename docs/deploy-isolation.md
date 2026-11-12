@@ -52,6 +52,12 @@ ssh -t admzon@100.96.250.103 "sudo -iu btm-elon claude auth status; sudo -iu btm
    sudo systemctl start btm
    ```
 
+## Plan 7 – tài khoản thêm trên dashboard
+
+- `prep` cài thêm `/usr/local/bin/btm-account` (root) và dòng sudoers `agent ALL=(root) NOPASSWD: /usr/local/bin/btm-account add *`. Chạy lại `sudo bash deploy/isolation-setup.sh prep` một lần sau khi deploy Plan 7.
+- Add Account trên dashboard tạo user `btm-<worker>-<slug>` (ví dụ `btm-jacky-b`) với đúng thiết lập như các user ở Bước 1. Tài khoản đầu tiên của mỗi Worker vẫn là user cũ `btm-<worker>`, không phải đăng nhập lại.
+- File token chỉ được đọc/ghi dưới chính user đó (export/import, decision 0005).
+
 ## Giới hạn còn lại
 - Lệnh gate chạy với `node_modules` trong workspace của Dev, mà Dev sửa được thư mục này.
 - Muốn chặn hẳn thì gate phải chạy trên checkout sạch và chạy `npm ci`. Việc này để plan sau.
