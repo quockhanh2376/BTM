@@ -120,6 +120,7 @@ export function devTicketPrompt(
     `Phạm vi cho phép: ${scope}. Nghiệm thu: ${doneWhen}`,
     notesLine,
     allowLine,
+    `Tập trung: chỉ đọc ticket ${t.id} của mình, không đọc ticket khác trong team/tickets/; ticket đã đủ thông tin thì không dò repo (git log/show/grep, liệt kê thư mục) mà bắt tay sửa file ngay.`,
     `Chỉ sửa file trong phạm vi, cấm git commit và push. Bị nghẽn trả lời BLOCKED. Sau mỗi bước ghi đè 1 dòng tiếng Anh việc đang làm vào .btm-status (không commit).`,
     `Báo cáo vào team/reports/${t.id}-dev.md: dòng đầu bắt buộc là "${header}", theo sau là tối đa 5 dòng Bug / Cần sửa / Cần xác nhận (câu hỏi cho anh Zon, kết thúc bằng ?), ổn ghi OK.`,
   ];

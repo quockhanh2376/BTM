@@ -691,6 +691,33 @@ done_when: done
     sessionGate.resolve();
   });
 
+  it('stop(seat) – nút Stop trên thẻ: thẻ không chạy → 409, không dừng gì; thẻ đang chạy → dừng lượt, giữ hàng đợi', async () => {
+    let signal: AbortSignal | undefined;
+    const started = deferred<void>();
+    const mockRunner: Runner = vi.fn().mockImplementation(async (_s, _a, _p, _c, _l, opts) => {
+      signal = opts?.signal;
+      started.resolve();
+      return new Promise<TurnOutput>((_res, rej) => {
+        opts?.signal?.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; rej(e); });
+      });
+    });
+    const host = createHost({ cfg, store, runner: mockRunner, logDir, dataDir, env: {} });
+    await host.start(['Goal card stop']);
+    await started.promise;
+    const cmd = await host.command('dev', 'Pending dev command');
+    const notRunning = host.stop('qc');
+    expect(notRunning).toMatchObject({ ok: false, status: 409 });
+    expect(signal?.aborted).toBe(false);
+    expect(store.listQueue(10).find((q) => q.id === cmd.id)?.status).toBe('queued');
+    expect(host.stop('pm')).toMatchObject({ ok: true });
+    expect(signal?.aborted).toBe(true);
+    expect(store.listQueue(10).find((q) => q.id === cmd.id)?.status).not.toBe('cancelled');
+    // hàng đợi còn → lệnh dev chạy tiếp; Stop trên cùng dừng tất cả
+    await new Promise((r) => setTimeout(r, 50));
+    host.stop();
+    await host.whenIdle();
+  });
+
   it('command("pm", text) mở phiên với mục tiêu text', async () => {
     const mockRunner: Runner = vi.fn().mockResolvedValue({
       exitCode: 0,

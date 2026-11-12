@@ -893,25 +893,31 @@ export function createHost(d: HostDeps): HostApi & {
     return { ok: true };
   }
 
-  function stop(): { ok: boolean; error?: string } {
+  /** Không có seat: dừng tất cả (kể cả hàng đợi). Có seat (nút Stop trên thẻ): chỉ dừng lượt của thẻ đó, giữ hàng đợi. */
+  function stop(seat?: Seat): { ok: boolean; status?: number; error?: string } {
     if (isExternalLockHeld()) {
       return { ok: false, error: 'Session started from terminal – stop it with Ctrl-C' };
     }
 
     const activeProject = d.store.getActiveProject();
     const latest = d.store.getLatestSession(undefined, activeProject ?? undefined);
+    if (seat) {
+      const running = latest ? d.store.listTurns(latest.id).find((t) => t.ended_at === null) : undefined;
+      if (!running || running.seat !== seat) return { ok: false, status: 409, error: 'This card is not running' };
+    }
+    const cancelQueue = () => { if (!seat) d.store.cancelQueued(); };
     if (latest && latest.status === 'awaiting_approval') {
       d.store.setSessionStatus(latest.id, 'stopped');
     }
 
     if (!isBusy && !isStopping) {
-      d.store.cancelQueued();
+      cancelQueue();
       notifyIfIdle();
       return { ok: true };
     }
 
     isStopping = true;
-    d.store.cancelQueued();
+    cancelQueue();
 
     if (currentAbortController) {
       currentAbortController.abort();

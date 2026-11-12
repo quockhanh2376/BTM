@@ -389,6 +389,20 @@
       gap: 8px;
     }
 
+    .seat-header > div:first-child {
+      margin-right: auto;
+    }
+
+    .seat-stop-btn {
+      padding: 2px 8px;
+      font-size: 11px;
+    }
+
+    .seat-stop-btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
     .seat-title-wrap {
       display: flex;
       align-items: center;
@@ -2300,7 +2314,9 @@
           'btn.stop': 'Stop',
           'btn.resume': 'Resume',
           'btn.theme': 'Toggle light/dark',
-          'confirm.stop': 'Stop now? The running agent will be killed and the queue cleared.',
+          'confirm.stop': 'Stop everything? The running agent will be killed and the queue cleared.',
+          'confirm.stopCard': 'Stop this card? Its running turn will be killed; the queue is kept.',
+          'seat.stopFor': 'Stop {seat}',
           'fb.stopSent': 'Stop sent',
           'fb.resumeSent': 'Resume sent',
           'fb.approved': 'Tickets approved',
@@ -4019,6 +4035,29 @@
         } else {
           cardEl.classList.remove('is-holder');
         }
+
+        // Nút Stop riêng của thẻ: chỉ dừng lượt đang chạy của thẻ này (giữ hàng đợi).
+        var cardStop = cardEl.querySelector('.seat-stop-btn');
+        if (!cardStop) {
+          cardStop = document.createElement('button');
+          cardStop.type = 'button';
+          cardStop.className = 'btn btn-danger btn-xs seat-stop-btn';
+          cardStop.textContent = tx('btn.stop');
+          cardStop.setAttribute('aria-label', tx('seat.stopFor', { seat: seatKey.toUpperCase() }));
+          cardStop.addEventListener('click', async function () {
+            if (!confirm(tx('confirm.stopCard'))) return;
+            cardStop.disabled = true;
+            try {
+              var res = await postJson('/api/stop', { seat: seatKey });
+              showFeedback(topFeedback, res && res.error ? res.error : tx('fb.stopSent'), Boolean(res && res.error));
+            } catch (err) {
+              showFeedback(topFeedback, err.message, true);
+            }
+          });
+          var header = cardEl.querySelector('.seat-header');
+          if (header) header.appendChild(cardStop);
+        }
+        cardStop.disabled = !(isCurrentHolder && isBusy);
 
         var selectEl = document.getElementById(seatKey + '-agent-select');
         if (selectEl) {

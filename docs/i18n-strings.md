@@ -25,7 +25,9 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | btn.stop | Dừng | Stop |
 | btn.resume | Tiếp tục phiên | Resume |
 | btn.theme | Chuyển sáng/tối | Toggle light/dark |
-| confirm.stop | Bạn có chắc chắn muốn Dừng? Agent đang chạy sẽ bị dừng và hàng đợi sẽ bị xóa. | Stop now? The running agent will be killed and the queue cleared. |
+| confirm.stop | Dừng tất cả? Agent đang chạy sẽ bị dừng và hàng đợi sẽ bị xóa. | Stop everything? The running agent will be killed and the queue cleared. |
+| confirm.stopCard | Dừng thẻ này? Lượt đang chạy của thẻ bị dừng; hàng đợi giữ nguyên. | Stop this card? Its running turn will be killed; the queue is kept. |
+| seat.stopFor | Dừng {seat} | Stop {seat} |
 | fb.stopSent | Đã gửi lệnh Dừng | Stop sent |
 | fb.resumeSent | Đã gửi lệnh tiếp tục phiên | Resume sent |
 | fb.approved | Đã duyệt thẻ | Tickets approved |

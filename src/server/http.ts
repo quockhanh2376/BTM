@@ -31,7 +31,7 @@ export interface HostApi {
   ): Promise<{ ok: boolean; error?: string }>;
   approve(): Promise<{ ok: boolean; error?: string }>;
   resume?(): Promise<{ ok: boolean; status?: number; error?: string }>;
-  stop(): { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }>;
+  stop(seat?: Seat): { ok: boolean; status?: number; error?: string } | Promise<{ ok: boolean; status?: number; error?: string }>;
   command(
     to: Seat | 'team',
     text: string
@@ -448,14 +448,14 @@ export function createServer(o: {
         }
 
         if (pathname === '/api/stop') {
-          const StopSchema = z.object({}).passthrough();
+          const StopSchema = z.object({ seat: z.enum(['pm', 'dev', 'qc', 'audit']).optional() }).passthrough();
           const parsed = StopSchema.safeParse(body);
           if (!parsed.success) {
             sendJson(res, 400, { error: 'Invalid body' });
             return;
           }
-          const result = await o.host.stop();
-          sendJson(res, 200, result);
+          const result = await o.host.stop(parsed.data.seat);
+          sendJson(res, result.status ?? 200, result);
           return;
         }
 
