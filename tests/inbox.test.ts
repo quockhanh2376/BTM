@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, symlinkSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { inboxPath, detectImage, readInboxFile } from '../src/server/inbox.js';
+import { inboxPath, detectImage, readInboxFile, removeInboxFromMain } from '../src/server/inbox.js';
 import { execFileSync } from 'node:child_process';
 import { tmpRepo } from './helpers.ts';
 
@@ -172,5 +172,42 @@ describe('readInboxFile', () => {
     const repo = tmpRepo({});
     expect(readInboxFile(repo, 'N-9.png')).toBeNull();
     expect(readInboxFile(repo, '../x.png')).toBeNull();
+  });
+});
+
+describe('removeInboxFromMain', () => {
+  const g = (repo: string, ...a: string[]) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: repo, encoding: 'utf8' }).trim();
+
+  it('xoá note + ảnh trên main, commit owner, quay lại nhánh cũ; tên lạ bị bỏ qua', () => {
+    const repo = tmpRepo({ 'team/inbox/N-1.md': 'a', 'team/inbox/N-1.png': 'p', 'team/inbox/N-2.md': 'b', 'src/x.ts': '1' });
+    const pinned = g(repo, 'rev-parse', 'main');
+    g(repo, 'checkout', '-qb', 'goal/G1-x');
+    const { mainSha, removed } = removeInboxFromMain(repo, ['N-1.md', 'N-1.png', 'N-9.md', '../src/x.ts'], 'main', pinned);
+    expect(removed).toEqual(['team/inbox/N-1.md', 'team/inbox/N-1.png']);
+    expect(mainSha).toBe(g(repo, 'rev-parse', 'main'));
+    expect(mainSha).not.toBe(pinned);
+    expect(g(repo, 'ls-tree', '-r', '--name-only', 'main')).toBe(['src/x.ts', 'team/inbox/N-2.md'].join('\n'));
+    expect(g(repo, 'log', '-1', '--format=%an %s', 'main')).toBe('owner inbox: delete N-1');
+    expect(g(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('goal/G1-x');
+    expect(existsSync(join(repo, 'team/inbox/N-1.md'))).toBe(true); // nhánh goal giữ nguyên
+  });
+
+  it('không có gì để xoá → không commit; main lệch ghim / cây bẩn → lỗi, không đổi gì', () => {
+    const repo = tmpRepo({ 'team/inbox/N-1.md': 'a' });
+    const pinned = g(repo, 'rev-parse', 'main');
+    expect(removeInboxFromMain(repo, ['N-5.md'], 'main', pinned)).toEqual({ mainSha: pinned, removed: [] });
+    expect(() => removeInboxFromMain(repo, ['N-1.md'], 'main', 'deadbeef')).toThrow('protected_branch_moved');
+    writeFileSync(join(repo, 'dirty.txt'), 'x');
+    expect(() => removeInboxFromMain(repo, ['N-1.md'], 'main', pinned)).toThrow('dirty');
+    expect(g(repo, 'rev-parse', 'main')).toBe(pinned);
+  });
+
+  it('đang đứng trên main: xoá cả file trong cây làm việc', () => {
+    const repo = tmpRepo({ 'team/inbox/N-1.md': 'a' });
+    const { removed } = removeInboxFromMain(repo, ['N-1.md'], 'main', '');
+    expect(removed).toEqual(['team/inbox/N-1.md']);
+    expect(existsSync(join(repo, 'team/inbox/N-1.md'))).toBe(false);
+    expect(g(repo, 'status', '--porcelain')).toBe('');
   });
 });

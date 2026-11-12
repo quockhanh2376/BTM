@@ -116,3 +116,41 @@ export function detectImage(buf: Buffer): DetectedImage | null {
 
   return null;
 }
+
+/**
+ * Xoá file ghi chú khỏi nhánh protected (main) của checkout tin cậy, theo mẫu merge goal:
+ * cây sạch, main khớp SHA ghim, checkout main, git rm, commit owner, quay lại nhánh cũ.
+ * Nhánh goal/… và lịch sử git không đổi. Trả SHA main mới để ghim lại.
+ */
+export function removeInboxFromMain(
+  repo: string,
+  names: string[],
+  protectedBranch: string,
+  pinned: string
+): { mainSha: string; removed: string[] } {
+  const ref = protectedBranch.startsWith('refs/heads/') ? protectedBranch : `refs/heads/${protectedBranch}`;
+  if (git(repo, 'status', '--porcelain').trim()) throw new Error('dirty');
+  const before = git(repo, 'rev-parse', ref).trim();
+  if (pinned && before !== pinned) throw new Error('protected_branch_moved');
+  const onMain = new Set(git(repo, 'ls-tree', '-r', '--name-only', ref, '--', 'team/inbox/').split('\n'));
+  const removed = names
+    .filter((n) => VALID_INBOX_NAME.test(n))
+    .map((n) => `team/inbox/${n}`)
+    .filter((p) => onMain.has(p));
+  if (removed.length === 0) return { mainSha: before, removed };
+  const ids = [...new Set(removed.map((p) => /N-\d+/.exec(p)![0]))];
+  const cur = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+  const original = cur === 'HEAD' ? git(repo, 'rev-parse', 'HEAD').trim() : cur;
+  try {
+    git(repo, 'checkout', '-q', ref.slice('refs/heads/'.length));
+    if (git(repo, 'symbolic-ref', 'HEAD').trim() !== ref) throw new Error('checkout failed');
+    git(repo, 'rm', '-q', '--', ...removed);
+    git(repo, '-c', 'user.name=owner', '-c', 'user.email=owner@btm.local', 'commit', '-q', '-m', `inbox: delete ${ids.join(', ')}`);
+    return { mainSha: git(repo, 'rev-parse', 'HEAD').trim(), removed };
+  } catch (err) {
+    try { git(repo, 'reset', '-q', '--hard'); } catch {}
+    throw err;
+  } finally {
+    try { git(repo, 'checkout', '-q', original); } catch {}
+  }
+}

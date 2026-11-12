@@ -9,6 +9,7 @@ import { createServer, type HostApi } from '../src/server/http.ts';
 import * as gitModule from '../src/git.ts';
 import { readdirSync } from 'node:fs';
 import { tmpRepo } from './helpers.ts';
+import { execFileSync } from 'node:child_process';
 
 function startServer(server: Server): Promise<number> {
   return new Promise((res, rej) => {
@@ -1094,6 +1095,48 @@ describe('HTTP Server & SSE', () => {
         'README.md': '# Project\n',
       });
       store.setActiveProject(testRepo);
+    });
+
+    it('POST /api/notes/delete: xoá DB + file trên main, ghim main mới; bận → 409; id project khác bỏ qua', async () => {
+      const del = (body: unknown) => fetch(`${baseUrl}/api/notes/delete`, {
+        method: 'POST',
+        headers: { 'x-btm': '1', 'content-type': 'application/json', Origin: `http://127.0.0.1:${port}` },
+        body: JSON.stringify(body),
+      });
+      const gx = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: testRepo, encoding: 'utf8' }).trim();
+      const a = store.createNote(testRepo, 'a', 'N-1.png');
+      const b = store.createNote(testRepo, 'b', null);
+      const other = store.createNote('/other', 'x', null);
+      mkdirSync(join(testRepo, 'team', 'inbox'), { recursive: true });
+      writeFileSync(join(testRepo, 'team', 'inbox', `N-${a}.md`), 'a');
+      writeFileSync(join(testRepo, 'team', 'inbox', 'N-1.png'), 'p');
+      writeFileSync(join(testRepo, 'team', 'inbox', `N-${b}.md`), 'b');
+      gx('add', '-A');
+      gx('commit', '-qm', 'inbox');
+      expect((await del({})).status).toBe(400);
+      host.busy = vi.fn().mockReturnValue(true);
+      expect((await del({ all: true })).status).toBe(409);
+      host.busy = vi.fn().mockReturnValue(false);
+      const r = await del({ ids: [a, other] });
+      expect(r.status).toBe(200);
+      expect((await r.json()).deleted).toEqual([a]);
+      expect(store.getNote(a)).toBeNull();
+      expect(store.getNote(other)).not.toBeNull();
+      expect(gx('ls-tree', '-r', '--name-only', 'main', 'team/inbox')).toBe(`team/inbox/N-${b}.md`);
+      expect(store.getSetting(`protected_sha:${testRepo}`)).toBe(gx('rev-parse', 'main'));
+      // N-b đang mở của phiên needs_owner → giữ lại; ghi chú cancelled vẫn xoá được
+      const sid = store.createSession(['x'], testRepo);
+      store.setSessionStatus(sid, 'needs_owner');
+      store.setNoteSession(b, sid);
+      const c = store.createNote(testRepo, 'c', null);
+      store.setNoteStatus(c, 'cancelled');
+      const r2 = await (await del({ all: true })).json();
+      expect([r2.deleted, r2.skipped]).toEqual([[c], [b]]);
+      expect((await del({ ids: [b] })).status).toBe(409);
+      store.setSessionStatus(sid, 'done');
+      expect((await del({ all: true })).status).toBe(200);
+      expect(store.listNotes(testRepo)).toHaveLength(0);
+      expect((await del({ all: true })).status).toBe(404);
     });
 
     it('rejects POST /api/team-note missing x-btm or invalid Origin', async () => {

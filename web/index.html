@@ -1482,6 +1482,45 @@
       gap: 10px;
     }
 
+    .inbox-section.collapsed .inbox-body {
+      display: none;
+    }
+
+    .inbox-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .inbox-toggle {
+      all: unset;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .inbox-toggle:focus-visible {
+      outline: 2px solid var(--accent, #7aa2ff);
+      outline-offset: 2px;
+    }
+
+    .inbox-count {
+      font-size: 0.8rem;
+      font-weight: 400;
+      color: var(--text-muted, #9aa0a6);
+    }
+
+    .inbox-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .note-check {
+      margin-right: 6px;
+    }
+
     .notes-list {
       display: flex;
       flex-direction: column;
@@ -1723,12 +1762,80 @@
     </header>
     <div id="top-feedback" class="action-feedback" style="display: none;"></div>
 
-    <!-- Mục tiêu phiên -->
-    <section class="card goals-section">
-      <h2 data-i18n="goals.sessionTitle">Session goals</h2>
-      <ul id="goals-list" class="goals-list">
-        <li class="empty-placeholder" data-i18n="goals.sessionEmpty">No session goals</li>
-      </ul>
+    <!-- Plan 6 Task 4: câu hỏi chặn ticket -->
+    <section class="card" id="questions-section" style="display: none;">
+      <h2 class="section-title" data-i18n="q.title">Questions</h2>
+      <div id="questions-list"></div>
+    </section>
+
+    <!-- Khung lệnh -->
+    <section class="card cmd-section">
+      <h2 class="section-title" data-i18n="cmd.title">Command</h2>
+      <div class="recipient-radios" id="recipient-radios">
+        <label class="radio-label">
+          <input type="radio" name="cmd-to" value="team" checked> <span data-i18n="cmd.team">Team</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="cmd-to" value="pm"> PM
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="cmd-to" value="dev"> Dev
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="cmd-to" value="qc"> QC
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label for="cmd-text" class="form-label" data-i18n="cmd.label">Command or goal:</label>
+        <textarea id="cmd-text" class="form-textarea" rows="3" placeholder="Goal for PM, command for Dev/QC, or note for the team…" data-i18n-placeholder="cmd.placeholder"></textarea>
+      </div>
+
+      <div id="attach-image-group" class="attach-image-group">
+        <label for="note-image-input" class="file-input-label" id="attach-image-label">
+          <span data-i18n="cmd.attach">Attach image</span>
+        </label>
+        <input type="file" id="note-image-input" accept="image/png,image/jpeg,image/webp" class="sr-only">
+        <div id="image-preview-wrap" class="image-preview-wrap" style="display: none;">
+          <img id="image-preview" class="image-preview-thumb" alt="Attached image preview" data-i18n-alt="cmd.preview">
+          <span id="image-preview-name" class="image-preview-name"></span>
+          <button id="remove-image-btn" class="btn-sm" type="button" data-i18n="cmd.removeImage">Remove image</button>
+        </div>
+      </div>
+
+      <div class="cmd-actions">
+        <button id="cmd-send-btn" class="btn btn-primary" type="button" data-i18n="cmd.send">Send</button>
+        <p class="cmd-note" id="cmd-note" data-i18n="cmd.hint">PM: starts a session with this goal · Dev/QC: queued after the current turn</p>
+      </div>
+      <div id="cmd-feedback" class="action-feedback" style="display: none;"></div>
+
+      <div class="queue-container">
+        <h3 class="queue-title" data-i18n="queue.title">Queue</h3>
+        <ul id="queue-list" class="queue-list">
+          <li class="empty-placeholder" data-i18n="queue.empty">Queue empty</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Khu Tài khoản -->
+    <section class="card accounts-section" id="accounts-container">
+      <h2 data-i18n="acc.title">Accounts</h2>
+      <div id="accounts-list" class="accounts-list">
+        <div class="account-row">
+          <div class="account-info">
+            <span class="account-name">Agent</span>
+            <span class="account-tool">Tool</span>
+            <div class="account-login">
+              <span class="login-dot dot-unknown"></span>
+              <span data-i18n="login.unknown">Unknown</span>
+            </div>
+          </div>
+          <div class="account-cmd-wrap">
+            <input type="text" readonly class="account-cmd-code" value="ssh -t admzon@100.96.250.103 &quot;sudo -iu agent agy&quot;" aria-label="Login command" data-i18n-aria="acc.loginCmd">
+            <button class="btn btn-secondary btn-sm copy-btn" type="button" aria-label="Copy login command" data-i18n-aria="acc.copyLogin" data-i18n="acc.copy">Copy</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- 3 thẻ ghế -->
@@ -1946,6 +2053,32 @@
       </div>
     </section>
 
+    <!-- Mục tiêu phiên -->
+    <section class="card goals-section">
+      <h2 data-i18n="goals.sessionTitle">Session goals</h2>
+      <ul id="goals-list" class="goals-list">
+        <li class="empty-placeholder" data-i18n="goals.sessionEmpty">No session goals</li>
+      </ul>
+    </section>
+
+    <!-- Hộp thư team -->
+    <section class="card inbox-section collapsed" id="inbox-section">
+      <h2 class="section-title">
+        <button type="button" class="inbox-toggle" id="inbox-toggle" aria-expanded="false" aria-controls="inbox-body">
+          <span data-i18n="inbox.title">Team inbox</span> <span id="inbox-count" class="inbox-count"></span>
+        </button>
+      </h2>
+      <div id="inbox-body" class="inbox-body">
+        <div class="inbox-actions">
+          <button id="inbox-del-sel" class="btn btn-secondary btn-sm" type="button" data-i18n="inbox.deleteSel">Delete selected</button>
+          <button id="inbox-del-all" class="btn btn-danger btn-sm" type="button" data-i18n="inbox.deleteAll">Delete all</button>
+        </div>
+        <div id="notes-list" class="notes-list">
+          <div class="empty-placeholder" data-i18n="inbox.empty">No team notes</div>
+        </div>
+      </div>
+    </section>
+
     <!-- Bảng goal & ticket & Nhật ký -->
     <div class="board-and-log-layout">
       <!-- Bảng goal & ticket -->
@@ -1965,20 +2098,6 @@
       </section>
     </div>
 
-    <!-- Hộp thư team -->
-    <section class="card inbox-section">
-      <h2 class="section-title" data-i18n="inbox.title">Team inbox</h2>
-      <div id="notes-list" class="notes-list">
-        <div class="empty-placeholder" data-i18n="inbox.empty">No team notes</div>
-      </div>
-    </section>
-
-    <!-- Plan 6 Task 4: câu hỏi chặn ticket -->
-    <section class="card" id="questions-section" style="display: none;">
-      <h2 class="section-title" data-i18n="q.title">Questions</h2>
-      <div id="questions-list"></div>
-    </section>
-
     <!-- Plan 6 Task 3: diff ticket -->
     <section class="card diff-panel" id="diff-panel" style="display: none;" aria-live="polite">
       <h2 class="section-title" id="diff-title">Diff</h2>
@@ -1986,76 +2105,6 @@
       <div id="diff-notes"></div>
       <button id="diff-return-btn" class="btn btn-danger btn-sm" type="button" data-i18n="diff.return">Return to Dev</button>
       <button id="diff-close-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="diff.close">Close</button>
-    </section>
-
-    <!-- Khung lệnh -->
-    <section class="card cmd-section">
-      <h2 class="section-title" data-i18n="cmd.title">Command</h2>
-      <div class="recipient-radios" id="recipient-radios">
-        <label class="radio-label">
-          <input type="radio" name="cmd-to" value="team" checked> <span data-i18n="cmd.team">Team</span>
-        </label>
-        <label class="radio-label">
-          <input type="radio" name="cmd-to" value="pm"> PM
-        </label>
-        <label class="radio-label">
-          <input type="radio" name="cmd-to" value="dev"> Dev
-        </label>
-        <label class="radio-label">
-          <input type="radio" name="cmd-to" value="qc"> QC
-        </label>
-      </div>
-
-      <div class="form-group">
-        <label for="cmd-text" class="form-label" data-i18n="cmd.label">Command or goal:</label>
-        <textarea id="cmd-text" class="form-textarea" rows="3" placeholder="Goal for PM, command for Dev/QC, or note for the team…" data-i18n-placeholder="cmd.placeholder"></textarea>
-      </div>
-
-      <div id="attach-image-group" class="attach-image-group">
-        <label for="note-image-input" class="file-input-label" id="attach-image-label">
-          <span data-i18n="cmd.attach">Attach image</span>
-        </label>
-        <input type="file" id="note-image-input" accept="image/png,image/jpeg,image/webp" class="sr-only">
-        <div id="image-preview-wrap" class="image-preview-wrap" style="display: none;">
-          <img id="image-preview" class="image-preview-thumb" alt="Attached image preview" data-i18n-alt="cmd.preview">
-          <span id="image-preview-name" class="image-preview-name"></span>
-          <button id="remove-image-btn" class="btn-sm" type="button" data-i18n="cmd.removeImage">Remove image</button>
-        </div>
-      </div>
-
-      <div class="cmd-actions">
-        <button id="cmd-send-btn" class="btn btn-primary" type="button" data-i18n="cmd.send">Send</button>
-        <p class="cmd-note" id="cmd-note" data-i18n="cmd.hint">PM: starts a session with this goal · Dev/QC: queued after the current turn</p>
-      </div>
-      <div id="cmd-feedback" class="action-feedback" style="display: none;"></div>
-
-      <div class="queue-container">
-        <h3 class="queue-title" data-i18n="queue.title">Queue</h3>
-        <ul id="queue-list" class="queue-list">
-          <li class="empty-placeholder" data-i18n="queue.empty">Queue empty</li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- Khu Tài khoản -->
-    <section class="card accounts-section" id="accounts-container">
-      <h2 data-i18n="acc.title">Accounts</h2>
-      <div id="accounts-list" class="accounts-list">
-        <div class="account-row">
-          <div class="account-info">
-            <span class="account-name">Agent</span>
-            <span class="account-tool">Tool</span>
-            <div class="account-login">
-              <span class="login-dot dot-unknown"></span>
-              <span data-i18n="login.unknown">Unknown</span>
-            </div>
-          </div>
-          <div class="account-cmd-wrap">
-            <input type="text" readonly class="account-cmd-code" value="ssh -t admzon@100.96.250.103 &quot;sudo -iu agent agy&quot;" aria-label="Login command" data-i18n-aria="acc.loginCmd">
-            <button class="btn btn-secondary btn-sm copy-btn" type="button" aria-label="Copy login command" data-i18n-aria="acc.copyLogin" data-i18n="acc.copy">Copy</button>
-          </div>
-        </div>
-      </div>
     </section>
   </div>
 
@@ -2161,6 +2210,15 @@
           'inbox.title': 'Team inbox',
           'inbox.empty': 'No team notes',
           'inbox.attachment': 'Attachment N-{id}',
+          'inbox.count': '· {n} notes · {open} open',
+          'inbox.select': 'Select N-{id}',
+          'inbox.deleteSel': 'Delete selected',
+          'inbox.deleteAll': 'Delete all',
+          'inbox.noneSelected': 'Select notes first',
+          'inbox.confirmSel': 'Delete {list}? Files are removed from main; git history keeps them.',
+          'inbox.confirmAll': 'Delete all team notes? Files are removed from main; git history keeps them.',
+          'inbox.deleted': 'Deleted {n} note(s)',
+          'inbox.skipped': 'kept {list} (used by a waiting session)',
           'cmd.title': 'Command',
           'cmd.team': 'Team',
           'cmd.label': 'Command or goal:',
@@ -3585,10 +3643,82 @@
         updateAttachVisibility();
       }
 
+      // Hộp thư team: chọn để xoá (giữ qua mỗi lần vẽ lại), thu gọn mặc định.
+      var selectedNotes = {};
+      var inboxSection = document.getElementById('inbox-section');
+      var inboxToggle = document.getElementById('inbox-toggle');
+      var inboxTimer = null;
+      var INBOX_COLLAPSE_MS = 3 * 60 * 1000;
+
+      var inboxOpenedAt = 0;
+      function setInboxOpen(open) {
+        if (!inboxSection) return;
+        if (open && inboxSection.classList.contains('collapsed')) inboxOpenedAt = Date.now();
+        inboxSection.classList.toggle('collapsed', !open);
+        if (inboxToggle) inboxToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+      function cancelInboxCollapse() {
+        if (inboxTimer) { clearTimeout(inboxTimer); inboxTimer = null; }
+      }
+      if (inboxSection) {
+        inboxSection.addEventListener('mouseenter', function () { cancelInboxCollapse(); setInboxOpen(true); });
+        inboxSection.addEventListener('focusin', function () { cancelInboxCollapse(); setInboxOpen(true); });
+        inboxSection.addEventListener('mouseleave', function () {
+          cancelInboxCollapse();
+          inboxTimer = setTimeout(function () { inboxTimer = null; setInboxOpen(false); }, INBOX_COLLAPSE_MS);
+        });
+      }
+      if (inboxToggle) {
+        inboxToggle.addEventListener('click', function (e) {
+          e.stopPropagation();
+          cancelInboxCollapse();
+          // Chạm/Tab vừa mở bằng mouseenter/focusin ngay trước click → giữ mở, không đóng lại.
+          if (Date.now() - inboxOpenedAt < 600) { setInboxOpen(true); return; }
+          setInboxOpen(inboxSection.classList.contains('collapsed'));
+        });
+      }
+
+      async function deleteNotes(body, question) {
+        if (!window.confirm(question)) return;
+        try {
+          var res = await postJson('/api/notes/delete', body);
+          selectedNotes = {};
+          var msg = tx('inbox.deleted', { n: (res.deleted || []).length });
+          if (res.skipped && res.skipped.length) {
+            msg += ' · ' + tx('inbox.skipped', { list: res.skipped.map(function (i) { return 'N-' + i; }).join(', ') });
+          }
+          showFeedback(topFeedback, msg, false);
+        } catch (err) {
+          showFeedback(topFeedback, err.message, true);
+        }
+      }
+      var inboxDelSel = document.getElementById('inbox-del-sel');
+      if (inboxDelSel) {
+        inboxDelSel.addEventListener('click', function () {
+          var ids = Object.keys(selectedNotes).map(Number);
+          if (ids.length === 0) { showFeedback(topFeedback, tx('inbox.noneSelected'), true); return; }
+          deleteNotes({ ids: ids }, tx('inbox.confirmSel', { list: ids.map(function (i) { return 'N-' + i; }).join(', ') }));
+        });
+      }
+      var inboxDelAll = document.getElementById('inbox-del-all');
+      if (inboxDelAll) {
+        inboxDelAll.addEventListener('click', function () { deleteNotes({ all: true }, tx('inbox.confirmAll')); });
+      }
+
       function renderNotes(notes) {
         if (!notesList) return;
         clearChildren(notesList);
         var list = Array.isArray(notes) ? notes : [];
+        var inboxCount = document.getElementById('inbox-count');
+        if (inboxCount) {
+          var openCount = list.filter(function (n) { return n.status === 'open'; }).length;
+          inboxCount.textContent = list.length ? tx('inbox.count', { n: list.length, open: openCount }) : '';
+        }
+        var inboxActions = document.querySelector('.inbox-actions');
+        if (inboxActions) inboxActions.style.display = list.length ? '' : 'none';
+        var present = {};
+        list.forEach(function (n) { present[n.id] = true; });
+        Object.keys(selectedNotes).forEach(function (id) { if (!present[id]) delete selectedNotes[id]; });
         if (list.length === 0) {
           var empty = document.createElement('div');
           empty.className = 'empty-placeholder';
@@ -3606,6 +3736,17 @@
 
           var meta = document.createElement('div');
           meta.className = 'note-meta';
+
+          var check = document.createElement('input');
+          check.type = 'checkbox';
+          check.className = 'note-check';
+          check.checked = Boolean(selectedNotes[n.id]);
+          check.setAttribute('aria-label', tx('inbox.select', { id: n.id }));
+          check.addEventListener('change', function () {
+            if (check.checked) selectedNotes[n.id] = true;
+            else delete selectedNotes[n.id];
+          });
+          meta.appendChild(check);
 
           var idEl = document.createElement('span');
           idEl.className = 'note-id';

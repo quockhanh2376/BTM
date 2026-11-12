@@ -9,7 +9,8 @@ import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
 import { ticketDiff } from './diff.ts';
 import { commitAll } from '../git.ts';
-import { inboxPath, detectImage, readInboxFile } from './inbox.ts';
+import { inboxPath, detectImage, readInboxFile, removeInboxFromMain } from './inbox.ts';
+import { protectedShaKey } from '../core/guard.ts';
 import type { createMonitor } from '../energy/monitor.ts';
 import { approveGoal, type ApproveGoalResult } from '../ticket/goal.ts';
 
@@ -594,6 +595,60 @@ export function createServer(o: {
             await monitor.refresh(Object.keys(o.cfg.agents), true);
           }
           sendJson(res, 200, { ok: true });
+          return;
+        }
+
+        // Xoá ghi chú team: dòng DB + file trên main (lịch sử git giữ nguyên). Chỉ khi rảnh.
+        if (pathname === '/api/notes/delete') {
+          const parsed = z
+            .object({ ids: z.array(z.number().int().positive()).min(1).max(500).optional(), all: z.literal(true).optional() })
+            .refine((b) => !!b.ids !== !!b.all, 'ids or all')
+            .safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: 'Invalid body' });
+            return;
+          }
+          if (o.host.busy?.()) {
+            sendJson(res, 409, { error: 'Session running' });
+            return;
+          }
+          const activeProject = o.store.getActiveProject();
+          if (!activeProject) {
+            sendJson(res, 400, { error: 'No active project' });
+            return;
+          }
+          const picked = parsed.data.all
+            ? o.store.listNotes(activeProject, 1_000_000)
+            : parsed.data.ids!.map((id) => o.store.getNote(id)).filter((n) => n?.project === activeProject);
+          // Ghi chú đang mở của phiên còn chờ/Resume được: phiên đó vẫn đọc note + ảnh → không xoá.
+          const inUse = (n: (typeof picked)[number]) => {
+            if (n?.status !== 'open' || !n.session_id) return false;
+            const st = o.store.getSession(n.session_id)?.status;
+            return st === 'running' || st === 'needs_owner' || st === 'stopped';
+          };
+          const skipped = picked.filter(inUse).map((n) => n!.id);
+          const rows = picked.filter((n) => !inUse(n));
+          if (rows.length === 0) {
+            if (skipped.length) {
+              sendJson(res, 409, { error: `Notes in use by a waiting session: ${skipped.map((i) => `N-${i}`).join(', ')}` });
+              return;
+            }
+            sendJson(res, 404, { error: 'No notes' });
+            return;
+          }
+          const names = rows.flatMap((n) => [`N-${n!.id}.md`, ...(n!.image ? [n!.image] : [])]);
+          const pinKey = protectedShaKey(activeProject);
+          let result: { mainSha: string; removed: string[] };
+          try {
+            result = removeInboxFromMain(activeProject, names, o.cfg.git?.protected_branch || 'main', o.store.getSetting(pinKey)?.trim() || '');
+          } catch (err: any) {
+            const msg = String(err?.message || err);
+            sendJson(res, 409, { error: msg === 'dirty' ? 'Working tree is dirty' : msg === 'protected_branch_moved' ? 'protected_branch_moved' : 'Delete failed' });
+            return;
+          }
+          o.store.setSetting(pinKey, result.mainSha);
+          for (const n of rows) o.store.deleteNote(n!.id);
+          sendJson(res, 200, { ok: true, deleted: rows.map((n) => n!.id), skipped, removed: result.removed });
           return;
         }
 
