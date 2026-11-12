@@ -209,6 +209,9 @@ describe('Web Dashboard (web/index.html)', () => {
 
   it('interacts with API endpoints (/api/stop, /api/approve, /api/command)', () => {
     expect(html).toContain('/api/stop');
+    // Stop trên từng thẻ: gửi seat, chỉ bật khi thẻ đang chạy
+    expect(html).toContain("postJson('/api/stop', { seat: seatKey })");
+    expect(html).toContain('cardStop.disabled = !(isCurrentHolder && isBusy);');
     expect(html).toContain('/api/approve');
     expect(html).toContain('/api/command');
   });

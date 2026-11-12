@@ -116,7 +116,7 @@ export function devTicketPrompt(
   const header = reportHeader(t, agentName, 'Dev');
 
   const lines = [
-    `Bạn là Dev (${agentName}). Hãy đọc file team/tickets/${t.id}.md (gồm acceptance) để thực hiện ticket ${t.id}: ${title}`,
+    `Bạn là Dev (${agentName}). Hãy đọc file team/tickets/${t.id}.md (gồm acceptance) để thực hiện ticket ${t.id}: ${title}. Tập trung: chỉ đọc ticket ${t.id} của mình, không đọc ticket khác trong team/tickets/; ticket đã đủ thông tin thì không dò repo (git log/show/grep, liệt kê thư mục) mà bắt tay sửa file ngay.`,
     `Phạm vi cho phép: ${scope}. Nghiệm thu: ${doneWhen}`,
     notesLine,
     allowLine,

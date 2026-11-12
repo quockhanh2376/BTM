@@ -84,6 +84,9 @@ describe('Task 5 Prompts: pmTicketPrompt, devTicketPrompt, qcTicketPrompt', () =
     expect(prompt).toContain('BLOCKED');
     expect(prompt).toContain('Lệnh được phép: npm test');
     expect(prompt).toContain('Lưu ý cần sửa: Fix indentation');
+    // anh Zon 2026-11-12: Dev chỉ đọc ticket của mình, không dò repo
+    expect(prompt).toContain('chỉ đọc ticket GTM-0012 của mình, không đọc ticket khác trong team/tickets/');
+    expect(prompt).toContain('không dò repo');
   });
 
   it('qcTicketPrompt chứa team/tickets/GTM-0012.md, đúng chuỗi reportHeader và JSON mẫu có ticket, goal, number', () => {
