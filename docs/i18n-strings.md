@@ -156,6 +156,32 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | key | VI hiện tại | EN đề xuất |
 |---|---|---|
 | acc.title | Tài khoản | Accounts |
+| acc.import / acc.export / acc.add | Nhập / Xuất / + Thêm tài khoản | Import / Export / + Add Account |
+| acc.tabAll | Tất cả | All |
+| acc.workerTitle | Worker {name} · tài khoản: {n} | Worker {name} · accounts: {n} |
+| acc.worker / acc.slug | Worker / Tên (a-z0-9) | Worker / Name (a-z0-9) |
+| acc.agyPlaceholder | Dán {"email", "refresh_token"} hoặc chọn file JSON | Paste {"email": "…", "refresh_token": "…"} or choose a JSON file |
+| acc.create / acc.cancel / acc.send | Tạo / Huỷ / Gửi | Create / Cancel / Send |
+| acc.pasteCode | Dán mã | Paste code |
+| acc.confirmImport | Nhập | Import |
+| acc.badJson | JSON không hợp lệ | Not valid JSON |
+| acc.created | Đã tạo tài khoản {key} | Account {key} created |
+| acc.loginOpen | Mở link, đăng nhập rồi chờ ở đây | Open the link, sign in, then wait here |
+| acc.loginCode | Mở link, đăng nhập rồi dán mã bên dưới | Open the link, sign in, then paste the code below |
+| acc.loginDone | Đã đăng nhập – tài khoản {key} sẵn sàng | Signed in – account {key} is ready |
+| acc.loginFailed | Đăng nhập lỗi: {error} | Login failed: {error} |
+| acc.exported | Đã xuất – giữ kín file này (có token đăng nhập) | Exported – keep this file private (it contains login tokens) |
+| acc.importNew | Mới: {list} | New: {list} |
+| acc.importConflicts | Đã có – tick để ghi đè: | Already here – tick to overwrite: |
+| acc.importRejected | Bỏ qua: {entry} ({reason}) | Skipped: {entry} ({reason}) |
+| acc.importNothing | Không có gì để nhập | Nothing to import |
+| acc.imported | Đã nhập {n} tài khoản – mặc định ngủ; bật Active here để dùng | Imported {n} account(s) – they start Sleeping; turn on Active here to use them |
+| acc.activeHere / acc.activeFor | Dùng ở máy này / Dùng {key} ở máy này | Active here / Use {key} on this machine |
+| acc.up / acc.down | Đưa {key} lên / xuống | Move {key} up / down |
+| acc.labelFor | Nơi khác đang dùng {key} | Where else {key} is used |
+| acc.lbl.* | — / IDE / CLI / Plugin / Máy khác | — / IDE / CLI / Plugin / Other machine |
+| acc.st.* | Đang dùng / Kế tiếp / Bật, rảnh / Hết hạn mức · hồi {time} / Đang ngủ / Cần đăng nhập lại | In use / Next / Active, free / Usage limited · resets {time} / Sleeping / Re-login needed |
+| acc.copyLoginItem | Copy lệnh đăng nhập cho {key} | Copy login command for {key} |
 | acc.empty | Chưa có thông tin tài khoản | No account info |
 | acc.loginCmd | Lệnh đăng nhập (cho {agent}) | Login command ({agent}) |
 | acc.copy | Sao chép | Copy |

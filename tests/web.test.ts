@@ -1505,3 +1505,22 @@ describe('Inbox gọn + thứ tự dashboard (2026-11-12)', () => {
     expect(html).toContain('if (!window.confirm(question)) return;');
   });
 });
+
+describe('P7-T5: giao diện Accounts', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const section = html.slice(html.indexOf('id="accounts-container"'), html.indexOf('</section>', html.indexOf('id="accounts-container"')));
+  it('đủ 4 nút trong khu Accounts; thanh phiên không còn Refresh energy', () => {
+    for (const id of ['acc-import-btn', 'acc-export-btn', 'refresh-energy-btn', 'acc-add-btn']) expect(section).toContain(`id="${id}"`);
+    expect(html.match(/id="refresh-energy-btn"/g)).toHaveLength(1);
+    const bar = html.slice(html.indexOf('<header class="card session-bar">'), html.indexOf('</header>'));
+    expect(bar).not.toContain('refresh-energy-btn');
+  });
+  it('tab All/BTM/IDE/CLI/Plugin; link đăng nhập chỉ https; dữ liệu tài khoản không qua innerHTML', () => {
+    for (const t of ['all', 'btm', 'ide', 'cli', 'plugin']) expect(section).toContain(`data-tab="${t}"`);
+    expect(html).toContain("view.url.indexOf('https://') === 0");
+    const js = html.slice(html.indexOf('// ===== Plan 7: tài khoản của Worker ====='), html.indexOf('// 5. Connect SSE'));
+    expect(js.length).toBeGreaterThan(1000);
+    expect(js).not.toContain('innerHTML');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+});

@@ -618,6 +618,116 @@
       color: var(--text);
     }
 
+    .acc-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .acc-toolbar,
+    .acc-tabs,
+    .acc-panel-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .acc-tabs button {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: 999px;
+      padding: 3px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .acc-tabs button[aria-selected="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .acc-panel {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .acc-panel[hidden],
+    .acc-login[hidden],
+    .acc-panel-row[hidden] {
+      display: none;
+    }
+
+    .acc-panel textarea {
+      flex: 1 1 260px;
+      min-width: 0;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    .acc-login a {
+      word-break: break-all;
+    }
+
+    .acc-items {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 6px;
+    }
+
+    .acc-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      font-size: 12px;
+    }
+
+    .acc-item-name {
+      font-weight: 600;
+    }
+
+    .acc-item-email {
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 180px;
+      white-space: nowrap;
+    }
+
+    .acc-badge {
+      border-radius: 999px;
+      padding: 1px 8px;
+      font-size: 11px;
+      background: var(--badge-bg);
+      color: var(--badge-text);
+    }
+
+    .acc-badge.st-in_use { background: var(--running-bg); color: var(--running-text); }
+    .acc-badge.st-limited, .acc-badge.st-relogin { background: var(--danger); color: var(--danger-text); }
+
+    .acc-item .acc-ctrl {
+      margin-left: auto;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .acc-item .btn-xs {
+      padding: 1px 6px;
+      font-size: 11px;
+    }
+
     .accounts-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -1742,7 +1852,6 @@
         <label class="auto-approve-label" id="auto-approve-label">
           <input type="checkbox" id="auto-approve-toggle"> <span data-i18n="btn.autoApprove">Auto-approve tickets</span>
         </label>
-        <button id="refresh-energy-btn" class="btn btn-secondary" type="button" data-i18n="btn.refreshEnergy">Refresh energy</button>
         <button id="approve-btn" class="btn btn-primary" type="button" disabled title="No tickets awaiting approval" data-i18n-title="fb.nothingToApprove" data-i18n="btn.approve">Approve tickets</button>
         <button id="stop-btn" class="btn btn-danger" type="button" data-i18n="btn.stop">Stop</button>
         <button id="theme-toggle" class="btn btn-icon" type="button" aria-label="Toggle light/dark" data-i18n-aria="btn.theme">
@@ -1819,7 +1928,53 @@
 
     <!-- Khu Tài khoản -->
     <section class="card accounts-section" id="accounts-container">
-      <h2 data-i18n="acc.title">Accounts</h2>
+      <div class="acc-header">
+        <h2 data-i18n="acc.title">Accounts</h2>
+        <div class="acc-toolbar">
+          <button id="acc-import-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.import">Import</button>
+          <input id="acc-import-file" type="file" accept="application/json,.json" hidden>
+          <button id="acc-export-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.export">Export</button>
+          <button id="refresh-energy-btn" class="btn btn-primary btn-sm" type="button" data-i18n="btn.refreshEnergy">Refresh energy</button>
+          <button id="acc-add-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.add">+ Add Account</button>
+        </div>
+      </div>
+      <div class="acc-tabs" role="tablist" id="acc-tabs">
+        <button type="button" role="tab" data-tab="all" data-i18n="acc.tabAll">All</button>
+        <button type="button" role="tab" data-tab="btm">BTM</button>
+        <button type="button" role="tab" data-tab="ide">IDE</button>
+        <button type="button" role="tab" data-tab="cli">CLI</button>
+        <button type="button" role="tab" data-tab="plugin">Plugin</button>
+      </div>
+      <div id="acc-add-panel" class="acc-panel" hidden>
+        <div class="acc-panel-row">
+          <label><span data-i18n="acc.worker">Worker</span> <select id="acc-add-worker"></select></label>
+          <label><span data-i18n="acc.slug">Name (a-z0-9)</span> <input id="acc-add-slug" type="text" maxlength="12" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <div id="acc-add-agy" class="acc-panel-row" hidden>
+          <textarea id="acc-add-json" rows="3" data-i18n-placeholder="acc.agyPlaceholder" spellcheck="false"></textarea>
+          <input id="acc-add-json-file" type="file" accept="application/json,.json">
+        </div>
+        <div class="acc-panel-row">
+          <button id="acc-add-create" class="btn btn-primary btn-sm" type="button" data-i18n="acc.create">Create</button>
+          <button id="acc-add-cancel" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.cancel">Cancel</button>
+        </div>
+        <div id="acc-login" class="acc-login" hidden aria-live="polite">
+          <div id="acc-login-msg"></div>
+          <a id="acc-login-link" target="_blank" rel="noopener noreferrer"></a>
+          <code id="acc-login-code"></code>
+          <div id="acc-login-code-row" class="acc-panel-row" hidden>
+            <input id="acc-login-code-input" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="acc.pasteCode">
+            <button id="acc-login-code-send" class="btn btn-primary btn-sm" type="button" data-i18n="acc.send">Send</button>
+          </div>
+        </div>
+      </div>
+      <div id="acc-import-panel" class="acc-panel" hidden aria-live="polite">
+        <div id="acc-import-summary"></div>
+        <div class="acc-panel-row">
+          <button id="acc-import-confirm" class="btn btn-primary btn-sm" type="button" data-i18n="acc.confirmImport">Import</button>
+          <button id="acc-import-cancel" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.cancel">Cancel</button>
+        </div>
+      </div>
       <div id="accounts-list" class="accounts-list">
         <div class="account-row">
           <div class="account-info">
@@ -2238,6 +2393,48 @@
           'cmd.sent': 'Command sent',
           'cmd.failed': 'Send failed',
           'acc.title': 'Accounts',
+          'acc.import': 'Import',
+          'acc.export': 'Export',
+          'acc.add': '+ Add Account',
+          'acc.tabAll': 'All',
+          'acc.worker': 'Worker',
+          'acc.workerTitle': 'Worker {name} · accounts: {n}',
+          'acc.slug': 'Name (a-z0-9)',
+          'acc.agyPlaceholder': 'Paste {"email": "…", "refresh_token": "…"} or choose a JSON file',
+          'acc.create': 'Create',
+          'acc.cancel': 'Cancel',
+          'acc.pasteCode': 'Paste code',
+          'acc.send': 'Send',
+          'acc.confirmImport': 'Import',
+          'acc.badJson': 'Not valid JSON',
+          'acc.created': 'Account {key} created',
+          'acc.loginOpen': 'Open the link, sign in, then wait here',
+          'acc.loginCode': 'Open the link, sign in, then paste the code below',
+          'acc.loginDone': 'Signed in – account {key} is ready',
+          'acc.loginFailed': 'Login failed: {error}',
+          'acc.exported': 'Exported – keep this file private (it contains login tokens)',
+          'acc.importNew': 'New: {list}',
+          'acc.importConflicts': 'Already here – tick to overwrite:',
+          'acc.importRejected': 'Skipped: {entry} ({reason})',
+          'acc.importNothing': 'Nothing to import',
+          'acc.imported': 'Imported {n} account(s) – they start Sleeping; turn on Active here to use them',
+          'acc.activeHere': 'Active here',
+          'acc.activeFor': 'Use {key} on this machine',
+          'acc.up': 'Move {key} up',
+          'acc.down': 'Move {key} down',
+          'acc.labelFor': 'Where else {key} is used',
+          'acc.lbl.none': '—',
+          'acc.lbl.ide': 'IDE',
+          'acc.lbl.cli': 'CLI',
+          'acc.lbl.plugin': 'Plugin',
+          'acc.lbl.other': 'Other machine',
+          'acc.st.in_use': 'In use',
+          'acc.st.next': 'Next',
+          'acc.st.free': 'Active, free',
+          'acc.st.limited': 'Usage limited · resets {time}',
+          'acc.st.sleeping': 'Sleeping',
+          'acc.st.relogin': 'Re-login needed',
+          'acc.copyLoginItem': 'Copy login command for {key}',
           'acc.empty': 'No account info',
           'acc.loginCmd': 'Login command',
           'acc.loginCmdFor': 'Login command ({agent})',
@@ -4088,6 +4285,8 @@
         }
 
         // Accounts
+        lastAccounts = Array.isArray(state.accounts) ? state.accounts : [];
+        lastSshHint = state.sshHint;
         renderAccounts(state.accounts, state.sshHint);
         renderSeatWarnings(state.seatWarnings);
         renderQuestions(state.questions);
@@ -4179,9 +4378,301 @@
           cmdWrap.appendChild(copyBtn);
           row.appendChild(cmdWrap);
 
+          // Plan 7: tên Worker + danh sách tài khoản theo thứ tự (lọc theo tab).
+          var items = Array.isArray(acc.accounts) ? acc.accounts : [];
+          nameEl.textContent = tx('acc.workerTitle', { name: acc.agent, n: items.length || 1 });
+          var shown = items.filter(accountMatchesTab);
+          if (items.length && !shown.length) return;
+          if (items.length) row.appendChild(buildAccountItems(acc, shown, sshTarget));
+
           container.appendChild(row);
         });
       }
+
+      // ===== Plan 7: tài khoản của Worker =====
+      var accTab = 'all';
+      try { accTab = localStorage.getItem('btm.accTab') || 'all'; } catch (e) {}
+      var lastAccounts = [];
+      var lastSshHint = null;
+
+      function accountMatchesTab(a) {
+        if (accTab === 'all') return true;
+        if (accTab === 'btm') return Boolean(a.active);
+        return a.label === accTab;
+      }
+
+      function syncAccTabs() {
+        document.querySelectorAll('#acc-tabs [data-tab]').forEach(function (b) {
+          b.setAttribute('aria-selected', b.getAttribute('data-tab') === accTab ? 'true' : 'false');
+        });
+      }
+      syncAccTabs();
+      document.querySelectorAll('#acc-tabs [data-tab]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          accTab = b.getAttribute('data-tab') || 'all';
+          try { localStorage.setItem('btm.accTab', accTab); } catch (e) {}
+          syncAccTabs();
+          renderAccounts(lastAccounts, lastSshHint);
+        });
+      });
+
+      async function accountPost(key, body) {
+        try {
+          await postJson('/api/accounts/' + encodeURIComponent(key), body);
+        } catch (err) {
+          showFeedback(topFeedback, err.message, true);
+        }
+      }
+
+      var ACC_STATUS = { in_use: 'acc.st.in_use', next: 'acc.st.next', free: 'acc.st.free', sleeping: 'acc.st.sleeping', relogin: 'acc.st.relogin' };
+      var ACC_LABELS = [['none', 'acc.lbl.none'], ['ide', 'acc.lbl.ide'], ['cli', 'acc.lbl.cli'], ['plugin', 'acc.lbl.plugin'], ['other', 'acc.lbl.other']];
+      function statusText(a) {
+        if (a.status === 'limited') return tx('acc.st.limited', { time: a.resetsAt ? formatTime(a.resetsAt) : '—' });
+        return tx(ACC_STATUS[a.status] || 'acc.st.free');
+      }
+
+      function buildAccountItems(worker, items, sshTarget) {
+        var box = document.createElement('div');
+        box.className = 'acc-items';
+        items.forEach(function (a) {
+          var line = document.createElement('div');
+          line.className = 'acc-item';
+
+          var name = document.createElement('span');
+          name.className = 'acc-item-name';
+          name.textContent = a.slug;
+          line.appendChild(name);
+
+          if (a.email) {
+            var email = document.createElement('span');
+            email.className = 'acc-item-email';
+            email.textContent = a.email;
+            email.title = a.email;
+            line.appendChild(email);
+          }
+
+          var badge = document.createElement('span');
+          badge.className = 'acc-badge st-' + a.status;
+          badge.textContent = statusText(a);
+          line.appendChild(badge);
+
+          var ctrl = document.createElement('span');
+          ctrl.className = 'acc-ctrl';
+
+          var label = document.createElement('select');
+          label.setAttribute('aria-label', tx('acc.labelFor', { key: a.key }));
+          ACC_LABELS.forEach(function (pair) {
+            var o = document.createElement('option');
+            o.value = pair[0];
+            o.textContent = tx(pair[1]);
+            if (a.label === pair[0]) o.selected = true;
+            label.appendChild(o);
+          });
+          label.addEventListener('change', function () { accountPost(a.key, { label: label.value }); });
+          ctrl.appendChild(label);
+
+          var activeWrap = document.createElement('label');
+          var active = document.createElement('input');
+          active.type = 'checkbox';
+          active.checked = Boolean(a.active);
+          active.setAttribute('aria-label', tx('acc.activeFor', { key: a.key }));
+          active.addEventListener('change', function () { accountPost(a.key, { active: active.checked }); });
+          activeWrap.appendChild(active);
+          activeWrap.appendChild(document.createTextNode(' ' + tx('acc.activeHere')));
+          ctrl.appendChild(activeWrap);
+
+          [['up', '↑', tx('acc.up', { key: a.key })], ['down', '↓', tx('acc.down', { key: a.key })]].forEach(function (d) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn btn-secondary btn-xs';
+            b.textContent = d[1];
+            b.setAttribute('aria-label', d[2]);
+            b.addEventListener('click', function () { accountPost(a.key, { move: d[0] }); });
+            ctrl.appendChild(b);
+          });
+
+          var copy = document.createElement('button');
+          copy.type = 'button';
+          copy.className = 'btn btn-secondary btn-xs';
+          copy.textContent = tx('acc.copy');
+          copy.setAttribute('aria-label', tx('acc.copyLoginItem', { key: a.key }));
+          var cmd = getLoginCommand(worker.tool, sshTarget, a.user);
+          copy.addEventListener('click', function () { copyLoginCommand(cmd, null, copy); });
+          ctrl.appendChild(copy);
+
+          line.appendChild(ctrl);
+          box.appendChild(line);
+        });
+        return box;
+      }
+
+      // Add Account
+      var accAddPanel = document.getElementById('acc-add-panel');
+      var accAddWorker = document.getElementById('acc-add-worker');
+      var accAddAgy = document.getElementById('acc-add-agy');
+      var accAddJson = document.getElementById('acc-add-json');
+      var accLogin = document.getElementById('acc-login');
+      var accLoginTimer = null;
+
+      function workerTool(agent) {
+        var w = lastAccounts.find(function (x) { return x.agent === agent; });
+        return w ? w.tool : '';
+      }
+      function syncAddForm() {
+        accAddAgy.hidden = workerTool(accAddWorker.value) !== 'antigravity-cli';
+      }
+      document.getElementById('acc-add-btn').addEventListener('click', function () {
+        clearChildren(accAddWorker);
+        lastAccounts.forEach(function (w) {
+          var o = document.createElement('option');
+          o.value = w.agent;
+          o.textContent = w.agent + ' · ' + w.tool;
+          accAddWorker.appendChild(o);
+        });
+        accAddPanel.hidden = false;
+        accLogin.hidden = true;
+        syncAddForm();
+      });
+      accAddWorker.addEventListener('change', syncAddForm);
+      document.getElementById('acc-add-cancel').addEventListener('click', function () {
+        accAddPanel.hidden = true;
+        if (accLoginTimer) { clearInterval(accLoginTimer); accLoginTimer = null; }
+      });
+      document.getElementById('acc-add-json-file').addEventListener('change', async function (e) {
+        var f = e.target.files && e.target.files[0];
+        if (f) accAddJson.value = await f.text();
+      });
+
+      function showLogin(view, key) {
+        accLogin.hidden = false;
+        var msg = document.getElementById('acc-login-msg');
+        var link = document.getElementById('acc-login-link');
+        var code = document.getElementById('acc-login-code');
+        var codeRow = document.getElementById('acc-login-code-row');
+        var url = view && typeof view.url === 'string' && view.url.indexOf('https://') === 0 ? view.url : '';
+        link.textContent = url;
+        if (url) link.href = url; else link.removeAttribute('href');
+        code.textContent = (view && view.code) || '';
+        codeRow.hidden = !(view && view.state === 'needs_code');
+        if (!view) msg.textContent = '';
+        else if (view.state === 'done') msg.textContent = tx('acc.loginDone', { key: key });
+        else if (view.state === 'failed') msg.textContent = tx('acc.loginFailed', { error: view.error || '' });
+        else msg.textContent = view.state === 'needs_code' ? tx('acc.loginCode') : tx('acc.loginOpen');
+      }
+
+      function pollLogin(id, key) {
+        if (accLoginTimer) clearInterval(accLoginTimer);
+        var tickLogin = async function () {
+          try {
+            var res = await fetch('/api/accounts/login/' + id, { headers: { 'x-btm': '1' } });
+            var view = await res.json();
+            showLogin(view, key);
+            if (view.state === 'done' || view.state === 'failed') { clearInterval(accLoginTimer); accLoginTimer = null; }
+          } catch (e) {}
+        };
+        accLoginTimer = setInterval(tickLogin, 2000);
+        tickLogin();
+        document.getElementById('acc-login-code-send').onclick = async function () {
+          var input = document.getElementById('acc-login-code-input');
+          try {
+            await postJson('/api/accounts/login/' + id + '/code', { code: input.value.trim() });
+            input.value = '';
+          } catch (err) {
+            showFeedback(topFeedback, err.message, true);
+          }
+        };
+      }
+
+      document.getElementById('acc-add-create').addEventListener('click', async function () {
+        var body = { agent: accAddWorker.value, slug: document.getElementById('acc-add-slug').value.trim() };
+        if (!accAddAgy.hidden) {
+          try { body.agy = JSON.parse(accAddJson.value); } catch (e) { showFeedback(topFeedback, tx('acc.badJson'), true); return; }
+        }
+        try {
+          var res = await postJson('/api/accounts', body);
+          accAddJson.value = '';
+          showFeedback(topFeedback, tx('acc.created', { key: res.key }), false);
+          if (res.loginId) pollLogin(res.loginId, res.key);
+          else accAddPanel.hidden = true;
+        } catch (err) {
+          showFeedback(topFeedback, err.message, true);
+        }
+      });
+
+      // Export: file JSON có token đăng nhập → tải xuống, không hiển thị.
+      document.getElementById('acc-export-btn').addEventListener('click', async function () {
+        try {
+          var res = await fetch('/api/accounts/export', { method: 'POST', headers: { 'x-btm': '1', 'content-type': 'application/json' }, body: '{}' });
+          if (!res.ok) { var b = await res.json().catch(function () { return {}; }); throw new Error(b.error || tx('fb.serverError', { status: res.status })); }
+          var blob = await res.blob();
+          var m = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '');
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = m ? m[1] : 'btm-accounts.json';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+          showFeedback(topFeedback, tx('acc.exported'), false);
+        } catch (err) {
+          showFeedback(topFeedback, err.message, true);
+        }
+      });
+
+      // Import: xem trước (dryRun) → tick ghi đè → Import.
+      var accImportFile = document.getElementById('acc-import-file');
+      var accImportPanel = document.getElementById('acc-import-panel');
+      var accImportData = null;
+      document.getElementById('acc-import-btn').addEventListener('click', function () { accImportFile.value = ''; accImportFile.click(); });
+      accImportFile.addEventListener('change', async function () {
+        var f = accImportFile.files && accImportFile.files[0];
+        if (!f) return;
+        try {
+          accImportData = JSON.parse(await f.text());
+        } catch (e) {
+          showFeedback(topFeedback, tx('acc.badJson'), true);
+          return;
+        }
+        try {
+          var dry = await postJson('/api/accounts/import', { file: accImportData, dryRun: true });
+          var sum = document.getElementById('acc-import-summary');
+          clearChildren(sum);
+          var add = function (text) { var d = document.createElement('div'); d.textContent = text; sum.appendChild(d); return d; };
+          if (dry.new.length) add(tx('acc.importNew', { list: dry.new.join(', ') }));
+          if (dry.conflicts.length) {
+            add(tx('acc.importConflicts'));
+            dry.conflicts.forEach(function (c) {
+              var l = document.createElement('label');
+              var cb = document.createElement('input');
+              cb.type = 'checkbox';
+              cb.className = 'acc-overwrite';
+              cb.value = c;
+              l.appendChild(cb);
+              l.appendChild(document.createTextNode(' ' + c));
+              add('').appendChild(l);
+            });
+          }
+          dry.rejected.forEach(function (r) { add(tx('acc.importRejected', { entry: r.entry, reason: r.reason })); });
+          if (!dry.new.length && !dry.conflicts.length) add(tx('acc.importNothing'));
+          accImportPanel.hidden = false;
+        } catch (err) {
+          showFeedback(topFeedback, err.message, true);
+        }
+      });
+      document.getElementById('acc-import-cancel').addEventListener('click', function () { accImportPanel.hidden = true; accImportData = null; });
+      document.getElementById('acc-import-confirm').addEventListener('click', async function () {
+        if (!accImportData) return;
+        var overwrite = Array.from(accImportPanel.querySelectorAll('.acc-overwrite')).filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+        try {
+          var res = await postJson('/api/accounts/import', { file: accImportData, overwrite: overwrite });
+          var msg = tx('acc.imported', { n: res.imported.length });
+          res.failed.forEach(function (x) { msg += ' · ' + x.entry + ': ' + x.reason; });
+          showFeedback(topFeedback, msg, res.failed.length > 0);
+          accImportPanel.hidden = true;
+          accImportData = null;
+        } catch (err) {
+          showFeedback(topFeedback, err.message, true);
+        }
+      });
 
       // 5. Connect SSE
       function connectSSE() {
