@@ -482,3 +482,42 @@ describe('P6-T2: gỡ cờ hết hạn mức khi Energy thật còn đủ', () =
     store.close();
   });
 });
+
+describe('P7-T2: monitor theo tài khoản', () => {
+  const now = () => new Date('2026-11-12T10:00:00Z');
+  function setup(loginState: 'ok' | 'relogin' = 'ok') {
+    const store = openStore(':memory:');
+    const cfg = loadConfig('btm.config.yaml');
+    store.ensureDefaultAccounts(Object.keys(cfg.agents));
+    store.addAccount('jacky', 'b', { active: true });
+    store.addAccount('jacky', 'c', { active: false });
+    const seen: string[] = [];
+    const sent: string[] = [];
+    const readEnergy = vi.fn(async (agent: string) => {
+      seen.push(`energy:${agent}`);
+      return { agent, status: 'fresh', windows: [], readAt: now().toISOString() } as unknown as EnergyReading;
+    });
+    const checkLogin = vi.fn(async (agent: string) => {
+      seen.push(`login:${agent}`);
+      return { agent, state: loginState, detail: 'x' } as LoginHealth;
+    });
+    const monitor = createMonitor({ cfg, store, readEnergy: readEnergy as any, checkLogin: checkLogin as any, now, listModels: async () => [], notify: (ev) => sent.push(`${ev.kind}:${ev.notes?.[0]}`) });
+    return { store, monitor, seen, sent };
+  }
+
+  it('tài khoản ngủ (jacky-c) không bao giờ bị đọc energy/đăng nhập; bật lên thì có', async () => {
+    const { store, monitor, seen } = setup();
+    await monitor.refresh(['jacky', 'jacky-b', 'jacky-c', 'nobody'], true);
+    expect(seen).toEqual(['energy:jacky', 'login:jacky', 'energy:jacky-b', 'login:jacky-b']);
+    store.updateAccount('jacky', 'c', { active: true });
+    await monitor.refresh(['jacky-c'], true);
+    expect(seen.slice(-2)).toEqual(['energy:jacky-c', 'login:jacky-c']);
+  });
+
+  it('Ok → relogin gửi 1 ntfy account_logout; relogin tiếp không gửi thêm; chưa từng Ok thì không gửi', async () => {
+    const { store, monitor, sent } = setup('relogin');
+    store.saveLogin({ agent: 'jacky-b', state: 'ok', detail: 'Ok' });
+    await monitor.refresh(['jacky-b', 'jacky'], true);
+    expect(sent).toEqual(['account_logout:jacky-b']);
+  });
+});

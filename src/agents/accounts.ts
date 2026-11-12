@@ -48,13 +48,28 @@ export function isUsable(store: Store, key: string, now: Date): boolean {
   return store.latestLogin(key)?.state !== 'relogin';
 }
 
-/** Tài khoản đầu tiên theo thứ tự: đang bật, không bị giới hạn (hoặc đã qua giờ reset), đăng nhập không phải relogin. */
-export function pickAccount(cfg: Config, store: Store, agent: string, now = new Date()): { key: string; slug: string } | null {
+/** Tài khoản dùng được theo thứ tự: đang bật, không bị giới hạn (hoặc đã qua giờ reset), đăng nhập không phải relogin. */
+export function usableAccounts(cfg: Config, store: Store, agent: string, now = new Date()): Array<{ key: string; slug: string }> {
   const active = accountsOf(store, agent).filter((a) => a.active);
   const candidates = cfg.rules.auto_switch_accounts === false ? active.slice(0, 1) : active;
-  for (const a of candidates) {
-    const key = accountKey(agent, a.slug);
-    if (isUsable(store, key, now)) return { key, slug: a.slug };
-  }
-  return null;
+  return candidates.map((a) => ({ key: accountKey(agent, a.slug), slug: a.slug })).filter((a) => isUsable(store, a.key, now));
+}
+
+export function pickAccount(cfg: Config, store: Store, agent: string, now = new Date()): { key: string; slug: string } | null {
+  return usableAccounts(cfg, store, agent, now)[0] ?? null;
+}
+
+/** Giờ reset sớm nhất trong các tài khoản đang bật bị giới hạn (để báo lý do); null nếu không có. */
+export function soonestReset(store: Store, agent: string, now = new Date()): string | null {
+  const times = accountsOf(store, agent)
+    .filter((a) => a.active)
+    .map((a) => store.getSetting(usageLimitedKey(accountKey(agent, a.slug))))
+    .filter((t): t is string => !!t && Date.parse(t) > now.getTime())
+    .sort((x, y) => Date.parse(x) - Date.parse(y));
+  return times[0] ?? null;
+}
+
+export const accountLastKey = (agent: string) => `account_last:${agent}`;
+export function slugOfKey(agent: string, key: string): string {
+  return key === agent ? 'default' : key.slice(agent.length + 1);
 }

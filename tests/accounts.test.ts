@@ -91,3 +91,15 @@ describe('P7-T1: store tài khoản', () => {
     expect(store.getAccount('jacky', 'b')).toMatchObject({ label: 'ide', email: 'x@y.z' });
   });
 });
+
+describe('P7-T2: nâng cấp VM đang chạy', () => {
+  it('dữ liệu cũ theo agent id (usage_limited_until:jacky, login, energy) vẫn áp cho tài khoản default', () => {
+    const store = openStore(':memory:');
+    store.setSetting(usageLimitedKey('jacky'), later);
+    store.saveLogin({ agent: 'elon', state: 'relogin', detail: 'x' });
+    store.ensureDefaultAccounts(['jacky', 'elon']);
+    expect(pickAccount(cfg(), store, 'jacky', now)).toBeNull();
+    expect(pickAccount(cfg(), store, 'elon', now)).toBeNull();
+    expect(store.listAccounts('jacky')).toMatchObject([{ slug: 'default', active: true, ord: 0 }]);
+  });
+});

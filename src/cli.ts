@@ -19,6 +19,7 @@ import { makeRunner, type Runner } from './runner/run.ts';
 import { createHost } from './server/host.ts';
 import { createServer } from './server/http.ts';
 import { createMonitor } from './energy/monitor.ts';
+import { notify } from './notify/notify.ts';
 import { readEnergy } from './energy/quota.ts';
 import { checkLogin } from './energy/login.ts';
 
@@ -92,6 +93,7 @@ export async function serve(
     checkLogin,
     now: () => new Date(),
     env: effectiveEnv,
+    notify: (ev) => void notify(cfg, ev),
   });
 
   const host = hostFactory({

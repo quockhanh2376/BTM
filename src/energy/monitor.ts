@@ -8,6 +8,8 @@ import { readEnergy, type EnergyReading, type EnergyWindow } from './quota.ts';
 import { checkLogin, type LoginHealth } from './login.ts';
 import { listModels } from '../agents/models.ts';
 import { usageLimitedKey } from '../agents/usage-limit.ts';
+import { activeAccountKeys, agentOfAccount } from '../agents/accounts.ts';
+import type { NotifyEvent } from '../notify/notify.ts';
 
 export interface MonitorDeps {
   cfg: Config;
@@ -19,6 +21,8 @@ export interface MonitorDeps {
   env?: NodeJS.ProcessEnv;
   codexHome?: string;
   listModels?: typeof listModels;
+  /** Plan 7: tài khoản đang bật bị đăng xuất (Ok → relogin) → ntfy. */
+  notify?: (ev: NotifyEvent) => void;
 }
 
 const MODELS_TTL_MS = 6 * 60 * 60 * 1000;
@@ -75,9 +79,11 @@ export function createMonitor(d: MonitorDeps): {
   const checkedAt = new Map<string, number>();
   const inFlight = new Map<string, Promise<void>>();
 
+  // Plan 7: `agent` ở đây là khoá tài khoản (default = agent id). Tài khoản đang ngủ: không chạy gì dưới user của nó.
   async function refreshAgent(agent: string, force?: boolean): Promise<void> {
-    const agentCfg = d.cfg.agents[agent];
-    if (!agentCfg) return;
+    const owner = agentOfAccount(d.cfg, d.store, agent);
+    const agentCfg = owner ? d.cfg.agents[owner] : undefined;
+    if (!agentCfg || !activeAccountKeys(d.cfg, d.store).includes(agent)) return;
 
     const running = inFlight.get(agent);
     if (running) {
@@ -122,7 +128,11 @@ export function createMonitor(d: MonitorDeps): {
         agyQuotaOk,
         agyQuotaOutput,
       });
+      const before = d.store.latestLogin(agent)?.state;
       d.store.saveLogin(loginHealth);
+      if ((before === 'ok' || before === 'expiring') && loginHealth.state === 'relogin') {
+        d.notify?.({ kind: 'account_logout', project: '', notes: [agent] });
+      }
 
       // Danh sách model cho ô chọn trên dashboard: đọc dưới user của agent, tối đa 6 giờ/lần, lỗi thì giữ bản cũ.
       if (loginHealth.state === 'ok' || loginHealth.state === 'expiring') {

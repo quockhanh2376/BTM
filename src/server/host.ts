@@ -20,6 +20,7 @@ import { approveGoal as approveGoalFn, type ApproveGoalResult } from '../ticket/
 import { createMonitor } from '../energy/monitor.ts';
 import { readEnergy } from '../energy/quota.ts';
 import { checkLogin } from '../energy/login.ts';
+import { pickAccount } from '../agents/accounts.ts';
 
 export interface HostDeps {
   cfg: Config;
@@ -50,6 +51,7 @@ export function createHost(d: HostDeps): HostApi & {
     checkLogin,
     now: () => new Date(),
     env: d.env,
+    notify: (ev) => void notify(d.cfg, ev),
   });
 
   let isBusy = false;
@@ -247,13 +249,16 @@ export function createHost(d: HostDeps): HostApi & {
         }
 
         let gateFailedReason: string | null = null;
-        if (monitor && agent) {
+        // Plan 7: lệnh trực tiếp chạy dưới tài khoản đầu tiên dùng được của Worker.
+        const account = agent ? pickAccount(d.cfg, d.store, agent)?.key : undefined;
+        if (agent && !account) gateFailedReason = `usage_limited:${agent}`;
+        if (monitor && account) {
           try {
-            await monitor.refresh([agent]);
+            await monitor.refresh([account]);
           } catch {
             // refresh reject -> coi như unknown
           }
-          const gateCheck = monitor.gate(agent);
+          const gateCheck = monitor.gate(account);
           if (!gateCheck.ok) {
             gateFailedReason = gateCheck.reason;
           }
@@ -288,6 +293,7 @@ export function createHost(d: HostDeps): HostApi & {
             try {
               output = await d.runner('dev', agent, prompt, activeProject, logFile, {
                 signal: abortController.signal,
+                account,
               });
             } catch (err: any) {
               runError = err;
@@ -398,6 +404,7 @@ export function createHost(d: HostDeps): HostApi & {
             try {
               output = await d.runner('qc', agent, prompt, activeProject, logFile, {
                 signal: abortController.signal,
+                account,
               });
             } catch (err: any) {
               runError = err;
