@@ -1527,10 +1527,10 @@ describe('P7-T5: giao diện Accounts', () => {
 
 describe('Đốm sáng quanh thẻ ghế đang làm (2026-11-12)', () => {
   const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
-  it('chỉ thẻ is-holder có hiệu ứng; tôn trọng reduced-motion', () => {
+  it('chỉ thẻ is-holder có hiệu ứng; luôn chạy kể cả reduced-motion (anh Zon chọn)', () => {
     expect(html).toContain('.seat-card.is-holder::before {');
     expect(html).toContain('animation: holder-glow 2.8s linear infinite;');
-    expect(html).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*\.seat-card\.is-holder::before \{ animation: none; \}/);
+    expect(html).not.toMatch(/\.seat-card\.is-holder::before \{ animation: none; \}/);
     expect(html).toContain('pointer-events: none;');
   });
 });

@@ -368,7 +368,7 @@
       position: relative;
     }
 
-    /* Đốm sáng chạy quanh viền thẻ ghế đang làm (anh Zon 2026-11-12). Chỉ vẽ trên viền nhờ mask, không che nội dung. */
+    /* Đốm sáng chạy quanh viền thẻ ghế đang làm (anh Zon 2026-11-12): luôn chạy, kể cả reduced-motion (anh chọn). Chỉ vẽ trên viền nhờ mask. */
     @property --glow-angle {
       syntax: '<angle>';
       inherits: false;
@@ -394,9 +394,6 @@
       to { --glow-angle: 360deg; }
     }
 
-    @media (prefers-reduced-motion: reduce) {
-      .seat-card.is-holder::before { animation: none; }
-    }
 
     .seat-header {
       display: flex;
