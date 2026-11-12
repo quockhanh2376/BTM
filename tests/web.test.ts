@@ -1516,7 +1516,11 @@ describe('P7-T5: giao diện Accounts', () => {
     expect(bar).not.toContain('refresh-energy-btn');
   });
   it('tab All/BTM/IDE/CLI/Plugin; link đăng nhập chỉ https; dữ liệu tài khoản không qua innerHTML', () => {
-    for (const t of ['all', 'btm', 'ide', 'cli', 'plugin']) expect(section).toContain(`data-tab="${t}"`);
+    for (const t of ['all', 'ide', 'cli', 'plugin']) expect(section).toContain(`data-tab="${t}"`);
+    expect(section).not.toContain('data-tab="btm"');
+    // tài khoản ngủ gom sau nút thu gọn, tự gập sau 3 phút
+    expect(html).toContain('acc-sleep-toggle');
+    expect(html).toContain('ACC_SLEEP_COLLAPSE_MS = 3 * 60 * 1000');
     expect(html).toContain("view.url.indexOf('https://') === 0");
     const js = html.slice(html.indexOf('// ===== Plan 7: tài khoản của Worker ====='), html.indexOf('// 5. Connect SSE'));
     expect(js.length).toBeGreaterThan(1000);
