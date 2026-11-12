@@ -50,6 +50,6 @@
 | UI-Ok + model picker | Cheki | XONG – PR #11, #12 merged, VM deployed | – | – |
 | P5-T9 (app 100% tiếng Anh, sẵn song ngữ) | Cheki | XONG – PR #20, VM deployed; bản VI + nút EN/VI làm sau | docs/superpowers/plans/2026-11-09-btm-plan5-flexible-team.md | – |
 | P6 (ý tưởng từ Orca, 7 task) | Cheki | Task 1+5 XONG (PR #16); Task 2 XONG (hết hạn mức giữa lượt → tự thay người, review P6-T2-review-1); Task 6+7 XONG; Task 3+4 XONG (diff + ghi chú dòng + Return to Dev; câu hỏi Dev chặn goal) – P6 hoàn tất | docs/superpowers/plans/2026-11-11-btm-plan6-orca-ideas.md | – |
-| P7 Accounts (6 task) | Cheki | XONG, merge PR #26 (d9cdc0b), review P7-review-1 sửa hết; chờ deploy (cần chạy lại prep) | docs/superpowers/plans/2026-11-12-btm-plan7-accounts.md | – |
+| P7 Accounts (6 task) | Cheki | XONG, merge PR #26 (d9cdc0b), review P7-review-1 sửa hết; deploy 62b38ce, check 18/18 | docs/superpowers/plans/2026-11-12-btm-plan7-accounts.md | – |
 
 Trạng thái: `waiting` → `assigned` → `done` / `reviewed` → Cheki: `accepted` (commit) hoặc `returned` (sửa lại).
