@@ -132,6 +132,7 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | inbox.confirmSel | Xoá {list}? File bị xoá khỏi main; lịch sử git vẫn giữ. | Delete {list}? Files are removed from main; git history keeps them. |
 | inbox.confirmAll | Xoá mọi ghi chú team? File bị xoá khỏi main; lịch sử git vẫn giữ. | Delete all team notes? Files are removed from main; git history keeps them. |
 | inbox.deleted | Đã xoá {n} ghi chú | Deleted {n} note(s) |
+| inbox.skipped | giữ lại {list} (phiên đang chờ còn dùng) | kept {list} (used by a waiting session) |
 | cmd.title | Khung lệnh | Command |
 | cmd.team | Cả team | Team |
 | cmd.label | Nội dung lệnh hoặc mục tiêu: | Command or goal: |

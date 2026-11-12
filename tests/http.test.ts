@@ -1124,6 +1124,16 @@ describe('HTTP Server & SSE', () => {
       expect(store.getNote(other)).not.toBeNull();
       expect(gx('ls-tree', '-r', '--name-only', 'main', 'team/inbox')).toBe(`team/inbox/N-${b}.md`);
       expect(store.getSetting(`protected_sha:${testRepo}`)).toBe(gx('rev-parse', 'main'));
+      // N-b đang mở của phiên needs_owner → giữ lại; ghi chú cancelled vẫn xoá được
+      const sid = store.createSession(['x'], testRepo);
+      store.setSessionStatus(sid, 'needs_owner');
+      store.setNoteSession(b, sid);
+      const c = store.createNote(testRepo, 'c', null);
+      store.setNoteStatus(c, 'cancelled');
+      const r2 = await (await del({ all: true })).json();
+      expect([r2.deleted, r2.skipped]).toEqual([[c], [b]]);
+      expect((await del({ ids: [b] })).status).toBe(409);
+      store.setSessionStatus(sid, 'done');
       expect((await del({ all: true })).status).toBe(200);
       expect(store.listNotes(testRepo)).toHaveLength(0);
       expect((await del({ all: true })).status).toBe(404);

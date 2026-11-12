@@ -617,10 +617,22 @@ export function createServer(o: {
             sendJson(res, 400, { error: 'No active project' });
             return;
           }
-          const rows = parsed.data.all
+          const picked = parsed.data.all
             ? o.store.listNotes(activeProject, 1_000_000)
             : parsed.data.ids!.map((id) => o.store.getNote(id)).filter((n) => n?.project === activeProject);
+          // Ghi chú đang mở của phiên còn chờ/Resume được: phiên đó vẫn đọc note + ảnh → không xoá.
+          const inUse = (n: (typeof picked)[number]) => {
+            if (n?.status !== 'open' || !n.session_id) return false;
+            const st = o.store.getSession(n.session_id)?.status;
+            return st === 'running' || st === 'needs_owner' || st === 'stopped';
+          };
+          const skipped = picked.filter(inUse).map((n) => n!.id);
+          const rows = picked.filter((n) => !inUse(n));
           if (rows.length === 0) {
+            if (skipped.length) {
+              sendJson(res, 409, { error: `Notes in use by a waiting session: ${skipped.map((i) => `N-${i}`).join(', ')}` });
+              return;
+            }
             sendJson(res, 404, { error: 'No notes' });
             return;
           }
@@ -636,7 +648,7 @@ export function createServer(o: {
           }
           o.store.setSetting(pinKey, result.mainSha);
           for (const n of rows) o.store.deleteNote(n!.id);
-          sendJson(res, 200, { ok: true, deleted: rows.map((n) => n!.id), removed: result.removed });
+          sendJson(res, 200, { ok: true, deleted: rows.map((n) => n!.id), skipped, removed: result.removed });
           return;
         }
 

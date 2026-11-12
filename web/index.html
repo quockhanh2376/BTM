@@ -2218,6 +2218,7 @@
           'inbox.confirmSel': 'Delete {list}? Files are removed from main; git history keeps them.',
           'inbox.confirmAll': 'Delete all team notes? Files are removed from main; git history keeps them.',
           'inbox.deleted': 'Deleted {n} note(s)',
+          'inbox.skipped': 'kept {list} (used by a waiting session)',
           'cmd.title': 'Command',
           'cmd.team': 'Team',
           'cmd.label': 'Command or goal:',
@@ -3649,8 +3650,10 @@
       var inboxTimer = null;
       var INBOX_COLLAPSE_MS = 3 * 60 * 1000;
 
+      var inboxOpenedAt = 0;
       function setInboxOpen(open) {
         if (!inboxSection) return;
+        if (open && inboxSection.classList.contains('collapsed')) inboxOpenedAt = Date.now();
         inboxSection.classList.toggle('collapsed', !open);
         if (inboxToggle) inboxToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       }
@@ -3669,6 +3672,8 @@
         inboxToggle.addEventListener('click', function (e) {
           e.stopPropagation();
           cancelInboxCollapse();
+          // Chạm/Tab vừa mở bằng mouseenter/focusin ngay trước click → giữ mở, không đóng lại.
+          if (Date.now() - inboxOpenedAt < 600) { setInboxOpen(true); return; }
           setInboxOpen(inboxSection.classList.contains('collapsed'));
         });
       }
@@ -3678,7 +3683,11 @@
         try {
           var res = await postJson('/api/notes/delete', body);
           selectedNotes = {};
-          showFeedback(topFeedback, tx('inbox.deleted', { n: (res.deleted || []).length }), false);
+          var msg = tx('inbox.deleted', { n: (res.deleted || []).length });
+          if (res.skipped && res.skipped.length) {
+            msg += ' · ' + tx('inbox.skipped', { list: res.skipped.map(function (i) { return 'N-' + i; }).join(', ') });
+          }
+          showFeedback(topFeedback, msg, false);
         } catch (err) {
           showFeedback(topFeedback, err.message, true);
         }
