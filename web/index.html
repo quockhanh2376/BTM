@@ -323,24 +323,11 @@
     }
 
     /* Goals section */
-    .goals-section h2, .section-title {
+    .section-title {
       font-size: 15px;
       font-weight: 700;
       margin: 0 0 12px 0;
       color: var(--text);
-    }
-
-    .goals-list {
-      margin: 0;
-      padding-left: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .goals-list li {
-      color: var(--text);
-      word-break: break-word;
     }
 
     /* 3 Seat cards */
@@ -1947,9 +1934,9 @@
       <div id="cmd-feedback" class="action-feedback" style="display: none;"></div>
 
       <div class="queue-container">
-        <h3 class="queue-title" data-i18n="queue.title">Queue</h3>
+        <h3 class="queue-title" data-i18n="queue.title">Session &amp; queue</h3>
         <ul id="queue-list" class="queue-list">
-          <li class="empty-placeholder" data-i18n="queue.empty">Queue empty</li>
+          <li class="empty-placeholder" data-i18n="queue.empty">Nothing running or queued</li>
         </ul>
       </div>
     </section>
@@ -2236,14 +2223,6 @@
       </div>
     </section>
 
-    <!-- Mục tiêu phiên -->
-    <section class="card goals-section">
-      <h2 data-i18n="goals.sessionTitle">Session goals</h2>
-      <ul id="goals-list" class="goals-list">
-        <li class="empty-placeholder" data-i18n="goals.sessionEmpty">No session goals</li>
-      </ul>
-    </section>
-
     <!-- Hộp thư team -->
     <section class="card inbox-section collapsed" id="inbox-section">
       <h2 class="section-title">
@@ -2318,8 +2297,6 @@
           'fb.energyRefreshed': 'Energy refreshed',
           'fb.seatChanged': '{seat} seat reassigned',
           'fb.serverError': 'Server error ({status})',
-          'goals.sessionTitle': 'Session goals',
-          'goals.sessionEmpty': 'No session goals',
           'seat.idle': 'Idle',
           'seat.running': 'Running',
           'seat.waiting': 'Waiting',
@@ -2386,8 +2363,9 @@
           'status.queued': 'Queued',
           'status.cancelled': 'Cancelled',
           'status.open': 'Open',
-          'queue.title': 'Queue',
-          'queue.empty': 'Queue empty',
+          'queue.title': 'Session & queue',
+          'queue.goal': 'Goal {goal}',
+          'queue.empty': 'Nothing running or queued',
           'log.title': 'Log',
           'log.empty': 'No log entries',
           'inbox.title': 'Team inbox',
@@ -3113,7 +3091,6 @@
         }
       }
 
-      var goalsList = document.getElementById('goals-list');
       var logList = document.getElementById('log-list');
       var queueList = document.getElementById('queue-list');
       var goalsContainer = document.getElementById('goals-container');
@@ -4204,24 +4181,6 @@
           setDisplay(holderDot, false);
         }
 
-        // Goals
-        if (goalsList) {
-          clearChildren(goalsList);
-          var goals = (state.session && state.session.goals) ? state.session.goals : [];
-          if (goals.length === 0) {
-            var emptyLi = document.createElement('li');
-            emptyLi.className = 'empty-placeholder';
-            emptyLi.textContent = tx('goals.sessionEmpty');
-            goalsList.appendChild(emptyLi);
-          } else {
-            goals.forEach(function (g) {
-              var li = document.createElement('li');
-              li.textContent = g;
-              goalsList.appendChild(li);
-            });
-          }
-        }
-
         // Seats (pm, dev, qc, audit)
         var seatsMap = {};
         if (Array.isArray(state.seats)) {
@@ -4278,11 +4237,30 @@
           }
         }
 
-        // Queue
+        // Phiên + hàng đợi (gộp Session goals vào đây cho gọn)
         if (queueList) {
           clearChildren(queueList);
           var queue = Array.isArray(state.queue) ? state.queue : [];
-          if (queue.length === 0) {
+          var sessionGoals = (state.session && state.session.goals) ? state.session.goals : [];
+          var allGoals = Array.isArray(state.goals) ? state.goals : [];
+          sessionGoals.forEach(function (g) {
+            var gi = document.createElement('li');
+            gi.className = 'queue-item';
+            var label = document.createElement('span');
+            var text = String(g);
+            if (/^\d+$/.test(text)) {
+              var found = allGoals.find(function (x) { return String(x.n) === text; });
+              text = 'G' + text + (found && found.title ? ' · ' + found.title : '');
+            }
+            label.textContent = tx('queue.goal', { goal: text });
+            gi.appendChild(label);
+            var st = document.createElement('span');
+            st.className = 'badge';
+            st.textContent = formatStatus(state.session.status);
+            gi.appendChild(st);
+            queueList.appendChild(gi);
+          });
+          if (queue.length === 0 && sessionGoals.length === 0) {
             var emptyQ = document.createElement('li');
             emptyQ.className = 'empty-placeholder';
             emptyQ.textContent = tx('queue.empty');
