@@ -365,14 +365,14 @@
     .seat-card.is-holder::before {
       content: '';
       position: absolute;
-      inset: -3px;
-      padding: 3px;
-      border-radius: 14px;
-      background: conic-gradient(from var(--glow-angle), transparent 0deg 250deg, rgba(255, 255, 255, 0.15) 290deg, #9ec5ff 330deg, #fff 352deg, transparent 360deg);
+      inset: -4.5px;
+      padding: 4.5px;
+      border-radius: 15px;
+      background: conic-gradient(from var(--glow-angle), transparent 0deg 195deg, rgba(255, 255, 255, 0.15) 255deg, #9ec5ff 320deg, #fff 350deg, transparent 360deg);
       -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
       -webkit-mask-composite: xor;
       mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-      filter: drop-shadow(0 0 6px #9ec5ff) drop-shadow(0 0 2px #fff);
+      filter: drop-shadow(0 0 9px #9ec5ff) drop-shadow(0 0 3px #fff);
       pointer-events: none;
       animation: holder-glow 2.8s linear infinite;
     }
@@ -742,6 +742,18 @@
       padding: 1px 6px;
       font-size: 11px;
     }
+
+    .acc-sleep-toggle {
+      align-self: flex-start;
+      background: none;
+      border: none;
+      padding: 2px 0;
+      color: var(--text-muted);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .acc-sleep-toggle:hover { color: var(--text); }
 
     .accounts-list {
       display: grid;
@@ -1955,7 +1967,6 @@
       </div>
       <div class="acc-tabs" role="tablist" id="acc-tabs">
         <button type="button" role="tab" data-tab="all" data-i18n="acc.tabAll">All</button>
-        <button type="button" role="tab" data-tab="btm">BTM</button>
         <button type="button" role="tab" data-tab="ide">IDE</button>
         <button type="button" role="tab" data-tab="cli">CLI</button>
         <button type="button" role="tab" data-tab="plugin">Plugin</button>
@@ -2423,6 +2434,7 @@
           'acc.importConflicts': 'Already here – tick to overwrite:',
           'acc.importRejected': 'Skipped: {entry} ({reason})',
           'acc.importNothing': 'Nothing to import',
+          'acc.sleepingN': '{n} sleeping',
           'acc.imported': 'Imported {n} account(s) – they start Sleeping; turn on Active here to use them',
           'acc.activeHere': 'Active here',
           'acc.activeFor': 'Use {key} on this machine',
@@ -4391,7 +4403,26 @@
           nameEl.textContent = tx('acc.workerTitle', { name: acc.agent, n: items.length || 1 });
           var shown = items.filter(accountMatchesTab);
           if (items.length && !shown.length) return;
-          if (items.length) row.appendChild(buildAccountItems(acc, shown, sshTarget));
+          var awake = shown.filter(function (a) { return a.active; });
+          var sleeping = shown.filter(function (a) { return !a.active; });
+          if (awake.length) row.appendChild(buildAccountItems(acc, awake, sshTarget));
+          if (sleeping.length) {
+            var open = Boolean(accSleepOpen[acc.agent]);
+            var toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'acc-sleep-toggle';
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            toggle.textContent = (open ? '▾ ' : '▸ ') + tx('acc.sleepingN', { n: sleeping.length });
+            toggle.addEventListener('click', function () {
+              var agent = acc.agent;
+              clearTimeout(accSleepOpen[agent]);
+              if (accSleepOpen[agent]) delete accSleepOpen[agent];
+              else accSleepOpen[agent] = setTimeout(function () { delete accSleepOpen[agent]; renderAccounts(lastAccounts, lastSshHint); }, ACC_SLEEP_COLLAPSE_MS);
+              renderAccounts(lastAccounts, lastSshHint);
+            });
+            row.appendChild(toggle);
+            if (open) row.appendChild(buildAccountItems(acc, sleeping, sshTarget));
+          }
 
           container.appendChild(row);
         });
@@ -4400,12 +4431,15 @@
       // ===== Plan 7: tài khoản của Worker =====
       var accTab = 'all';
       try { accTab = localStorage.getItem('btm.accTab') || 'all'; } catch (e) {}
+      if (accTab === 'btm') accTab = 'all'; // tab BTM đã bỏ: tài khoản ngủ giờ gom lại bên dưới
+      // Danh sách tài khoản ngủ: mở theo Worker, tự gập sau 3 phút (giống Team inbox).
+      var ACC_SLEEP_COLLAPSE_MS = 3 * 60 * 1000;
+      var accSleepOpen = {};
       var lastAccounts = [];
       var lastSshHint = null;
 
       function accountMatchesTab(a) {
         if (accTab === 'all') return true;
-        if (accTab === 'btm') return Boolean(a.active);
         return a.label === accTab;
       }
 

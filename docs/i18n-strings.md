@@ -174,6 +174,7 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | acc.importConflicts | Đã có – tick để ghi đè: | Already here – tick to overwrite: |
 | acc.importRejected | Bỏ qua: {entry} ({reason}) | Skipped: {entry} ({reason}) |
 | acc.importNothing | Không có gì để nhập | Nothing to import |
+| acc.sleepingN | {n} tài khoản ngủ | {n} sleeping |
 | acc.imported | Đã nhập {n} tài khoản – mặc định ngủ; bật Active here để dùng | Imported {n} account(s) – they start Sleeping; turn on Active here to use them |
 | acc.activeHere / acc.activeFor | Dùng ở máy này / Dùng {key} ở máy này | Active here / Use {key} on this machine |
 | acc.up / acc.down | Đưa {key} lên / xuống | Move {key} up / down |
