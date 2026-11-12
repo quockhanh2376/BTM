@@ -75,7 +75,7 @@ agents:
 rules:
   coder_cannot_qc_same_task: true
   auto_handoff_on_failure: false       # v1.0: anh tự quyết người thay
-  auto_switch_accounts: false          # không xoay vòng nhiều tài khoản
+  auto_switch_accounts: true           # Plan 7: hết quota → tài khoản kế tiếp của Worker (thứ tự trên dashboard)
 
 energy:
   read_on: [session_open, before_turn] # chỉ đọc vào các thời điểm này

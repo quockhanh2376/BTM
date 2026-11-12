@@ -143,11 +143,10 @@ describe('Config', () => {
     expect(() => loadConfig(configFile)).toThrow(ConfigError);
   });
 
-  it('rejects auto_switch_accounts true', () => {
-    const configFile = writeTestConfig((raw) => {
-      raw.rules.auto_switch_accounts = true;
-    });
-    expect(() => loadConfig(configFile)).toThrow(ConfigError);
+  it('auto_switch_accounts (Plan 7): boolean, default true; non-boolean rejected', () => {
+    expect(loadConfig(writeTestConfig((raw) => { raw.rules.auto_switch_accounts = false; })).rules.auto_switch_accounts).toBe(false);
+    expect(loadConfig(writeTestConfig((raw) => { delete raw.rules.auto_switch_accounts; })).rules.auto_switch_accounts).toBe(true);
+    expect(() => loadConfig(writeTestConfig((raw) => { raw.rules.auto_switch_accounts = 'yes'; }))).toThrow(ConfigError);
   });
 
   it('rejects non-existent config file', () => {

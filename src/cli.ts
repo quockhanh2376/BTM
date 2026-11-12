@@ -79,6 +79,7 @@ export async function serve(
 
   const dbPath = join(cfg.host.data_dir, 'btm.db');
   const store = openStore(dbPath);
+  store.ensureDefaultAccounts(Object.keys(cfg.agents)); // Plan 7: user hiện có = tài khoản default của Worker
 
   const runner = effectiveDeps?.runner ?? makeRunner(cfg, undefined, undefined, undefined, undefined, store);
   const hostFactory = effectiveDeps?.createHost ?? createHost;
