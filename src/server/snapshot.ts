@@ -5,7 +5,9 @@ import type { Config, Effort, Seat, Tool } from '../config.ts';
 import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerUser } from '../isolation/worker.ts';
 import { readAgentModels } from '../energy/monitor.ts';
-import { effectiveSeats, resolveSeats, type Store, type GoalState, type QueueItem } from '../store/db.ts';
+import { effectiveSeats, resolveSeats, type Store, type GoalState, type QueueItem, type AccountLabel } from '../store/db.ts';
+import { accountKey, usableAccounts } from '../agents/accounts.ts';
+import { usageLimitedKey } from '../agents/usage-limit.ts';
 import { loadTickets, type Ticket, type TicketState, type TicketType, type TicketSize } from '../ticket/ticket.ts';
 import { readProjectKey } from '../ticket/goal.ts';
 import type { EnergyWindow } from '../energy/quota.ts';
@@ -84,6 +86,21 @@ export interface AccountCard {
   user: string | null;
   /** Model CLI liệt kê được (đọc định kỳ dưới user của agent); rỗng khi chưa đọc. */
   modelOptions: string[];
+  energy: SeatCard['energy'];
+  /** Plan 7: tài khoản của Worker theo thứ tự (card login/energy = tài khoản đang dùng). */
+  accounts: AccountItem[];
+}
+
+export interface AccountItem {
+  key: string;
+  slug: string;
+  email: string | null;
+  label: AccountLabel;
+  active: boolean;
+  status: 'in_use' | 'next' | 'free' | 'limited' | 'sleeping' | 'relogin';
+  resetsAt: string | null;
+  user: string | null;
+  login: SeatCard['login'];
   energy: SeatCard['energy'];
 }
 
@@ -238,26 +255,56 @@ function getSeatLogin(store: Store, agent: string): SeatCard['login'] {
 }
 
 // Giới hạn chặt nhất trước; chưa đọc được Energy xếp cuối (Plan 6 Task 5).
+function userOf(cfg: Config, key: string): string | null {
+  try {
+    return workerUser(cfg, key);
+  } catch {
+    return null;
+  }
+}
+
+// Plan 7: trạng thái từng tài khoản. in_use = tài khoản lượt kế sẽ dùng; next = tài khoản dùng được kế tiếp.
+function accountItems(store: Store, cfg: Config, agent: string, now: Date): AccountItem[] {
+  const rows = store.listAccounts(agent);
+  const list = rows.length ? rows : [{ agent, slug: 'default', email: null, label: 'none' as AccountLabel, active: true, ord: 0, created_at: '' }];
+  const usable = usableAccounts(cfg, store, agent, now).map((a) => a.key);
+  return list.map((a): AccountItem => {
+    const key = accountKey(agent, a.slug);
+    const login = getSeatLogin(store, key);
+    const until = store.getSetting(usageLimitedKey(key));
+    const limited = !!until && Date.parse(until) > now.getTime();
+    const status: AccountItem['status'] = !a.active
+      ? 'sleeping'
+      : login.state === 'relogin'
+        ? 'relogin'
+        : limited
+          ? 'limited'
+          : usable[0] === key
+            ? 'in_use'
+            : usable[1] === key
+              ? 'next'
+              : 'free';
+    return { key, slug: a.slug, email: a.email, label: a.label, active: a.active, status, resetsAt: limited ? until : null, user: userOf(cfg, key), login, energy: getSeatEnergy(store, key, cfg) };
+  });
+}
+
 function getAccounts(store: Store, cfg: Config): AccountCard[] {
   const rank = (a: AccountCard) => a.energy.minPercent ?? 101;
+  const now = new Date();
   return Object.keys(cfg.agents).map((agent): AccountCard => {
     const tool = cfg.agents[agent].tool;
-    const login = getSeatLogin(store, agent);
-    let user: string | null = null;
-    try {
-      user = workerUser(cfg, agent);
-    } catch {
-      user = null;
-    }
+    const accounts = accountItems(store, cfg, agent, now);
+    const current = accounts.find((a) => a.status === 'in_use')?.key ?? agent;
     return {
       agent,
       tool,
-      login,
+      login: getSeatLogin(store, current),
       model: agentModel(cfg, store, agent) ?? null,
       effort: agentEffort(cfg, store, agent),
-      user,
+      user: userOf(cfg, current),
       modelOptions: readAgentModels(store, agent)?.models ?? [],
-      energy: getSeatEnergy(store, agent, cfg),
+      energy: getSeatEnergy(store, current, cfg),
+      accounts,
     };
   }).sort((a, b) => rank(a) - rank(b));
 }

@@ -11,6 +11,10 @@ import { ticketDiff } from './diff.ts';
 import { commitAll } from '../git.ts';
 import { inboxPath, detectImage, readInboxFile, removeInboxFromMain } from './inbox.ts';
 import { protectedShaKey } from '../core/guard.ts';
+import { activeAccountKeys } from '../agents/accounts.ts';
+import { handleAccountsGet, handleAccountsPost, IMPORT_MAX_BYTES } from './accounts-api.ts';
+import type { AdminExec } from '../isolation/account-admin.ts';
+import type { SpawnFn } from '../agents/login-flow.ts';
 import type { createMonitor } from '../energy/monitor.ts';
 import { approveGoal, type ApproveGoalResult } from '../ticket/goal.ts';
 
@@ -114,6 +118,9 @@ export function createServer(o: {
   pollMs?: number;
   pingMs?: number;
   monitor?: ReturnType<typeof createMonitor>;
+  /** Plan 7: test truyền exec/spawn giả cho tạo user, token, đăng nhập. */
+  accountExec?: AdminExec;
+  loginSpawn?: SpawnFn;
 }): http.Server {
   interface SseClient {
     res: ServerResponse;
@@ -145,6 +152,9 @@ export function createServer(o: {
         res.end(html);
         return;
       }
+
+      const accountsCtx = { cfg: o.cfg, store: o.store, busy: () => Boolean(o.host.busy?.()), exec: o.accountExec, spawn: o.loginSpawn };
+      if (method === 'GET' && handleAccountsGet(pathname, accountsCtx, res, sendJson)) return;
 
       // State snapshot route
       if (method === 'GET' && pathname === '/api/state') {
@@ -343,7 +353,7 @@ export function createServer(o: {
         }
 
         // 4. Read body (max 16 KB, or 7 MB for team-note)
-        const maxBytes = pathname === '/api/team-note' ? 7 * 1024 * 1024 : 16384;
+        const maxBytes = pathname === '/api/team-note' ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : 16384;
         let body: unknown;
         try {
           body = await readJsonBody(req, maxBytes);
@@ -592,7 +602,7 @@ export function createServer(o: {
           }
           const monitor = o.monitor ?? (o.host as any)?.monitor;
           if (monitor) {
-            await monitor.refresh(Object.keys(o.cfg.agents), true);
+            await monitor.refresh(activeAccountKeys(o.cfg, o.store), true);
           }
           sendJson(res, 200, { ok: true });
           return;
@@ -651,6 +661,8 @@ export function createServer(o: {
           sendJson(res, 200, { ok: true, deleted: rows.map((n) => n!.id), skipped, removed: result.removed });
           return;
         }
+
+        if (handleAccountsPost(pathname, body, accountsCtx, res, sendJson)) return;
 
         // Plan 6 Task 3: ghi chú dòng + trả ticket về Dev
         const ticketPostMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/(notes|return)$/);
