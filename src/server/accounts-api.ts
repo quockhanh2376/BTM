@@ -39,16 +39,52 @@ const EntrySchema = z.object({
   files: z.record(z.string(), z.string()),
 });
 const FileSchema = z.object({ version: z.literal(1), accounts: z.array(z.unknown()).max(200) });
+// Định dạng chung với danh sách tài khoản Antigravity của anh Zon: [{email, refresh_token}, …].
+// Mục BTM đầy đủ (claude/codex) nằm chung mảng, giữ dạng {agent, slug, tool, files}.
+const ListSchema = z.array(z.unknown()).max(200);
+const AgyShortSchema = z.object({ email: z.string().max(256), refresh_token: z.string().max(4096), agent: z.string().max(40).optional() });
+
+/** Slug từ phần trước @ của email: chỉ a-z0-9, tối đa 12 ký tự. */
+function slugFromEmail(email: string): string {
+  return (email.split('@')[0] ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
+}
+
+/** {email, refresh_token} → mục BTM cho Worker agy (ghi rõ `agent`, hoặc Worker agy duy nhất trên máy).
+ *  Email đã có ở Worker đó → trùng vào đúng tài khoản ấy; chưa có → slug từ email. */
+function agyShortToEntry(cfg: Config, store: Store, raw: { email: string; refresh_token: string; agent?: string }) {
+  const agy = Object.keys(cfg.agents).filter((id) => cfg.agents[id]!.tool === 'antigravity-cli');
+  const agent = raw.agent ?? (agy.length === 1 ? agy[0]! : null);
+  if (!agent) return { reason: agy.length ? 'several agy Workers – add "agent" to the entry' : 'no agy Worker on this machine' };
+  if (cfg.agents[agent]?.tool !== 'antigravity-cli') return { reason: 'not an agy Worker' };
+  let files: Record<string, string>;
+  try {
+    files = agyFilesFromJson(raw);
+  } catch (err) {
+    return { reason: (err as Error).message };
+  }
+  const same = store.listAccounts(agent).find((a) => a.email === raw.email);
+  if (!same && store.getAccount(agent, slugFromEmail(raw.email))) return { reason: 'name taken by another account' };
+  return { entry: { agent, slug: same ? same.slug : slugFromEmail(raw.email), tool: 'antigravity-cli', email: raw.email, files } };
+}
 
 type Planned = { key: string; agent: string; slug: string; tool: Tool; email: string | null; label: AccountLabel; files: Record<string, string> };
 
 function planImport(cfg: Config, store: Store, file: unknown) {
-  const parsed = FileSchema.safeParse(file);
-  if (!parsed.success) return { error: 'not a BTM accounts file (version 1)' } as const;
+  const list = ListSchema.safeParse(file);
+  const parsed = list.success ? null : FileSchema.safeParse(file);
+  if (!list.success && !parsed!.success) return { error: 'not an accounts file ([{email, refresh_token}, …])' } as const;
+  const items = list.success ? list.data : parsed!.data!.accounts;
   const fresh: Planned[] = [];
   const conflicts: Planned[] = [];
   const rejected: Array<{ entry: string; reason: string }> = [];
-  parsed.data.accounts.forEach((raw, i) => {
+  items.forEach((item, i) => {
+    let raw = item;
+    const short = AgyShortSchema.safeParse(item);
+    if (short.success && !(item as { files?: unknown }).files) {
+      const r = agyShortToEntry(cfg, store, short.data);
+      if ('reason' in r) return rejected.push({ entry: `#${i + 1}`, reason: r.reason! });
+      raw = r.entry;
+    }
     const e = EntrySchema.safeParse(raw);
     if (!e.success) return rejected.push({ entry: `#${i + 1}`, reason: 'bad entry' });
     const { agent, slug, tool } = e.data;
@@ -103,9 +139,20 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
     const accounts = store.listAccounts().filter((a) => cfg.agents[a.agent]).map((a) => {
       const tool = cfg.agents[a.agent]!.tool;
       const key = accountKey(a.agent, a.slug);
-      return { agent: a.agent, slug: a.slug, tool, email: a.email, label: a.label, files: exportTokens(cfg, key, tool, ctx.exec) };
+      const files = exportTokens(cfg, key, tool, ctx.exec);
+      if (tool === 'antigravity-cli') {
+        // agy: cùng định dạng danh sách Antigravity [{email, refresh_token}]; đọc không ra → giữ mục đầy đủ.
+        try {
+          const t = JSON.parse(files[TOKEN_FILES['antigravity-cli'][0]!] ?? '');
+          const email = a.email ?? t.id_token_email;
+          if (typeof email === 'string' && typeof t.token?.refresh_token === 'string') return { email, refresh_token: t.token.refresh_token };
+        } catch {
+          /* giữ mục đầy đủ */
+        }
+      }
+      return { agent: a.agent, slug: a.slug, tool, email: a.email, label: a.label, files };
     });
-    const payload = JSON.stringify({ version: 1, accounts }, null, 2);
+    const payload = JSON.stringify(accounts, null, 2);
     const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',

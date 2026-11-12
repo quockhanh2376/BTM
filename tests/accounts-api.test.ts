@@ -18,6 +18,7 @@ describe('P7-T4: API tài khoản', () => {
   let server: Server;
   let base = '';
   let busy = false;
+  let catOut = SECRET;
   let execCalls: Array<{ file: string; args: string[]; input?: string }>;
   let spawned: string[][];
   let children: EventEmitter[];
@@ -31,9 +32,10 @@ describe('P7-T4: API tài khoản', () => {
     spawned = [];
     children = [];
     busy = false;
+    catOut = SECRET;
     const exec = (file: string, args: string[], o?: { input?: string }) => {
       execCalls.push({ file, args, input: o?.input });
-      return Buffer.from(args.includes('cat') ? SECRET : '');
+      return Buffer.from(args.includes('cat') ? catOut : '');
     };
     const spawn = (file: string, args: string[]) => {
       spawned.push([file, ...args]);
@@ -123,9 +125,41 @@ describe('P7-T4: API tài khoản', () => {
     expect(r.headers.get('content-disposition')).toMatch(/^attachment; filename="btm-accounts-\d{8}\.json"$/);
     expect(r.headers.get('cache-control')).toBe('no-store');
     const file = await r.json();
-    expect(file.version).toBe(1);
-    const b = file.accounts.find((a: any) => a.slug === 'b');
+    expect(Array.isArray(file)).toBe(true);
+    // file token không đọc ra refresh_token → giữ mục đầy đủ
+    const b = file.find((a: any) => a.slug === 'b');
     expect(b).toEqual({ agent: 'jacky', slug: 'b', tool: 'antigravity-cli', email: null, label: 'ide', files: { '.gemini/antigravity-cli/antigravity-oauth-token': SECRET } });
+    expect(file.find((a: any) => a.agent === 'jenny')).toMatchObject({ tool: 'codex-cli', files: { '.codex/auth.json': SECRET } });
+  });
+
+  it('định dạng Antigravity [{email, refresh_token}]: import vào Worker agy, slug theo email, trùng email → ghi đè đúng tài khoản; export agy ra cùng dạng', async () => {
+    store.updateAccount('jacky', 'default', { email: 'old@x.io' });
+    store.addAccount('jacky', 'zon', { email: 'other@x.io', active: false });
+    const file = [
+      { email: 'first.Person2016@example.com', refresh_token: AGY_RT },
+      { email: 'old@x.io', refresh_token: AGY_RT },
+      { email: 'zon@y.io', refresh_token: AGY_RT },
+      { email: 'bad', refresh_token: AGY_RT },
+      { email: 'c@x.io', refresh_token: AGY_RT, agent: 'jenny' },
+    ];
+    const dry = await (await post('/api/accounts/import', { file, dryRun: true })).json();
+    expect(dry.new).toEqual(['jacky/firstperson2']);
+    expect(dry.conflicts).toEqual(['jacky/default']);
+    expect(dry.rejected.map((x: any) => x.reason)).toEqual(['name taken by another account', 'email missing or invalid', 'not an agy Worker']);
+    expect(JSON.stringify(dry)).not.toContain(AGY_RT);
+    const real = await (await post('/api/accounts/import', { file })).json();
+    expect(real.imported).toEqual(['jacky/firstperson2']);
+    expect(store.getAccount('jacky', 'firstperson2')).toMatchObject({ email: 'first.Person2016@example.com', active: false });
+    const w = execCalls.find((c) => c.args.includes('btm-jacky-firstperson2') && c.input);
+    expect(JSON.parse(JSON.parse(w!.input!)['.gemini/antigravity-cli/antigravity-oauth-token']).token.refresh_token).toBe(AGY_RT);
+    // export: file token agy đọc được → {email, refresh_token}
+    catOut = JSON.stringify({ token: { refresh_token: AGY_RT }, id_token_email: 'x@x.io' });
+    const out = await (await post('/api/accounts/export', {})).json();
+    expect(out.filter((a: any) => !a.files)).toEqual([
+      { email: 'old@x.io', refresh_token: AGY_RT },
+      { email: 'other@x.io', refresh_token: AGY_RT },
+      { email: 'first.Person2016@example.com', refresh_token: AGY_RT },
+    ]);
   });
 
   it('import: dryRun phân loại; chạy thật không ghi đè khi chưa tick; mục mới mặc định ngủ', async () => {
