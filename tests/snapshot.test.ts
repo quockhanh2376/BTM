@@ -536,21 +536,27 @@ from_audit: false
       // 1. Without active project or session, default from cfg (!require_task_approval)
       cfg.session.require_task_approval = true;
       const snap1 = buildSnapshot(store, cfg);
-      expect(snap1.settings).toEqual({ autoApprove: false });
+      expect(snap1.settings).toEqual({ autoApprove: false, names: {}, avatars: {} });
 
       cfg.session.require_task_approval = false;
       const snap2 = buildSnapshot(store, cfg);
-      expect(snap2.settings).toEqual({ autoApprove: true });
+      expect(snap2.settings).toEqual({ autoApprove: true, names: {}, avatars: {} });
 
       // 2. Overridden by store.setSetting('auto_approve', 'true')
       store.setSetting('auto_approve', 'true');
       const snap3 = buildSnapshot(store, cfg);
-      expect(snap3.settings).toEqual({ autoApprove: true });
+      expect(snap3.settings).toEqual({ autoApprove: true, names: {}, avatars: {} });
 
       // 3. Overridden by store.setSetting('auto_approve', 'false')
       store.setSetting('auto_approve', 'false');
       const snap4 = buildSnapshot(store, cfg);
-      expect(snap4.settings).toEqual({ autoApprove: false });
+      expect(snap4.settings).toEqual({ autoApprove: false, names: {}, avatars: {} });
+    });
+
+    it('settings.names: tên hiển thị Worker từ setting agent_name:<agent>; rỗng = không có', () => {
+      store.setSetting('agent_name:jacky', 'David');
+      store.setSetting('agent_name:elon', '');
+      expect(buildSnapshot(store, cfg).settings.names).toEqual({ jacky: 'David' });
     });
 
     it('includes members from cfg.agents and notes with reports', () => {

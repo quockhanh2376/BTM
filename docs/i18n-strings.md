@@ -61,6 +61,9 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | energy.left | còn {pct}% · hồi {time} | {pct}% left · resets {time} |
 | energy.unavailable | Energy: không đọc được ({note}) | Energy: unavailable ({note}) |
 | energy.low | Sắp hết · hồi {time} | Low · resets {time} |
+| seat.avatarFor | Avatar của {agent}: bấm để chọn ảnh, chuột phải để bỏ | Avatar of {agent}: click to choose an image, right-click to remove |
+| seat.avatarRemove | Bỏ avatar này? | Remove this avatar? |
+| seat.avatarBad | Không đọc được ảnh này | Could not read that image |
 
 ## 3. Goal, ticket
 
@@ -158,7 +161,6 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 |---|---|---|
 | acc.title | Tài khoản | Accounts |
 | acc.import / acc.export / acc.add | Nhập / Xuất / + Thêm tài khoản | Import / Export / + Add Account |
-| acc.tabAll | Tất cả | All |
 | acc.workerTitle | Worker {name} · tài khoản: {n} | Worker {name} · accounts: {n} |
 | acc.worker / acc.slug | Worker / Tên (a-z0-9) | Worker / Name (a-z0-9) |
 | acc.agyPlaceholder | Dán {"email", "refresh_token"} hoặc chọn file JSON | Paste {"email": "…", "refresh_token": "…"} or choose a JSON file |
@@ -177,11 +179,11 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | acc.importRejected | Bỏ qua: {entry} ({reason}) | Skipped: {entry} ({reason}) |
 | acc.importNothing | Không có gì để nhập | Nothing to import |
 | acc.sleepingN | {n} tài khoản ngủ | {n} sleeping |
+| acc.renameFor | Đổi tên Worker {agent} (chỉ hiển thị) | Rename worker {agent} (display only) |
+| acc.renamePrompt | Tên hiển thị cho {agent} (1–24 chữ/số; để trống = mặc định): | Display name for {agent} (1–24 letters/numbers; empty = default): |
 | acc.imported | Đã nhập {n} tài khoản – mặc định ngủ; bật Active here để dùng | Imported {n} account(s) – they start Sleeping; turn on Active here to use them |
 | acc.activeHere / acc.activeFor | Dùng ở máy này / Dùng {key} ở máy này | Active here / Use {key} on this machine |
 | acc.up / acc.down | Đưa {key} lên / xuống | Move {key} up / down |
-| acc.labelFor | Nơi khác đang dùng {key} | Where else {key} is used |
-| acc.lbl.* | — / IDE / CLI / Plugin / Máy khác | — / IDE / CLI / Plugin / Other machine |
 | acc.st.* | Đang dùng / Kế tiếp / Bật, rảnh / Hết hạn mức · hồi {time} / Đang ngủ / Cần đăng nhập lại | In use / Next / Active, free / Usage limited · resets {time} / Sleeping / Re-login needed |
 | acc.copyLoginItem | Copy lệnh đăng nhập cho {key} | Copy login command for {key} |
 | acc.signIn / acc.signInFor | Đăng nhập / Đăng nhập {key} tại đây (xong thì bật) | Sign in / Sign in {key} here (turns it on when done) |

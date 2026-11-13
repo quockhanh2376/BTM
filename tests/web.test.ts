@@ -272,14 +272,20 @@ describe('Web Dashboard (web/index.html)', () => {
     // 3. Agent display name formatting function (id capitalized + '-' + seat label)
     const agentFnMatch = html.match(/function\s+(formatAgentDisplayName|formatAgent)\s*\([^)]*\)\s*\{[\s\S]*?\}/);
     expect(agentFnMatch).not.toBeNull();
+    const names: Record<string, string> = {};
+    const labelSrc = html.slice(html.indexOf('function agentLabel(id)'), html.indexOf('function formatAgentDisplayName'));
+    const agentLabel = new Function('agentNames', `return ${labelSrc};`)(names);
     const formatAgent = new Function(
-      'formatSeatLabel',
+      'formatSeatLabel', 'agentLabel',
       `return ${agentFnMatch![0]};`
-    )((s: string) => parsedSeatMap[s.toLowerCase()] || s);
+    )((s: string) => parsedSeatMap[s.toLowerCase()] || s, agentLabel);
 
     expect(formatAgent('elon', 'pm')).toBe('Elon-PM');
     expect(formatAgent('jacky', 'dev')).toBe('Jacky-Dev');
     expect(formatAgent('jenny', 'qc')).toBe('Jenny-QC');
+    names.jacky = 'David';
+    expect(formatAgent('jacky', 'dev')).toBe('David-Dev');
+    delete names.jacky;
 
     // 4. Initial HTML seat titles have formatted names
     expect(html).toContain('id="pm-title">Elon-PM');
@@ -1518,9 +1524,18 @@ describe('P7-T5: giao diện Accounts', () => {
     const bar = html.slice(html.indexOf('<header class="card session-bar">'), html.indexOf('</header>'));
     expect(bar).not.toContain('refresh-energy-btn');
   });
-  it('tab All/BTM/IDE/CLI/Plugin; link đăng nhập chỉ https; dữ liệu tài khoản không qua innerHTML', () => {
-    for (const t of ['all', 'ide', 'cli', 'plugin']) expect(section).toContain(`data-tab="${t}"`);
-    expect(section).not.toContain('data-tab="btm"');
+  it('không còn tab lọc; đổi tên Worker chỉ hiển thị; link đăng nhập chỉ https; dữ liệu tài khoản không qua innerHTML', () => {
+    expect(section).not.toContain('data-tab=');
+    expect(html).not.toContain('acc.labelFor');
+    expect(html).toContain("postJson('/api/agent', { agent: acc.agent, name: v.trim() })");
+    expect(html).toContain('agentNames = (state && state.settings && state.settings.names) || {};');
+    const fmt = html.slice(html.indexOf('function formatAgentDisplayName'), html.indexOf('var formatAgent ='));
+    expect(fmt).toContain('agentLabel(agentId)');
+    // avatar chỉ trên thẻ ghế, không trong Accounts
+    expect(html).toContain('renderSeatAvatar(cardEl, cardData.agent);');
+    const accJs = html.slice(html.indexOf('function renderAccounts'), html.indexOf('// ===== Plan 7: tài khoản của Worker ====='));
+    expect(accJs).not.toContain('seat-avatar');
+    expect(html).toContain("c.toDataURL('image/jpeg', 0.85)");
     // tài khoản ngủ gom sau nút thu gọn, tự gập sau 3 phút
     expect(html).toContain('acc-sleep-toggle');
     expect(html).toContain('ACC_SLEEP_COLLAPSE_MS = 3 * 60 * 1000');
