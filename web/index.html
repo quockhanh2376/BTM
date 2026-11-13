@@ -9,7 +9,7 @@
       --bg: #F5F7FB;
       --card-bg: #FFFFFF;
       --text: #0F172A;
-      --text-muted: #5B6577;
+      --text-muted: #3F4A5C;
       --accent: #2563EB;
       --running-bg: #DCE6FB;
       --running-text: #1E3F99;
@@ -18,10 +18,10 @@
       --error-text: #B42318;
       --btn-primary-bg: #2563EB;
       --btn-primary-text: #FFFFFF;
-      --border: #E5E7EB;
+      --border: #D8DEE8;
       --border-subtle: #EEF0F4;
       --badge-bg: #EEF2F7;
-      --badge-text: #475569;
+      --badge-text: #334155;
       --live-bg: #DCFCE7;
       --inuse-bg: #DBEAFE;
       --inuse-text: #1E40AF;
@@ -1446,6 +1446,40 @@
     }
 
     /* Log section */
+    /* Đầu khối Team inbox / Goals / Log theo mẫu anh Zon (2026-11-14) */
+    .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .sec-title { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 18px; }
+    .sec-icon { display: inline-flex; color: var(--accent); }
+    .sec-icon svg { width: 24px; height: 24px; }
+    .sec-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .sec-tools .inbox-actions { display: flex; gap: 8px; margin: 0; }
+    .sec-head .btn.sec-primary { background-color: #2563EB; color: #FFFFFF; border-color: #2563EB; }
+    .btn.btn-danger-outline { color: var(--error-text); border-color: var(--error-text); }
+    .inbox-section .inbox-toggle { font-size: 18px; font-weight: 700; }
+    .inbox-section .inbox-count { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+    .log-list.log-full { max-height: none; }
+    .log-panel .log-item { align-items: center; padding: 8px 10px; background-color: var(--badge-bg); border: none; font-size: 13px; }
+    .log-panel .log-item:nth-child(even) { background-color: transparent; }
+    .log-panel .log-time { padding: 2px 8px; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; }
+    .log-panel .log-who { color: var(--accent); min-width: 96px; }
+    .pipeline-bar { gap: 8px; padding: 8px; }
+    .pipeline-bar .pipeline-step {
+      display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px;
+      font-size: 13px; font-weight: 600; color: var(--text); background: var(--card-bg); border: 1px solid var(--border);
+    }
+    .pipeline-bar .pipeline-step.stage-done::before {
+      content: '✓'; display: inline-flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #16A34A; color: #16A34A; font-size: 10px; font-weight: 800;
+    }
+    .pipeline-bar .pipeline-step.stage-active { background-color: #2563EB; border-color: #2563EB; color: #FFFFFF; }
+    .goal-group-title { font-size: 15px; line-height: 1.5; }
+    /* Tab trạng thái: nền nhạt theo màu trạng thái như mẫu; tab đang chọn giữ nền đặc */
+    .task-tab[data-state="pending"]:not([aria-selected="true"]) { background: color-mix(in srgb, var(--tab-pending) 10%, var(--card-bg)); color: var(--text); }
+    .task-tab[data-state="in_dev"]:not([aria-selected="true"]) { background: color-mix(in srgb, var(--tab-in-dev) 10%, var(--card-bg)); color: var(--text); }
+    .task-tab[data-state="awaiting_qc"]:not([aria-selected="true"]) { background: color-mix(in srgb, var(--tab-awaiting-qc) 10%, var(--card-bg)); color: var(--text); }
+    .task-tab[data-state="passed"]:not([aria-selected="true"]) { background: color-mix(in srgb, var(--tab-passed) 10%, var(--card-bg)); color: var(--text); }
+    .task-tab[data-state="returned"]:not([aria-selected="true"]) { background: color-mix(in srgb, var(--tab-returned) 10%, var(--card-bg)); color: var(--text); }
+
     .log-panel {
       display: flex;
       flex-direction: column;
@@ -1904,6 +1938,14 @@
       flex-direction: column;
       gap: 8px;
     }
+
+    .notes-list .note-item { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--card-bg); }
+    .notes-list .note-id { padding: 2px 10px; border-radius: 999px; background: var(--inuse-bg); color: var(--inuse-text); font-weight: 700; }
+    .notes-list .note-time { font-family: var(--font-mono); color: var(--text-muted); }
+    .notes-list .note-status { border-radius: 999px; padding: 2px 12px; font-weight: 600; }
+    .notes-list .note-status-open { background: var(--inuse-bg); color: var(--inuse-text); border: 1px solid currentColor; }
+    .notes-list .note-text { color: var(--text); font-size: 14px; line-height: 1.55; }
+    .notes-list .note-report { border-left: 3px solid var(--accent); border-radius: 8px; background: var(--badge-bg); color: var(--text); padding: 10px 14px; }
 
     .note-item {
       background-color: var(--card-bg);
@@ -2703,16 +2745,23 @@
 
     <!-- Hộp thư team -->
     <section class="card inbox-section collapsed" id="inbox-section">
-      <h2 class="section-title">
-        <button type="button" class="inbox-toggle" id="inbox-toggle" aria-expanded="false" aria-controls="inbox-body">
-          <span data-i18n="inbox.title">Team inbox</span> <span id="inbox-count" class="inbox-count"></span>
-        </button>
-      </h2>
-      <div id="inbox-body" class="inbox-body">
-        <div class="inbox-actions">
-          <button id="inbox-del-sel" class="btn btn-secondary btn-sm" type="button" data-i18n="inbox.deleteSel">Delete selected</button>
-          <button id="inbox-del-all" class="btn btn-danger btn-sm" type="button" data-i18n="inbox.deleteAll">Delete all</button>
+      <div class="sec-head">
+        <h2 class="section-title sec-title">
+          <span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+          <button type="button" class="inbox-toggle" id="inbox-toggle" aria-expanded="false" aria-controls="inbox-body">
+            <span data-i18n="inbox.title">Team inbox</span> <span id="inbox-count" class="inbox-count"></span>
+          </button>
+        </h2>
+        <div class="sec-tools">
+          <div class="inbox-actions">
+            <button id="inbox-del-sel" class="btn btn-secondary btn-sm" type="button" data-i18n="inbox.deleteSel">Delete selected</button>
+            <button id="inbox-del-all" class="btn btn-secondary btn-sm btn-danger-outline" type="button" data-i18n="inbox.deleteAll">Delete all</button>
+          </div>
+          <button id="inbox-expand" class="btn btn-secondary btn-sm btn-tool" type="button" aria-controls="inbox-body"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg><span data-i18n="inbox.expand">Expand</span></button>
+          <button id="inbox-new" class="btn btn-primary btn-sm btn-tool sec-primary" type="button"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="inbox.new">New note</span></button>
         </div>
+      </div>
+      <div id="inbox-body" class="inbox-body">
         <div id="notes-list" class="notes-list">
           <div class="empty-placeholder" data-i18n="inbox.empty">No team notes</div>
         </div>
@@ -2723,7 +2772,10 @@
     <div class="board-and-log-layout">
       <!-- Bảng goal & ticket -->
       <section class="card task-board-section goals-board-section" id="goals-board">
-        <h2 class="section-title" data-i18n="goals.title">Goals</h2>
+        <div class="sec-head">
+          <h2 class="section-title sec-title"><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span><span data-i18n="goals.title">Goals</span></h2>
+          <button id="goal-add" class="btn btn-secondary btn-sm btn-tool btn-accent-outline" type="button"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="goals.add">Add Goal</span></button>
+        </div>
         <div id="goals-container" class="goals-container">
           <div class="empty-placeholder" data-i18n="goals.empty">No goals yet</div>
         </div>
@@ -2731,7 +2783,10 @@
 
       <!-- Nhật ký -->
       <section class="card log-panel" id="logs-section">
-        <h2 class="section-title" data-i18n="log.title">Log</h2>
+        <div class="sec-head">
+          <h2 class="section-title sec-title"><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h6"/></svg></span><span data-i18n="log.title">Log</span></h2>
+          <button id="log-full" class="btn btn-secondary btn-sm btn-tool" type="button" aria-controls="log-list" aria-expanded="false"><span data-i18n="log.full">View full logs</span> →</button>
+        </div>
         <div class="log-list" id="log-list">
           <div class="empty-placeholder" data-i18n="log.empty">No log entries</div>
         </div>
@@ -2894,6 +2949,12 @@
           'log.title': 'Log',
           'log.empty': 'No log entries',
           'inbox.title': 'Team inbox',
+          'inbox.expand': 'Expand',
+          'inbox.collapse': 'Collapse',
+          'inbox.new': 'New note',
+          'goals.add': 'Add Goal',
+          'log.full': 'View full logs',
+          'log.less': 'Show less',
           'inbox.empty': 'No team notes',
           'inbox.attachment': 'Attachment N-{id}',
           'inbox.count': '· {n} notes · {open} open',
@@ -4206,9 +4267,10 @@
 
           card.appendChild(header);
 
-          // 2. Thanh pipeline 6 chặng
+          // 2. Thanh pipeline 6 chặng (chặng trước chặng hiện tại = đã qua, có dấu ✓)
           var pipeline = document.createElement('div');
           pipeline.className = 'pipeline-bar';
+          var activeIdx = PIPELINE_STAGES.findIndex(function (st) { return st.key === g.stage; });
           PIPELINE_STAGES.forEach(function (st, idx) {
             if (idx > 0) {
               var arrow = document.createElement('span');
@@ -4221,6 +4283,8 @@
             step.setAttribute('data-stage', st.key);
             if (g.stage === st.key) {
               step.classList.add('stage-active');
+            } else if (activeIdx > idx) {
+              step.classList.add('stage-done');
             }
             step.textContent = st.label;
             pipeline.appendChild(step);
@@ -4686,6 +4750,34 @@
           setInboxOpen(inboxSection.classList.contains('collapsed'));
         });
       }
+
+      // Mẫu anh Zon (2026-11-14): New note / Add Goal = soạn trong ô Command (Team / PM) có sẵn.
+      function composeFor(to) {
+        var radio = document.querySelector('input[name="cmd-to"][value="' + to + '"]');
+        if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
+        var box = document.getElementById('cmd-text');
+        if (box) { box.scrollIntoView({ block: 'center' }); box.focus(); }
+      }
+      (function () {
+        var nb = document.getElementById('inbox-new');
+        if (nb) nb.addEventListener('click', function () { composeFor('team'); });
+        var ga = document.getElementById('goal-add');
+        if (ga) ga.addEventListener('click', function () { composeFor('pm'); });
+        var ex = document.getElementById('inbox-expand');
+        if (ex) ex.addEventListener('click', function () {
+          cancelInboxCollapse();
+          var open = inboxSection.classList.contains('collapsed');
+          setInboxOpen(open);
+          ex.querySelector('span').textContent = tx(open ? 'inbox.collapse' : 'inbox.expand');
+        });
+        var lf = document.getElementById('log-full');
+        var ll = document.getElementById('log-list');
+        if (lf && ll) lf.addEventListener('click', function () {
+          var full = ll.classList.toggle('log-full');
+          lf.setAttribute('aria-expanded', full ? 'true' : 'false');
+          lf.querySelector('span').textContent = tx(full ? 'log.less' : 'log.full');
+        });
+      })();
 
       async function deleteNotes(body, question) {
         if (!window.confirm(question)) return;
