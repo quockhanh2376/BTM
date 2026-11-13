@@ -3409,15 +3409,12 @@
         setDisplay(el, !!msg, 'block');
       }
 
+      // Giờ hiển thị luôn theo giờ Việt Nam (UTC+7), bất kể máy mở trang ở múi giờ nào (anh Zon 2026-11-14).
       function formatHHmm(iso) {
         if (!iso) return '';
-        var m = iso.match(/T(\d{2}:\d{2})/);
-        if (m) return m[1];
         var d = new Date(iso);
         if (!isNaN(d.getTime())) {
-          var hh = String(d.getUTCHours()).padStart(2, '0');
-          var mm = String(d.getUTCMinutes()).padStart(2, '0');
-          return hh + ':' + mm;
+          return d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
         }
         return '';
       }
@@ -4666,6 +4663,8 @@
       function formatTime(str) {
         if (!str) return '—';
         if (str.indexOf('T') !== -1) {
+          var d = new Date(str);
+          if (!isNaN(d.getTime())) return d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hourCycle: 'h23' });
           return str.split('T')[1].slice(0, 8);
         }
         return str;

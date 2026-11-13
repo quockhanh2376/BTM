@@ -1327,7 +1327,9 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(formatEnergy({ remainingPercent: 19.9 })).toBe('20% left');
       expect(formatEnergy({ remainingPercent: 49.9 })).toBe('50% left');
       expect(formatEnergy({ remainingPercent: 50 })).toBe('50% left');
-      expect(formatEnergy({ remainingPercent: 49.9, resetsAt: '2026-11-09T13:45:00Z' })).toBe('50% left · resets 13:45');
+      // giờ Việt Nam (UTC+7)
+      expect(formatEnergy({ remainingPercent: 49.9, resetsAt: '2026-11-09T13:45:00Z' })).toBe('50% left · resets 20:45');
+      expect(formatHHmm('2026-11-09T18:30:00Z')).toBe('01:30');
       expect(formatEnergy(null)).toBe('');
     });
 
