@@ -148,7 +148,8 @@ export function createServer(o: {
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
           'Content-Security-Policy':
-            "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+            // blob:/data: ảnh: thu nhỏ avatar và xem trước ảnh đính kèm cần tải ảnh cục bộ.
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:",
         });
         res.end(html);
         return;
