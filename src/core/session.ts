@@ -13,7 +13,7 @@ import { notify as sendNotify, type NotifyEvent } from '../notify/notify.ts';
 import { formatHHmm } from '../energy/monitor.ts';
 import { git, commitAll, headSha } from '../git.ts';
 import { parseTicketQcResult } from '../qc/result.ts';
-import { parseReportQuestions } from '../qc/questions.ts';
+import { parseReportQuestions, cleanConfirmItems } from '../qc/questions.ts';
 import { parseAuditResult } from '../audit/result.ts';
 import { pmTicketPrompt, devTicketPrompt, qcTicketPrompt, auditPrompt } from './prompts.ts';
 import { inboxPath } from '../server/inbox.ts';
@@ -1527,6 +1527,20 @@ async function processGoal(
         tasks[ticket.id] = 'passed';
         d.store.setTicketState(d.repo, ticket.id, 'passed', qcAgent, 'qc passed', fixRounds, base);
         break;
+      }
+
+      // QC fail mà không có lỗi/việc cần sửa, chỉ có mục "cần xác nhận" (vd sandbox không mở được cổng):
+      // không trả về Dev (Dev không có gì để sửa → lặp tốn lượt). Hỏi anh; anh trả lời rồi Resume thì QC chạy lại.
+      if (qcResult.bugs.length === 0 && qcResult.fix.length === 0) {
+        const confirmItems = cleanConfirmItems(qcResult.confirm);
+        if (confirmItems.length > 0) {
+          const newQ = askQuestions(ticket.id, 'qc', qcAgent, confirmItems);
+          d.store.setTicketState(d.repo, ticket.id, 'awaiting_qc', 'core', 'qc_needs_confirm', fixRounds, base);
+          tasks[ticket.id] = 'awaiting_qc';
+          return newQ > 0
+            ? { status: 'needs_owner', sessionId, tasks, notes: [`questions_open:${newQ}`, `QC for ${ticket.id} needs your confirmation`] }
+            : { status: 'needs_owner', sessionId, tasks, notes: ['qc_confirm_unresolved', `QC still cannot confirm ${ticket.id} after your answers`] };
+        }
       }
 
       fixRounds++;

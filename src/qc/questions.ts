@@ -30,3 +30,12 @@ export function cleanQuestions(items: string[]): string[] {
     .filter((s) => s.replace(/https?:\/\/\S+/g, '').includes('?'))
     .slice(0, 5);
 }
+
+// Mục "cần xác nhận" của QC không bắt buộc có "?" (vd "Chạy npm start rồi xác nhận canvas"): chỉ lọc ký tự điều khiển, cắt độ dài.
+export function cleanConfirmItems(items: string[]): string[] {
+  return items
+    .map((s) => String(s).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 500))
+    .filter((s) => s.length > 0)
+    .slice(0, 5);
+}
+
