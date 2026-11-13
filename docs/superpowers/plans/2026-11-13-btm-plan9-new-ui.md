@@ -45,6 +45,29 @@
 | Logs (Realtime: Time, Level, Message, lọc, View Full Logs) | Log hiện có + mức (INFO/WARN/ERROR suy ra từ kết quả lượt) | View Full Logs = mở rộng khung, tải thêm |
 | — (mẫu không có) | Câu hỏi chờ trả lời, Team inbox, Diff panel, Approve tickets | Giữ, đặt trong khung Goals / panel phụ |
 
+## Mẫu tối thứ 2 (anh Zon 2026-11-13)
+
+Anh gửi thêm một ảnh mẫu **chế độ tối** dựng trên dữ liệu thật của BTM (G1 GameTest, Finn/John/Marry/Bruno). Ảnh mẫu đầu vẫn là nguồn chính cho bố cục; mẫu tối này **bổ sung** những điểm dưới đây (ảnh chưa lưu vào repo: anh gửi qua chat, mô tả bằng chữ ở đây). Mẫu dùng chữ tiếng Việt, nhưng quyết định "100% tiếng Anh trước, VI sau" vẫn giữ: chữ VI trong mẫu là bản dịch đích cho `tx()` sau này.
+
+| Khối trong mẫu tối | Khác so với hiện tại / mẫu đầu | Task |
+|---|---|---|
+| Thanh trên cùng: chip Project ▾, Session #14 (Needs owner), Turns 3/10, khoảng ngày ▾, Environment ▾, công tắc Auto refresh, 🔔, người dùng ▾, nút theme | Chip Project/Session/Turns lên thanh trên cùng; khoảng ngày = `range` của `/api/stats` | 5 (khoảng ngày), 7 (dời chip) |
+| Tiêu đề trang có icon bot + dòng mô tả | Thêm icon + mô tả dưới "Dashboard" | 7 |
+| **6 thẻ số** (thêm Success rate % và Error rate %, mỗi thẻ ô icon màu riêng, mũi tên ±) | Hiện có 4 thẻ; 2 thẻ mới lấy từ `/api/stats` (lượt ok / lượt lỗi, không tính aborted/usage_limit/no_usable_account) | 5 |
+| Command: người nhận là **nút dạng viên thuốc** (Team/PM/Dev/QC/Audit) thay radio | Giữ `input[name="cmd-to"]` (JS/test dùng), chỉ đổi CSS thành segmented pills | 3 |
+| Khối "AI task" (= Session & queue): chữ goal + chip trạng thái (Needs owner) + hàng đợi `#1 \| dev \| continue` + nút **▶ Run** | ▶ Run = Resume khi phiên dừng (gọi hàm Resume hiện có), ẩn khi đang chạy | 3 |
+| Accounts: 4 thẻ Worker **gọn trên một hàng**: chấm trạng thái, "Tên · accounts: N", chip công cụ, CLI/Model + Effort, dòng lệnh login `ssh -t …`, OK + chip "In use" + email tài khoản đang dùng | Giữ ▸ từng thẻ, ⋯, viền cam khi đang chạy (Task 4 cũ) | 4 |
+| Toolbar Accounts: Import, Export, Refresh energy, **Add Account ▾** (nút tách có mũi tên) | ▾ = menu: Add account, Import Worker | 4 |
+| "Bot / Instance list · Running: 3 \| Total: 4", thu gọn ▸ | Thẻ ghế: tiêu đề "Tên-Ghế ✎", dòng công cụ · model, chip **Live/Paused/Idle**, nút ⏸ / ▶ / ■; hàng Task · Started · Turns · Agent ▾; khung "Last log"; thanh Energy 5h và Tuần có % và giờ reset | 5 |
+| Hàng 4 biểu đồ: cột Task (Success/Running/Error theo ngày), vòng Instance (Running/Paused/Error), đường Success rate có nhãn giá trị cuối, **System performance** (CPU/RAM/Disk + mạng ↑↓) | System performance chuyển thành một thẻ ở hàng biểu đồ; sidebar giữ ô nhỏ "System healthy · Updated hh:mm:ss" | 5 |
+| Goals: "Total: 1 goal \| In progress: 1", **pipeline ngang** Intake → Planning → Dev → Testing → Security audit → Release (bước hiện tại tô xanh), tab trạng thái có số (Pending 5, In dev 1, Awaiting QC 0, Passed 0, Returned 0), bảng ID / Title / Diff / type / size / Fix rounds / Updated | Pipeline và tab có sẵn, đổi trình bày; thêm bước Security audit + Release vào pipeline (đã có dữ liệu audit/release) | 6 |
+| System log (Realtime): bảng Time / **Level** (badge INFO/WARN/ERROR) / **Source** (Tên-Ghế, tô màu theo ghế) / Message, "View full →" | Thêm cột Source (agent + ghế của lượt) bên cạnh Level đã lên kế hoạch | 6 |
+| Sidebar: Dashboard, Accounts, Bots & Tasks ▾, Goals, Logs, Reports, Settings; khối **Quick actions** (New task, Import accounts, Export report, Refresh data); chân sidebar "System healthy" | Quick actions gọi hàm có sẵn (focus Command, Import, ⟳); Export report → "Coming soon" | 7 |
+
+**Màu tối theo mẫu:** nền rất tối ánh xanh tím (`#0B1020`–`#0F1426`), thẻ `#121A2E` viền mảnh `#1E2A44`, nhấn xanh `#3B82F6`, thanh/biểu đồ xanh lá `#22C55E`, cảnh báo đỏ `#EF4444`, ô icon thẻ số mỗi màu một tông. Chỉ đổi giá trị biến ở khối `[data-theme="dark"]` và `prefers-color-scheme: dark`; chế độ sáng không đổi. Kiểm tương phản chữ ≥ 4.5:1 (test web hiện có).
+
+**Đã làm rồi (Task 1–2, chip Live, ảnh trả lời):** giữ nguyên; mẫu tối chỉ chỉnh màu và vị trí, không bỏ chức năng nào.
+
 ## Review Focus
 
 1. **Mất một nút đang dùng** khi dời bố cục → test liệt kê đủ `id` các nút hiện có (Resume, Stop, Approve, Auto-approve, gửi, 📎, Import, Export, Add Account, ▸, ✎, avatar, Approve merge, Push lại, theme). (mọi task)
@@ -133,5 +156,11 @@
 | Nút ngôn ngữ VI | Nút có, chọn VI hiện "coming soon" | Bản dịch tiếng Việt cho toàn bộ `tx()` |
 | Menu người dùng (tên + mũi tên ở góc phải) | Chỉ hiện tên chủ | Đổi tên hiển thị, đăng xuất khi dashboard có đăng nhập |
 | Nút ? (help) | Mở thư mục `docs/` trên GitHub | Trang hướng dẫn trong dashboard |
+
+| Chip Project ▾ (mẫu tối) | Hiện tên project, chưa đổi được | Chọn/đổi project ngay trên dashboard (xem tầm nhìn đa project) |
+| Environment ▾ (Dev) (mẫu tối) | Hiện "Dev" cố định | Tách môi trường Dev/Staging/Prod cho từng project |
+| Công tắc Auto refresh (mẫu tối) | Dashboard đã cập nhật trực tiếp qua SSE; công tắc chỉ hiện | Tạm dừng cập nhật màn hình khi cần đọc kỹ |
+| Nút ⏸ / ▶ trên từng thẻ ghế (mẫu tối) | ▶ = Resume khi phiên dừng; ⏸ chỉ hiện | Tạm dừng riêng một ghế mà không dừng cả phiên |
+| Quick action "Export report" (mẫu tối) | Bấm hiện "Coming soon" | Xuất báo cáo (gắn với trang Reports) |
 
 Task nào gặp thêm phần dư thì bổ sung vào bảng này.
