@@ -523,6 +523,14 @@ export function makeRunner(
           },
         } : {}),
       });
+    } catch (err) {
+      // Anh bấm Stop: vẫn kéo code worker đã sửa về checkout trước khi báo huỷ, để guard commit WIP (không thì lượt
+      // sau sync lại workspace và mất hết việc của lượt này).
+      if (isolated && err instanceof Error && err.name === 'AbortError') {
+        killAll(cfg, w);
+        try { isolation.importTurn(cfg, w, cwd); } catch {}
+      }
+      throw err;
     } finally {
       killAll(cfg, w);
     }

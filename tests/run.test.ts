@@ -445,6 +445,13 @@ describe('P4.5-T2: runner dưới worker', () => {
     fail = true;
     await expect(runner('dev', 'jacky', 'x', dir, join(dir, 'b.log'))).rejects.toThrow('boom');
     expect(killed.length).toBe(2);
+    // Anh bấm Stop (lượt 76, 2026-11-13): vẫn kéo code worker về checkout rồi mới báo huỷ, để guard commit WIP
+    fail = false;
+    steps.length = 0;
+    const abortProc = (async () => { steps.push('run'); const e = new Error('aborted'); e.name = 'AbortError'; throw e; }) as any;
+    const abortRunner = makeRunner(cfg, undefined, abortProc, () => { steps.push('kill'); }, iso);
+    await expect(abortRunner('dev', 'jacky', 'x', dir, join(dir, 'e.log'))).rejects.toThrow('aborted');
+    expect(steps).toEqual(['kill', 'reset', 'sync', 'run', 'kill', 'import', 'kill']);
     rmSync(dir, { recursive: true, force: true });
   });
 

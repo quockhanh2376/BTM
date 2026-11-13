@@ -189,7 +189,10 @@ describe('P5-T2: model + effort', () => {
   });
   it('agy: --model/--effort trong chuỗi lệnh', () => {
     const cmd = buildArgv('antigravity-cli', 'x', { ...base, model: 'gemini-3.8-flash-medium', effort: 'xhigh' })[2]!;
-    expect(cmd).toContain(" --model 'gemini-3.8-flash-medium' --effort 'xhigh'");
+    // Tên model agy đã mang mức effort (-low/-medium/-high): không gửi --effort (lượt 77: flash-medium + effort high bị agy từ chối)
+    expect(cmd).toContain(" --model 'gemini-3.8-flash-medium'");
+    expect(cmd).not.toContain('--effort');
+    expect(buildArgv('antigravity-cli', 'x', { ...base, model: 'claude-sonnet-4-6', effort: 'high' })[2]).toContain(" --model 'claude-sonnet-4-6' --effort 'high'");
     expect(buildArgv('antigravity-cli', 'x', base)[2]).not.toContain('--model');
   });
 });
