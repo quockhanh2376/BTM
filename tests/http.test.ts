@@ -127,7 +127,7 @@ describe('HTTP Server & SSE', () => {
       expect(res.headers.get('content-type')).toContain('text/html');
       expect(res.headers.get('content-type')).toContain('charset=utf-8');
       expect(res.headers.get('content-security-policy')).toBe(
-        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:"
       );
       const text = await res.text();
       expect(text).toContain('BTM Dashboard');
