@@ -493,21 +493,68 @@
     .seat-info-row {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 7px;
       font-size: 13px;
+      min-width: 0;
     }
 
     .seat-info-item {
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
       color: var(--text-muted);
     }
 
-    .seat-info-item span:last-child {
+    .seat-info-item > span:last-child {
       color: var(--text);
-      font-weight: 500;
-      text-align: right;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
+
+    /* Thẻ Agents theo mẫu anh Zon (2026-11-14): 2 cột thông tin, nhãn có icon */
+    .seat-grid2 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 8px 14px; }
+    .seat-side { display: flex; flex-direction: column; gap: 7px; min-width: 0; font-size: 13px; }
+    .seat-lbl { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); white-space: nowrap; }
+    .seat-ico { width: 14px; height: 14px; flex: none; }
+    .seat-lastrun-block { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .seat-lastrun-block .seat-run { align-self: flex-end; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .seat-card .seat-swap-row .seat-swap-select { min-width: 92px; max-width: 65%; }
+    .seat-ontask-row { font-size: 13px; }
+    .seat-card .seat-header > div:first-child { min-width: 0; }
+    .seat-card .seat-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .seat-card .seat-title-wrap { min-width: 0; }
+    .seat-card .seat-tool { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Chip Live đã báo đang chạy: ẩn vòng xoay cạnh tên cho gọn như mẫu */
+    .seat-card .spinner-icon { display: none !important; }
+    .agents-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+    .agents-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .agents-title h2 { margin: 0; font-size: 18px; }
+    .agents-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .pill-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .pill-live { background: var(--live-bg); color: var(--live-text); }
+    .pill-waiting { background: var(--inuse-bg); color: var(--inuse-text); }
+    .pill-idle { background: var(--badge-bg); color: var(--badge-text); }
+    .agents-tools { display: flex; align-items: center; gap: 8px; }
+    .agents-view select { border: none; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+    .seat-card .seat-avatar { width: 36px; height: 36px; flex-basis: 36px; }
+    .seat-card { padding: 14px; gap: 10px; }
+    .seat-card .seat-title { font-size: 16px; }
+    .seat-card .seat-status-badge { padding: 4px 12px; border-radius: 999px; }
+    .seat-card .status-waiting { background: var(--inuse-bg); color: var(--inuse-text); }
+    .seat-card .status-live { background: #16A34A; color: #FFFFFF; }
+    .seat-card .status-live::before {
+      content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: -2px;
+      background: currentColor;
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2'/%3E%3C/svg%3E") center / contain no-repeat;
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2'/%3E%3C/svg%3E") center / contain no-repeat;
+    }
+    .seat-card .seat-stop-btn { padding: 4px 12px; font-size: 12px; border-radius: 999px; border: 1px solid #DC2626; background: #DC2626; color: #FFFFFF; }
+    .seat-card .seat-stop-btn:disabled { opacity: 1; background: transparent; color: #DC2626; }
+    [data-theme="dark"] .seat-card .seat-stop-btn:disabled { color: #F87171; border-color: #F87171; }
+    @media (max-width: 420px) { .seat-grid2 { grid-template-columns: 1fr; } }
 
     .seat-swap-row {
       display: flex;
@@ -2377,6 +2424,21 @@
     </section>
 
     <!-- 3 thẻ ghế -->
+    <div class="agents-head" id="agents-head">
+      <div class="agents-title">
+        <span class="acc-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
+        <h2 id="agents-count">Agents</h2>
+        <span class="agents-pill pill-live"><span class="pill-dot"></span><span id="agents-live">0</span>&nbsp;<span data-i18n="seat.live">Live</span></span>
+        <span class="agents-pill pill-waiting"><span class="pill-dot"></span><span id="agents-waiting">0</span>&nbsp;<span data-i18n="seat.waiting">Waiting</span></span>
+        <span class="agents-pill pill-idle"><span class="pill-dot"></span><span id="agents-idle">0</span>&nbsp;<span data-i18n="seat.idle">Idle</span></span>
+      </div>
+      <div class="agents-tools">
+        <label class="agents-view btn btn-secondary btn-sm btn-tool"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span data-i18n="agents.view">View:</span>
+          <select id="agents-view" aria-label="View" data-i18n-aria="agents.viewAria"><option value="card" data-i18n="agents.card">Card</option></select>
+        </label>
+        <button type="button" id="agents-refresh" class="btn btn-secondary btn-sm btn-tool"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span data-i18n="agents.refresh">Refresh</span></button>
+      </div>
+    </div>
     <section class="seats-grid" id="seats-container">
       <!-- Elon - PM -->
       <div class="seat-card" id="seat-card-pm">
@@ -2391,22 +2453,29 @@
             </div>
             <div class="seat-tool" id="pm-tool">superpowers</div>
           </div>
-          <span class="seat-status-badge status-idle" id="pm-status-badge" data-i18n="seat.idle">Idle</span>
+          <span class="seat-status-badge status-idle" id="pm-status-badge"><span data-i18n="seat.idle">Idle</span></span>
         </div>
-        <div class="seat-info-row">
-          <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="pm-task">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="pm-since">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="pm-turns">0</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.lastRun">Last run:</span><span id="pm-lastrun" class="seat-run">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.onTask">On ticket:</span><span id="pm-ontask">—</span></div>
+        <div class="seat-grid2">
+          <div class="seat-info-row">
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 11h6M9 15h4"/></svg><span data-i18n="seat.task">Task</span></span><span id="pm-task">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="seat.started">Started</span></span><span id="pm-since">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg><span data-i18n="seat.turns">Turns</span></span><span id="pm-turns">0</span></div>
+          </div>
+          <div class="seat-side">
+            <div class="seat-swap-row">
+              <label for="pm-agent-select" class="seat-swap-label seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span data-i18n="seat.agent">Agent</span></label>
+              <select id="pm-agent-select" class="seat-swap-select" aria-label="Agent" data-i18n-aria="seat.agent"></select>
+            </div>
+            <div class="seat-lastrun-block">
+              <span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-3 2 2 3-4"/></svg><span data-i18n="seat.lastRun">Last run</span></span>
+              <span id="pm-lastrun" class="seat-run">—</span>
+            </div>
+          </div>
         </div>
-        <div class="seat-swap-row">
-          <label for="pm-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
-          <select id="pm-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
-        </div>
+        <div class="seat-info-item seat-ontask-row"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg><span data-i18n="seat.onTask">On ticket</span></span><span id="pm-ontask">—</span></div>
         <div class="last-line-container">
           <div class="last-line-head">
-            <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+            <span class="last-line-label" data-i18n="seat.lastLog">Last log</span>
             <span class="seat-elapsed" id="pm-elapsed" hidden></span>
           </div>
           <pre class="last-line-text" id="pm-last-line">—</pre>
@@ -2449,22 +2518,29 @@
             </div>
             <div class="seat-tool" id="dev-tool">claude</div>
           </div>
-          <span class="seat-status-badge status-idle" id="dev-status-badge" data-i18n="seat.idle">Idle</span>
+          <span class="seat-status-badge status-idle" id="dev-status-badge"><span data-i18n="seat.idle">Idle</span></span>
         </div>
-        <div class="seat-info-row">
-          <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="dev-task">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="dev-since">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="dev-turns">0</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.lastRun">Last run:</span><span id="dev-lastrun" class="seat-run">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.onTask">On ticket:</span><span id="dev-ontask">—</span></div>
+        <div class="seat-grid2">
+          <div class="seat-info-row">
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 11h6M9 15h4"/></svg><span data-i18n="seat.task">Task</span></span><span id="dev-task">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="seat.started">Started</span></span><span id="dev-since">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg><span data-i18n="seat.turns">Turns</span></span><span id="dev-turns">0</span></div>
+          </div>
+          <div class="seat-side">
+            <div class="seat-swap-row">
+              <label for="dev-agent-select" class="seat-swap-label seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span data-i18n="seat.agent">Agent</span></label>
+              <select id="dev-agent-select" class="seat-swap-select" aria-label="Agent" data-i18n-aria="seat.agent"></select>
+            </div>
+            <div class="seat-lastrun-block">
+              <span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-3 2 2 3-4"/></svg><span data-i18n="seat.lastRun">Last run</span></span>
+              <span id="dev-lastrun" class="seat-run">—</span>
+            </div>
+          </div>
         </div>
-        <div class="seat-swap-row">
-          <label for="dev-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
-          <select id="dev-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
-        </div>
+        <div class="seat-info-item seat-ontask-row"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg><span data-i18n="seat.onTask">On ticket</span></span><span id="dev-ontask">—</span></div>
         <div class="last-line-container">
           <div class="last-line-head">
-            <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+            <span class="last-line-label" data-i18n="seat.lastLog">Last log</span>
             <span class="seat-elapsed" id="dev-elapsed" hidden></span>
           </div>
           <pre class="last-line-text" id="dev-last-line">—</pre>
@@ -2507,22 +2583,29 @@
             </div>
             <div class="seat-tool" id="qc-tool">codex</div>
           </div>
-          <span class="seat-status-badge status-idle" id="qc-status-badge" data-i18n="seat.idle">Idle</span>
+          <span class="seat-status-badge status-idle" id="qc-status-badge"><span data-i18n="seat.idle">Idle</span></span>
         </div>
-        <div class="seat-info-row">
-          <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="qc-task">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="qc-since">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="qc-turns">0</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.lastRun">Last run:</span><span id="qc-lastrun" class="seat-run">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.onTask">On ticket:</span><span id="qc-ontask">—</span></div>
+        <div class="seat-grid2">
+          <div class="seat-info-row">
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 11h6M9 15h4"/></svg><span data-i18n="seat.task">Task</span></span><span id="qc-task">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="seat.started">Started</span></span><span id="qc-since">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg><span data-i18n="seat.turns">Turns</span></span><span id="qc-turns">0</span></div>
+          </div>
+          <div class="seat-side">
+            <div class="seat-swap-row">
+              <label for="qc-agent-select" class="seat-swap-label seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span data-i18n="seat.agent">Agent</span></label>
+              <select id="qc-agent-select" class="seat-swap-select" aria-label="Agent" data-i18n-aria="seat.agent"></select>
+            </div>
+            <div class="seat-lastrun-block">
+              <span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-3 2 2 3-4"/></svg><span data-i18n="seat.lastRun">Last run</span></span>
+              <span id="qc-lastrun" class="seat-run">—</span>
+            </div>
+          </div>
         </div>
-        <div class="seat-swap-row">
-          <label for="qc-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
-          <select id="qc-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
-        </div>
+        <div class="seat-info-item seat-ontask-row"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg><span data-i18n="seat.onTask">On ticket</span></span><span id="qc-ontask">—</span></div>
         <div class="last-line-container">
           <div class="last-line-head">
-            <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+            <span class="last-line-label" data-i18n="seat.lastLog">Last log</span>
             <span class="seat-elapsed" id="qc-elapsed" hidden></span>
           </div>
           <pre class="last-line-text" id="qc-last-line">—</pre>
@@ -2565,22 +2648,29 @@
             </div>
             <div class="seat-tool" id="audit-tool">—</div>
           </div>
-          <span class="seat-status-badge status-idle" id="audit-status-badge" data-i18n="seat.idle">Idle</span>
+          <span class="seat-status-badge status-idle" id="audit-status-badge"><span data-i18n="seat.idle">Idle</span></span>
         </div>
-        <div class="seat-info-row">
-          <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="audit-task">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="audit-since">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="audit-turns">0</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.lastRun">Last run:</span><span id="audit-lastrun" class="seat-run">—</span></div>
-          <div class="seat-info-item"><span data-i18n="seat.onTask">On ticket:</span><span id="audit-ontask">—</span></div>
+        <div class="seat-grid2">
+          <div class="seat-info-row">
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 11h6M9 15h4"/></svg><span data-i18n="seat.task">Task</span></span><span id="audit-task">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="seat.started">Started</span></span><span id="audit-since">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg><span data-i18n="seat.turns">Turns</span></span><span id="audit-turns">0</span></div>
+          </div>
+          <div class="seat-side">
+            <div class="seat-swap-row">
+              <label for="audit-agent-select" class="seat-swap-label seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span data-i18n="seat.agent">Agent</span></label>
+              <select id="audit-agent-select" class="seat-swap-select" aria-label="Agent" data-i18n-aria="seat.agent"></select>
+            </div>
+            <div class="seat-lastrun-block">
+              <span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-3 2 2 3-4"/></svg><span data-i18n="seat.lastRun">Last run</span></span>
+              <span id="audit-lastrun" class="seat-run">—</span>
+            </div>
+          </div>
         </div>
-        <div class="seat-swap-row">
-          <label for="audit-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
-          <select id="audit-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
-        </div>
+        <div class="seat-info-item seat-ontask-row"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg><span data-i18n="seat.onTask">On ticket</span></span><span id="audit-ontask">—</span></div>
         <div class="last-line-container">
           <div class="last-line-head">
-            <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+            <span class="last-line-label" data-i18n="seat.lastLog">Last log</span>
             <span class="seat-elapsed" id="audit-elapsed" hidden></span>
           </div>
           <pre class="last-line-text" id="audit-last-line">—</pre>
@@ -2720,18 +2810,23 @@
           'fb.seatChanged': '{seat} seat reassigned',
           'fb.serverError': 'Server error ({status})',
           'seat.idle': 'Idle',
+          'agents.title': 'Agents ({n})',
+          'agents.view': 'View:',
+          'agents.viewAria': 'Card view',
+          'agents.card': 'Card',
+          'agents.refresh': 'Refresh',
           'seat.live': 'Live',
           'seat.running': 'Running',
           'seat.waiting': 'Waiting',
-          'seat.task': 'Task:',
-          'seat.started': 'Started:',
-          'seat.turns': 'Turns:',
-          'seat.lastRun': 'Last run:',
-          'seat.onTask': 'On ticket:',
+          'seat.task': 'Task',
+          'seat.started': 'Started',
+          'seat.turns': 'Turns',
+          'seat.lastRun': 'Last run',
+          'seat.onTask': 'On ticket',
           'seat.runs': '{n} runs',
           'seat.run1': '1 run',
-          'seat.agent': 'Seated agent',
-          'seat.lastLog': 'Last log:',
+          'seat.agent': 'Agent',
+          'seat.lastLog': 'Last log',
           'seat.also': 'also {seats}',
           'seat.substitute': 'last turn: {agent} (substitute)',
           'seat.warnings': 'Team: {list}',
@@ -4738,6 +4833,23 @@
       }
       setInterval(tickSeatElapsed, 1000);
 
+      // Đầu khu Agents: tổng số ghế + số Live / Waiting / Idle (mẫu anh Zon 2026-11-14).
+      function renderAgentCounts(seats) {
+        var list = Array.isArray(seats) ? seats : [];
+        var n = { running: 0, waiting: 0, idle: 0 };
+        list.forEach(function (x) { n[x.status === 'running' ? 'running' : (x.status === 'waiting' ? 'waiting' : 'idle')]++; });
+        var t = document.getElementById('agents-count');
+        if (t) t.textContent = tx('agents.title', { n: list.length });
+        [['agents-live', n.running], ['agents-waiting', n.waiting], ['agents-idle', n.idle]].forEach(function (p) {
+          var el = document.getElementById(p[0]);
+          if (el) el.textContent = String(p[1]);
+        });
+      }
+      (function () {
+        var b = document.getElementById('agents-refresh');
+        if (b) b.addEventListener('click', function () { var r = document.getElementById('refresh-energy-btn'); if (r) r.click(); });
+      })();
+
       function renderSeat(seatKey, cardData, isCurrentHolder, isBusy) {
         var cardEl = document.getElementById('seat-card-' + seatKey);
         if (!cardEl) return;
@@ -5033,6 +5145,7 @@
           });
         }
         var isBusy = (state.session && state.session.status === 'running') || Boolean(state.holder);
+        renderAgentCounts(state.seats);
         renderSeat('pm', seatsMap['pm'], state.holder === 'pm', isBusy);
         renderSeat('dev', seatsMap['dev'], state.holder === 'dev', isBusy);
         renderSeat('qc', seatsMap['qc'], state.holder === 'qc', isBusy);

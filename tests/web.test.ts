@@ -1442,7 +1442,7 @@ describe('Web Dashboard (web/index.html)', () => {
         expect(html).toContain(`id="seat-card-${seat}"`);
         expect(html).toContain(`id="${seat}-agent-select"`);
       });
-      const labelMatches = html.match(/data-i18n="seat.agent">Seated agent</g);
+      const labelMatches = html.match(/data-i18n="seat.agent">Agent</g);
       expect(labelMatches).not.toBeNull();
       expect(labelMatches!.length).toBeGreaterThanOrEqual(3);
     });
@@ -1656,6 +1656,20 @@ describe('Đồng hồ bấm giờ trên thẻ đang chạy (2026-11-13)', () =>
     expect(formatElapsed(154_000)).toBe('2:34');
     expect(formatElapsed(3_725_000)).toBe('1:02:05');
     expect(formatElapsed(-5)).toBe('0:00');
+  });
+});
+
+describe('Khu Agents theo mẫu (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('đếm ghế Live / Waiting / Idle và tiêu đề Agents (N)', () => {
+    const src = html.slice(html.indexOf('function renderAgentCounts'), html.indexOf('(function () {', html.indexOf('function renderAgentCounts')));
+    const els: Record<string, { textContent: string }> = { 'agents-count': { textContent: '' }, 'agents-live': { textContent: '' }, 'agents-waiting': { textContent: '' }, 'agents-idle': { textContent: '' } };
+    const doc = { getElementById: (id: string) => els[id] ?? null };
+    const tx = (_k: string, v: { n: number }) => `Agents (${v.n})`;
+    const fn = new Function('document', 'tx', src + 'return renderAgentCounts;')(doc, tx);
+    fn([{ status: 'running' }, { status: 'waiting' }, { status: 'waiting' }, { status: 'idle' }]);
+    expect([els['agents-count']!.textContent, els['agents-live']!.textContent, els['agents-waiting']!.textContent, els['agents-idle']!.textContent]).toEqual(['Agents (4)', '1', '2', '1']);
+    for (const id of ['agents-refresh', 'agents-view']) expect(html).toContain(`id="${id}"`);
   });
 });
 
