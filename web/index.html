@@ -4887,7 +4887,8 @@
           if (n.report && n.report.trim()) {
             var reportEl = document.createElement('pre');
             reportEl.className = 'note-report';
-            reportEl.textContent = n.report;
+            // Dòng đầu báo cáo do agent ghi "… · <id>-Dev": hiện tên anh đặt thay cho id.
+            reportEl.textContent = n.report.replace(/· ([a-z0-9_-]+)-(PM|Dev|QC|Audit)\b/g, function (_m, id, seat) { return '· ' + agentLabel(id) + '-' + seat; });
             item.appendChild(reportEl);
           }
 
@@ -4987,10 +4988,14 @@
               cardData.candidates.forEach(function (cand) {
                 var opt = document.createElement('option');
                 opt.value = cand;
-                opt.textContent = cand;
                 selectEl.appendChild(opt);
               });
             }
+            // Giá trị vẫn là id agent (quy trình dùng id); chữ hiện tên anh đặt, đổi tên là cập nhật ngay.
+            Array.from(selectEl.options).forEach(function (o) {
+              var label = agentLabel(o.value);
+              if (o.textContent !== label) o.textContent = label;
+            });
             if (document.activeElement !== selectEl && cardData.agent) {
               selectEl.value = cardData.agent;
             }
