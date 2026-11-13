@@ -1159,6 +1159,14 @@ async function processGoal(
             restoreTicketFilesFromBase(d.repo, base);
             commitAll(d.repo, `${ticket.id}: blocked`, devAuthor);
           } catch {}
+          // Dev vừa báo BLOCKED vừa hỏi "Cần xác nhận …?" → coi như câu hỏi (ticket returned, chờ anh trả lời),
+          // không kẹt blocked mà anh không có chỗ trả lời.
+          const blockedQ = askQuestions(ticket.id, 'dev', devAgent, parseReportQuestions(readReport(join(d.repo, 'team', 'reports', `${ticket.id}-dev.md`))));
+          if (blockedQ > 0) {
+            d.store.setTicketState(d.repo, ticket.id, 'returned', devAgent, 'questions_open', fixRounds, base);
+            tasks[ticket.id] = 'returned';
+            return { status: 'needs_owner', sessionId, tasks, notes: [`questions_open:${blockedQ}`, `Ticket ${ticket.id} waits for your answers`] };
+          }
           tasks[ticket.id] = 'blocked';
           d.store.setTicketState(d.repo, ticket.id, 'blocked', devAgent, 'Dev reported BLOCKED', fixRounds, base);
           return { status: 'needs_owner', sessionId, tasks, notes: ['Dev reported BLOCKED'] };

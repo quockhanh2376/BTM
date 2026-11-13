@@ -4457,6 +4457,27 @@ describe('P7-T2: đổi tài khoản của cùng Worker trước khi đổi ngư
 });
 
 describe('P6-T3/T4: câu hỏi chặn ticket, ghi chú của anh vào lượt Dev', () => {
+  it('Dev trả BLOCKED nhưng report có "Cần xác nhận …?" → vẫn ghi câu hỏi, ticket returned (không kẹt blocked)', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '1' });
+    const { deps, store } = makeDeps(repo);
+    const t1 = { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 };
+    const { runner } = createFakeRunner([
+      (_s, _a, _p, cwd) => { writeTicketFile(cwd, { ...t1, scope: ['src/app.ts'] } as any); },
+      (_s, agent, _p, cwd) => {
+        writeDevReport(cwd, t1, agent, 'Số lượt đoán tối đa là bao nhiêu?');
+        return { lastMessage: 'BLOCKED: chờ anh Zon chốt' } as any;
+      },
+    ]);
+    deps.runner = runner;
+    deps.gate = () => ({ ok: true as const });
+    const out = await runSession(deps, ['Build feature'], { approved: true });
+    expect(out.status).toBe('needs_owner');
+    expect(out.notes[0]).toBe('questions_open:1');
+    expect(store.getTicketState(repo, 'GTM-0001')?.state).toBe('returned');
+    expect(store.listQuestions(repo, 'open').map((q) => q.text)).toEqual(['Số lượt đoán tối đa là bao nhiêu?']);
+    store.close();
+  });
+
   it('Dev hỏi (có ?) → code giữ, ticket returned, goal dừng questions_open (ticket khác chưa chạy); trả lời → Dev làm tiếp, QC xem toàn bộ', async () => {
     const repo = tmpRepo({ 'src/app.ts': '1', 'src/b.ts': '1' });
     const { deps, store } = makeDeps(repo);
