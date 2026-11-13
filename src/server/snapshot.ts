@@ -75,6 +75,28 @@ export interface SeatCard {
   substitute?: string | null;
   /** Dòng trạng thái agent đang chạy tự ghi (Plan 6 Task 7), đã làm sạch. */
   agentStatus?: string | null;
+  /** Lượt xong gần nhất của ghế (anh Zon 2026-11-13): ticket · thời gian · kết quả. */
+  lastRun?: { task: string | null; durationMs: number; result: string } | null;
+  /** Tổng thời gian các lượt đã xong của ghế trên ticket đang/vừa làm. */
+  onTask?: { task: string; totalMs: number; runs: number } | null;
+}
+
+// Kết quả lượt cho thẻ ghế: lỗi cụ thể nếu có (timeout, aborted…), cắt gọn, chỉ ký tự an toàn.
+function runResult(t: { result: string | null; error: string | null }): string {
+  const raw = t.error || t.result || '';
+  return raw.split(':')[0]!.replace(/[^a-z0-9_]/gi, '').slice(0, 24) || 'unknown';
+}
+
+function seatTiming(seatTurns: Array<{ task_id: string | null; started_at: string; ended_at: string | null; result: string | null; error: string | null }>, runningTask: string | null): Pick<SeatCard, 'lastRun' | 'onTask'> {
+  const dur = (t: { started_at: string; ended_at: string | null }) => Math.max(0, Date.parse(t.ended_at!) - Date.parse(t.started_at)) || 0;
+  const done = seatTurns.filter((t) => t.ended_at);
+  const last = done.length > 0 ? done[done.length - 1]! : null;
+  const lastRun = last ? { task: last.task_id, durationMs: dur(last), result: runResult(last) } : null;
+  const task = runningTask ?? last?.task_id ?? null;
+  if (!task) return { lastRun, onTask: null };
+  const mine = done.filter((t) => t.task_id === task);
+  const onTask = { task, totalMs: mine.reduce((a, t) => a + dur(t), 0), runs: mine.length };
+  return { lastRun, onTask };
 }
 
 export interface AccountCard {
@@ -650,6 +672,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       ...seatExtras(cfg, store, effSeats, seat, agent),
       substitute: lastTurn?.agent && lastTurn.agent !== agent ? lastTurn.agent : null,
       agentStatus: status === 'running' && s.project && runningTurn?.agent ? readAgentStatus(cfg, store.getSetting(accountLastKey(runningTurn.agent)) || runningTurn.agent, s.project) : null,
+      ...seatTiming(seatTurns, ticket),
     };
   });
 
