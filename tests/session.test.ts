@@ -309,6 +309,35 @@ describe('Goal & Ticket Session Coordinator', () => {
     store.close();
   });
 
+  it('QC fail chỉ có "cần xác nhận" (không bug, không fix) → hỏi anh, không trả về Dev; anh trả lời + Resume → QC chạy lại', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
+    const { deps, store } = makeDeps(repo);
+    const seen: string[] = [];
+    const confirm = ['Chạy npm start rồi mở localhost:3000 để xác nhận canvas. Sandbox chặn mở cổng (EPERM).'];
+    const { runner } = createFakeRunner([
+      (seat, _a, _p, cwd) => { seen.push(seat); writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }); },
+      (seat, agent, _p, cwd) => { seen.push(seat); writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n'); writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent); },
+      (seat) => { seen.push(seat); return makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'fail', [], [], confirm); },
+      (seat, _a, prompt) => { seen.push(seat); expect(prompt).toContain('Đã chạy, canvas hiện bình thường'); return makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'); },
+    ]);
+    deps.runner = runner;
+
+    const outcome = await runSession(deps, ['Build feature'], { approved: true });
+    expect(outcome.status).toBe('needs_owner');
+    expect(outcome.notes[0]).toBe('questions_open:1');
+    expect(store.getTicketState(repo, 'GTM-0001')?.state).toBe('awaiting_qc');
+    expect(store.getTicketState(repo, 'GTM-0001')?.fix_rounds ?? 0).toBe(0);
+    const q = store.listQuestions(repo, 'open');
+    expect(q.map((x) => x.text)).toEqual(confirm);
+    expect(q[0]!.seat).toBe('qc');
+
+    store.answerQuestion(q[0]!.id, 'Đã chạy, canvas hiện bình thường');
+    const resumed = await resumeSession(deps, outcome.sessionId!);
+    expect(seen).toEqual(['pm', 'dev', 'qc', 'qc']);
+    expect(store.getTicketState(repo, 'GTM-0001')?.state).toBe('passed');
+    expect(resumed.status).not.toBe('needs_owner');
+  });
+
   it('release.require_audit: thiếu ghế audit thì dừng audit_seat_missing (không bỏ qua audit); PM được dặn ticket docs', async () => {
     const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
     const base = loadConfig('btm.config.yaml');
