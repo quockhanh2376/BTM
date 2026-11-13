@@ -262,3 +262,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | seat.lastRun / seat.onTask / seat.runs / seat.run1 | Lượt gần nhất / Trên ticket / {n} lượt / 1 lượt | Last run: / On ticket: / {n} runs / 1 run |
 | seat.live | Đang chạy | Live |
 | q.attach / q.imageAlt / q.removeImage | Ảnh / Ảnh cho câu hỏi {id} / Bỏ ảnh | Image / Image for question {id} / Remove image |
+| acc.addShort | Thêm tài khoản | Add Account |
