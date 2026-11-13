@@ -77,6 +77,9 @@ describe('Task 5 Prompts: pmTicketPrompt, devTicketPrompt, qcTicketPrompt', () =
     expect(header).toBe('GTM-0012 · G1#3/9 · Jacky-Dev');
 
     const prompt = devTicketPrompt(sampleTicket, 'Jacky', ['Fix indentation'], ['npm test']);
+    // lượt 75 (2026-11-13): node -e bị agy tự chặn → cả lượt bị bỏ
+    expect(prompt).toContain('Không chạy code viết thẳng trên dòng lệnh (node -e');
+    expect(prompt).toContain('viết file test rồi chạy npm test');
 
     expect(prompt).toContain('team/tickets/GTM-0012.md');
     expect(prompt).toContain(header);
