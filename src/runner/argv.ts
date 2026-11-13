@@ -27,7 +27,8 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
         },
       });
       const modelArg = o.model ? ` --model ${shQuote(o.model)}` : '';
-      const effortArg = o.effort ? ` --effort ${shQuote(o.effort)}` : '';
+      // Model Gemini của agy mang sẵn mức effort trong tên (…-low/-medium/-high); gửi thêm --effort lệch thì agy từ chối.
+      const effortArg = o.effort && !/-(low|medium|high)$/.test(o.model ?? '') ? ` --effort ${shQuote(o.effort)}` : '';
       const cmd = `agy -p ${shQuote(prompt)} --mode accept-edits --sandbox --settings ${shQuote(json)} --print-timeout ${o.timeoutMin}m${modelArg}${effortArg}`;
       return ['script', '-qec', cmd, '/dev/null'];
     }
