@@ -1,5 +1,5 @@
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
-import { AGENT_NAME_RE, agentNameKey } from '../agents/names.ts';
+import { AGENT_NAME_RE, AVATAR_MAX_BYTES, agentAvatarKey, agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
 import type { Socket } from 'node:net';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
@@ -161,6 +161,22 @@ export function createServer(o: {
       if (method === 'GET' && pathname === '/api/state') {
         const snapshot = buildSnapshot(o.store, o.cfg);
         sendJson(res, 200, snapshot);
+        return;
+      }
+
+      // Avatar của Worker (chỉ ảnh đã kiểm magic bytes khi lưu; kiểm lại khi trả).
+      const avatarMatch = pathname.match(/^\/api\/avatar\/([a-z0-9_-]{1,40})$/);
+      if (method === 'GET' && avatarMatch) {
+        const agent = avatarMatch[1]!;
+        const b64 = Object.hasOwn(o.cfg.agents, agent) ? o.store.getSetting(agentAvatarKey(agent)) : null;
+        const buf = b64 ? Buffer.from(b64, 'base64') : null;
+        const det = buf ? detectImage(buf) : null;
+        if (!buf || !det) {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': det.mime, 'Content-Length': buf.length, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=3600' });
+        res.end(buf);
         return;
       }
 
@@ -354,7 +370,7 @@ export function createServer(o: {
         }
 
         // 4. Read body (max 16 KB, or 7 MB for team-note)
-        const maxBytes = pathname === '/api/team-note' ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : 16384;
+        const maxBytes = pathname === '/api/team-note' ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : pathname === '/api/agent' ? 96 * 1024 : 16384;
         let body: unknown;
         try {
           body = await readJsonBody(req, maxBytes);
@@ -755,21 +771,30 @@ export function createServer(o: {
             model: z.union([z.literal(''), ModelSchema]).optional(),
             effort: EffortSchema.optional(),
             name: z.string().transform((x) => x.trim()).refine((x) => x === '' || AGENT_NAME_RE.test(x)).optional(),
+            avatar: z.string().max(Math.ceil(AVATAR_MAX_BYTES / 3) * 4).regex(/^[A-Za-z0-9+/]*={0,2}$/).optional(),
           }).strict();
           const parsed = AgentBodySchema.safeParse(body);
           if (!parsed.success) {
             sendJson(res, 400, { error: 'Invalid model, effort or name' });
             return;
           }
-          const { agent, model, effort, name } = parsed.data;
+          const { agent, model, effort, name, avatar } = parsed.data;
           if (!Object.hasOwn(o.cfg.agents, agent)) {
             sendJson(res, 400, { error: `Unknown agent "${agent}"` });
             return;
           }
           // Đổi tên chỉ là hiển thị: được đổi cả lúc phiên đang chạy. '' = về tên gốc.
-          if (name !== undefined && model === undefined && effort === undefined) {
-            o.store.setSetting(agentNameKey(agent), name);
-            sendJson(res, 200, { ok: true, agent, name });
+          if ((name !== undefined || avatar !== undefined) && model === undefined && effort === undefined) {
+            if (avatar !== undefined && avatar !== '' && !detectImage(Buffer.from(avatar, 'base64'))) {
+              sendJson(res, 400, { error: 'Avatar must be PNG, JPEG or WebP' });
+              return;
+            }
+            if (name !== undefined) o.store.setSetting(agentNameKey(agent), name);
+            if (avatar !== undefined) {
+              o.store.setSetting(agentAvatarKey(agent), avatar);
+              o.store.setSetting(agentAvatarVerKey(agent), avatar ? String(Date.now()) : '');
+            }
+            sendJson(res, 200, { ok: true, agent });
             return;
           }
           if (o.host.busy?.()) {

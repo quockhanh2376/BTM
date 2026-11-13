@@ -993,6 +993,22 @@ describe('HTTP Server & SSE', () => {
       expect((await post({ agent: 'jacky', name: '' })).status).toBe(200);
       expect(store.getSetting('agent_name:jacky')).toBe('');
     });
+    it('avatar: chỉ PNG/JPEG/WebP; GET /api/avatar/<agent> trả đúng ảnh + nosniff; rỗng = bỏ', async () => {
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+      expect((await post({ agent: 'jacky', avatar: Buffer.from('<svg onload=x>').toString('base64') })).status).toBe(400);
+      expect((await post({ agent: 'jacky', avatar: 'not base64!' })).status).toBe(400);
+      expect((await post({ agent: 'jacky', avatar: png.toString('base64') })).status).toBe(200);
+      expect(store.getSetting('agent_avatar_v:jacky')).toMatch(/^\d+$/);
+      const g = await fetch(`${baseUrl}/api/avatar/jacky`);
+      expect(g.status).toBe(200);
+      expect(g.headers.get('content-type')).toBe('image/png');
+      expect(g.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(Buffer.from(await g.arrayBuffer()).equals(png)).toBe(true);
+      expect((await fetch(`${baseUrl}/api/avatar/ghost`)).status).toBe(404);
+      expect((await post({ agent: 'jacky', avatar: '' })).status).toBe(200);
+      expect((await fetch(`${baseUrl}/api/avatar/jacky`)).status).toBe(404);
+      expect(store.getSetting('agent_avatar_v:jacky')).toBe('');
+    });
   });
 
   describe('POST /api/seat', () => {

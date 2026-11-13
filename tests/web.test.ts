@@ -1531,6 +1531,11 @@ describe('P7-T5: giao diện Accounts', () => {
     expect(html).toContain('agentNames = (state && state.settings && state.settings.names) || {};');
     const fmt = html.slice(html.indexOf('function formatAgentDisplayName'), html.indexOf('var formatAgent ='));
     expect(fmt).toContain('agentLabel(agentId)');
+    // avatar chỉ trên thẻ ghế, không trong Accounts
+    expect(html).toContain('renderSeatAvatar(cardEl, cardData.agent);');
+    const accJs = html.slice(html.indexOf('function renderAccounts'), html.indexOf('// ===== Plan 7: tài khoản của Worker ====='));
+    expect(accJs).not.toContain('seat-avatar');
+    expect(html).toContain("c.toDataURL('image/jpeg', 0.85)");
     // tài khoản ngủ gom sau nút thu gọn, tự gập sau 3 phút
     expect(html).toContain('acc-sleep-toggle');
     expect(html).toContain('ACC_SLEEP_COLLAPSE_MS = 3 * 60 * 1000');

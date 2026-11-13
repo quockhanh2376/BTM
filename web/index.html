@@ -382,6 +382,26 @@
     }
 
 
+    .seat-avatar {
+      width: 26px;
+      height: 26px;
+      flex: 0 0 26px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 0;
+      overflow: hidden;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .seat-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
     .seat-header {
       display: flex;
       align-items: center;
@@ -2365,6 +2385,9 @@
           'confirm.stop': 'Stop everything? The running agent will be killed and the queue cleared.',
           'confirm.stopCard': 'Stop this card? Its running turn will be killed; the queue is kept.',
           'seat.stopFor': 'Stop {seat}',
+          'seat.avatarFor': 'Avatar of {agent}: click to choose an image, right-click to remove',
+          'seat.avatarRemove': 'Remove this avatar?',
+          'seat.avatarBad': 'Could not read that image',
           'fb.stopSent': 'Stop sent',
           'fb.resumeSent': 'Resume sent',
           'fb.approved': 'Tickets approved',
@@ -2659,6 +2682,76 @@
 
       // Tên anh Zon đặt cho Worker (snapshot settings.names); chỉ để hiển thị, API vẫn dùng id.
       var agentNames = {};
+      var agentAvatars = {};
+
+      // Ảnh chọn từ máy → cắt vuông, thu về 96px JPEG ở trình duyệt → base64 (server kiểm magic bytes).
+      function shrinkAvatar(file) {
+        return new Promise(function (resolve, reject) {
+          var url = URL.createObjectURL(file);
+          var img = new Image();
+          img.onload = function () {
+            var side = Math.min(img.naturalWidth, img.naturalHeight);
+            var c = document.createElement('canvas');
+            c.width = 96; c.height = 96;
+            c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 96, 96);
+            URL.revokeObjectURL(url);
+            resolve(c.toDataURL('image/jpeg', 0.85).split(',')[1] || '');
+          };
+          img.onerror = function () { URL.revokeObjectURL(url); reject(new Error(tx('seat.avatarBad'))); };
+          img.src = url;
+        });
+      }
+
+      // Vòng tròn avatar trước tên trên thẻ ghế: bấm để chọn ảnh, chuột phải để bỏ ảnh.
+      function renderSeatAvatar(cardEl, agent) {
+        var wrap = cardEl.querySelector('.seat-title-wrap');
+        if (!wrap) return;
+        var btn = wrap.querySelector('.seat-avatar');
+        if (!btn) {
+          btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'seat-avatar';
+          var input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/png,image/jpeg,image/webp';
+          input.hidden = true;
+          btn.addEventListener('click', function () { input.click(); });
+          input.addEventListener('change', async function () {
+            var f = input.files && input.files[0];
+            input.value = '';
+            if (!f || !btn.dataset.agent) return;
+            try {
+              await postJson('/api/agent', { agent: btn.dataset.agent, avatar: await shrinkAvatar(f) });
+            } catch (err) {
+              showFeedback(topFeedback, err.message, true);
+            }
+          });
+          btn.addEventListener('contextmenu', async function (ev) {
+            if (!btn.dataset.agent || !agentAvatars[btn.dataset.agent]) return;
+            ev.preventDefault();
+            if (!confirm(tx('seat.avatarRemove'))) return;
+            try { await postJson('/api/agent', { agent: btn.dataset.agent, avatar: '' }); } catch (err) { showFeedback(topFeedback, err.message, true); }
+          });
+          wrap.insertBefore(btn, wrap.firstChild);
+          wrap.appendChild(input);
+        }
+        var ver = agent ? agentAvatars[agent] : '';
+        var key = (agent || '') + '|' + (ver || '');
+        btn.setAttribute('aria-label', tx('seat.avatarFor', { agent: agentLabel(agent) }));
+        btn.title = tx('seat.avatarFor', { agent: agentLabel(agent) });
+        if (btn.dataset.key === key) return;
+        btn.dataset.key = key;
+        btn.dataset.agent = agent || '';
+        clearChildren(btn);
+        if (ver) {
+          var im = document.createElement('img');
+          im.alt = '';
+          im.src = '/api/avatar/' + encodeURIComponent(agent) + '?v=' + encodeURIComponent(ver);
+          btn.appendChild(im);
+        } else {
+          btn.textContent = agentLabel(agent).charAt(0) || '?';
+        }
+      }
       function agentLabel(id) {
         id = id ? String(id) : '';
         if (Object.prototype.hasOwnProperty.call(agentNames, id) && agentNames[id]) return String(agentNames[id]);
@@ -4160,6 +4253,7 @@
           var lastLineEl = document.getElementById(seatKey + '-last-line');
 
           if (titleEl) titleEl.textContent = formatAgentDisplayName(cardData.agent, seatKey);
+          renderSeatAvatar(cardEl, cardData.agent);
           if (toolEl) {
             var toolParts = [cardData.tool || '—'];
             if (cardData.model) toolParts.push(cardData.model);
@@ -4271,6 +4365,7 @@
 
       function renderSnapshot(state) {
         agentNames = (state && state.settings && state.settings.names) || {};
+        agentAvatars = (state && state.settings && state.settings.avatars) || {};
         if (!state) return;
         latestSnapshot = state;
 

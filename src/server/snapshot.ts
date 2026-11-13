@@ -1,5 +1,5 @@
 import { existsSync, statSync, openSync, readSync, closeSync, readFileSync, lstatSync } from 'node:fs';
-import { agentNameKey } from '../agents/names.ts';
+import { agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
 import { cleanStatus, isIsolated, readWorkerStatus, STATUS_FILE } from '../isolation/trusted.ts';
 import { join } from 'node:path';
 import type { Config, Effort, Seat, Tool } from '../config.ts';
@@ -136,6 +136,8 @@ export interface Snapshot {
     autoApprove: boolean;
     /** Tên hiển thị anh Zon đặt cho Worker (chỉ UI; backend vẫn dùng id agent). */
     names: Record<string, string>;
+    /** Agent có avatar → phiên bản (đổi khi đổi ảnh, để trình duyệt tải lại /api/avatar/<agent>?v=). */
+    avatars: Record<string, string>;
   };
   members: string[];
   notes: SnapshotNote[];
@@ -465,11 +467,14 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const autoApprove = autoApproveVal !== null ? autoApproveVal === 'true' : !cfg.session.require_task_approval;
   const members = Object.keys(cfg.agents);
   const names: Record<string, string> = {};
+  const avatars: Record<string, string> = {};
   for (const a of members) {
     const n = store.getSetting(agentNameKey(a));
     if (n) names[a] = n;
+    const v = store.getSetting(agentAvatarVerKey(a));
+    if (v) avatars[a] = v;
   }
-  const settings = { autoApprove, names };
+  const settings = { autoApprove, names, avatars };
 
   const rawNotes = project ? store.listNotes(project, 10) : [];
   let allTickets: Ticket[] = [];
