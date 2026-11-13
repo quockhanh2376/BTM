@@ -6,22 +6,22 @@
   <title>BTM Dashboard · Bot Task Manager</title>
   <style>
     :root {
-      --bg: #F4F4F1;
+      --bg: #F5F7FB;
       --card-bg: #FFFFFF;
-      --text: #1A1A18;
-      --text-muted: #55554F;
-      --accent: #2B5BD7;
+      --text: #0F172A;
+      --text-muted: #5B6577;
+      --accent: #2563EB;
       --running-bg: #DCE6FB;
       --running-text: #1E3F99;
       --danger: #B42318;
       --danger-text: #FFFFFF;
       --error-text: #B42318;
-      --btn-primary-bg: #2B5BD7;
+      --btn-primary-bg: #2563EB;
       --btn-primary-text: #FFFFFF;
-      --border: #E5E5DF;
-      --border-subtle: #ECECE7;
-      --badge-bg: #EEEEEC;
-      --badge-text: #55554F;
+      --border: #E5E7EB;
+      --border-subtle: #EEF0F4;
+      --badge-bg: #EEF2F7;
+      --badge-text: #475569;
       --tab-active-bg: var(--accent);
       --tab-active-text: #FFFFFF;
       --tab-inactive-bg: #E5E5DF;
@@ -52,14 +52,21 @@
       --space-md: 16px;
       --space-lg: 20px;
       --space-xl: 24px;
+      --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
+      --sidebar-bg: #FFFFFF;
+      --nav-active-bg: #2563EB;
+      --nav-active-text: #FFFFFF;
+      --nav-hover-bg: #F1F5F9;
+      --glow-seat: #9ec5ff;
+      --glow-account: #ffb86b;
     }
 
     [data-theme="dark"] {
-      --bg: #141413;
-      --card-bg: #1F1F1D;
-      --text: #F2F2EF;
-      --text-muted: #B5B5AE;
-      --accent: #8AAEFF;
+      --bg: #0F1115;
+      --card-bg: #171A21;
+      --text: #E5E7EB;
+      --text-muted: #9CA3AF;
+      --accent: #60A5FA;
       --running-bg: #1E3F99;
       --running-text: #DCE6FB;
       --danger: #B42318;
@@ -68,10 +75,15 @@
       --btn-primary-bg: #8AAEFF;
       --btn-primary-text: #141413;
       --btn-alt-bg: #3B6FE0;
-      --border: #2E2E2A;
-      --border-subtle: #272724;
-      --badge-bg: #2B2B28;
-      --badge-text: #B5B5AE;
+      --border: #262A33;
+      --border-subtle: #1F232B;
+      --badge-bg: #222733;
+      --badge-text: #9CA3AF;
+      --shadow: none;
+      --sidebar-bg: #13161C;
+      --nav-active-bg: #2563EB;
+      --nav-active-text: #FFFFFF;
+      --nav-hover-bg: #1E222B;
       --tab-active-bg: var(--accent);
       --tab-active-text: #141413;
       --tab-inactive-bg: #2B2B28;
@@ -1970,10 +1982,114 @@
         padding: 8px 4px;
       }
     }
+
+    /* ===== Plan 9 Task 1: khung trang (sidebar + header) ===== */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 232px; flex: 0 0 232px; background: var(--sidebar-bg); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 14px; padding: 14px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    }
+    .sidebar-brand { display: flex; align-items: center; gap: 8px; padding: 4px 6px 10px; border-bottom: 1px solid var(--border-subtle); }
+    .sidebar-brand svg { width: 28px; height: 28px; color: var(--accent); flex: 0 0 28px; }
+    .sidebar-brand-name { font-weight: 700; font-size: 15px; color: var(--text); white-space: nowrap; }
+    .sidebar-version { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--badge-bg); color: var(--badge-text); }
+    .sidebar-version:empty { display: none; }
+    .sidebar-nav { display: flex; flex-direction: column; gap: 2px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; border: none; background: none;
+      color: var(--text); font: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; text-decoration: none; width: 100%;
+    }
+    .nav-item svg { width: 18px; height: 18px; flex: 0 0 18px; color: var(--text-muted); }
+    .nav-item:hover { background: var(--nav-hover-bg); }
+    .nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .nav-item.active { background: var(--nav-active-bg); color: var(--nav-active-text); }
+    .nav-item.active svg { color: var(--nav-active-text); }
+    .nav-soon { margin-left: auto; font-size: 10px; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; }
+    .sys-status { margin-top: auto; border: 1px solid var(--border); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .sys-status-title { font-weight: 700; font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 6px; }
+    .sys-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+    .sys-row { display: grid; grid-template-columns: 40px 1fr 38px; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+    .sys-bar { height: 5px; border-radius: 999px; background: var(--border-subtle); overflow: hidden; }
+    .sys-bar > span { display: block; height: 100%; width: 0; background: var(--accent); }
+    .sys-val { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+    .sidebar-collapse { border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 10px; padding: 7px 10px; cursor: pointer; font: inherit; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .sidebar-collapse:hover { background: var(--nav-hover-bg); color: var(--text); }
+    .app.sidebar-collapsed .sidebar { width: 64px; flex-basis: 64px; }
+    .app.sidebar-collapsed .sidebar-brand-name, .app.sidebar-collapsed .sidebar-version, .app.sidebar-collapsed .nav-label,
+    .app.sidebar-collapsed .nav-soon, .app.sidebar-collapsed .sys-status, .app.sidebar-collapsed .collapse-label { display: none; }
+    .app.sidebar-collapsed .nav-item, .app.sidebar-collapsed .sidebar-collapse { justify-content: center; }
+    .main { flex: 1 1 auto; min-width: 0; }
+    .card { box-shadow: var(--shadow); }
+    .page-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .page-title { font-size: 20px; font-weight: 700; margin: 0; color: var(--text); }
+    .page-sub { font-size: 12px; color: var(--text-muted); margin: 0; }
+    .head-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .icon-btn {
+      position: relative; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+      border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); color: var(--text-muted); cursor: pointer; font: inherit;
+    }
+    .icon-btn svg { width: 18px; height: 18px; }
+    .icon-btn:hover { color: var(--text); background: var(--nav-hover-bg); }
+    .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .bell-count {
+      position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px;
+      background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+    }
+    .bell-count[hidden] { display: none; }
+    .lang-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .lang-switch button { border: none; background: var(--card-bg); color: var(--text-muted); font: inherit; font-size: 12px; font-weight: 600; padding: 7px 9px; cursor: pointer; }
+    .lang-switch button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+    .lang-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .user-chip { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px 3px 3px; border: 1px solid var(--border); border-radius: 999px; }
+    .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+    .user-name { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.1; }
+    .user-role { font-size: 11px; color: var(--text-muted); line-height: 1.1; }
+    .menu-btn { display: none; }
+    .sidebar-backdrop { display: none; }
+    @media (max-width: 900px) {
+      .sidebar { position: fixed; left: 0; top: 0; z-index: 50; transform: translateX(-100%); transition: transform 0.2s ease; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+      .app.sidebar-open .sidebar { transform: none; }
+      .app.sidebar-open .sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.35); }
+      .app.sidebar-collapsed .sidebar { width: 232px; }
+      .app.sidebar-collapsed .sidebar-brand-name, .app.sidebar-collapsed .sidebar-version, .app.sidebar-collapsed .nav-label,
+      .app.sidebar-collapsed .nav-soon, .app.sidebar-collapsed .sys-status { display: revert; }
+      .menu-btn { display: inline-flex; }
+      .sidebar-collapse { display: none; }
+      .user-text { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="app" id="app">
+  <aside class="sidebar" id="sidebar" aria-label="Navigation" data-i18n-aria="nav.label">
+    <div class="sidebar-brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12.5" r="1.2"/><circle cx="15" cy="12.5" r="1.2"/><path d="M9.5 16h5"/><path d="M2 12v3M22 12v3"/></svg>
+      <span class="sidebar-brand-name">Bot Task Manager</span>
+      <span class="sidebar-version" id="app-version"></span>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" href="#dashboard" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="nav-label" data-i18n="nav.dashboard">Dashboard</span></a>
+      <a class="nav-item" href="#accounts-container" data-nav="accounts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-4-5.6"/></svg><span class="nav-label" data-i18n="nav.accounts">Accounts</span></a>
+      <a class="nav-item" href="#goals-board" data-nav="goals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span class="nav-label" data-i18n="nav.goals">Tasks &amp; Goals</span></a>
+      <a class="nav-item" href="#seats-container" data-nav="instances"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/></svg><span class="nav-label" data-i18n="nav.instances">Instances</span></a>
+      <a class="nav-item" href="#logs-section" data-nav="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h6"/></svg><span class="nav-label" data-i18n="nav.logs">Logs</span></a>
+      <!-- Phần dư (Plan 9): chỉ hiện, chưa có chức năng – xem bảng "Phần UI dư" trong plan -->
+      <button type="button" class="nav-item" data-soon="nav.reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span class="nav-label" data-i18n="nav.reports">Reports</span><span class="nav-soon" data-i18n="nav.soon">Soon</span></button>
+      <button type="button" class="nav-item" data-soon="nav.settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span class="nav-label" data-i18n="nav.settings">Settings</span><span class="nav-soon" data-i18n="nav.soon">Soon</span></button>
+    </nav>
+    <!-- Plan 9 Task 2 đổ số liệu vào (/api/system) -->
+    <div class="sys-status" id="sys-status">
+      <div class="sys-status-title"><span class="sys-dot" id="sys-dot"></span><span data-i18n="sys.title">System status</span></div>
+      <div class="sys-row"><span>CPU</span><div class="sys-bar"><span id="sys-cpu-bar"></span></div><span class="sys-val" id="sys-cpu">–</span></div>
+      <div class="sys-row"><span>RAM</span><div class="sys-bar"><span id="sys-ram-bar"></span></div><span class="sys-val" id="sys-ram">–</span></div>
+      <div class="sys-row"><span>Disk</span><div class="sys-bar"><span id="sys-disk-bar"></span></div><span class="sys-val" id="sys-disk">–</span></div>
+    </div>
+    <button type="button" class="sidebar-collapse" id="sidebar-collapse" aria-expanded="true"><span aria-hidden="true">‹</span><span class="collapse-label" data-i18n="nav.collapse">Collapse</span></button>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <div class="main">
+  <div class="container" id="dashboard">
     <!-- Disconnection banner -->
     <div id="conn-banner" class="conn-banner" style="display: none;" data-i18n="conn.lost">Disconnected, retrying…</div>
     <div id="seat-warnings" class="seat-warnings" role="status" style="display: none;"></div>
@@ -1981,7 +2097,11 @@
     <!-- Thanh phiên -->
     <header class="card session-bar">
       <div class="brand-section">
-        <h1 class="brand-title">Bot Task Manager</h1>
+        <button type="button" class="icon-btn menu-btn" id="menu-btn" aria-label="Open menu" data-i18n-aria="nav.open" aria-controls="sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <div class="page-head">
+          <h1 class="page-title" data-i18n="page.title">Dashboard</h1>
+          <p class="page-sub" data-i18n="page.sub">Team, sessions and accounts at a glance</p>
+        </div>
         <span id="project-badge" class="badge" data-i18n="bar.noProject">Project: —</span>
         <span id="session-badge" class="badge" data-i18n="bar.noSession">No session</span>
         <span id="turns-badge" class="badge">Turns 0/0</span>
@@ -1999,6 +2119,11 @@
         </label>
         <button id="approve-btn" class="btn btn-primary" type="button" disabled title="No tickets awaiting approval" data-i18n-title="fb.nothingToApprove" data-i18n="btn.approve">Approve tickets</button>
         <button id="stop-btn" class="btn btn-danger" type="button" data-i18n="btn.stop">Stop</button>
+        <div class="head-tools">
+          <button type="button" class="icon-btn" id="head-refresh" aria-label="Refresh energy" data-i18n-aria="head.refresh" data-i18n-title="head.refresh" title="Refresh energy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></svg></button>
+          <button type="button" class="icon-btn" id="head-bell" aria-label="Things waiting for you" data-i18n-aria="head.bell" data-i18n-title="head.bell" title="Things waiting for you"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-count" id="bell-count" hidden>0</span></button>
+          <button type="button" class="icon-btn" id="head-help" data-soon="head.help" aria-label="Help" data-i18n-aria="head.help" data-i18n-title="head.help" title="Help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg></button>
+          <div class="lang-switch" role="group" aria-label="Language" data-i18n-aria="head.lang"><button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="vi" aria-pressed="false">VI</button></div>
         <button id="theme-toggle" class="btn btn-icon" type="button" aria-label="Toggle light/dark" data-i18n-aria="btn.theme">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="5"></circle>
@@ -2012,6 +2137,8 @@
             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
           </svg>
         </button>
+          <div class="user-chip"><span class="user-avatar" aria-hidden="true">Z</span><span class="user-text"><span class="user-name">Zon</span><br><span class="user-role" data-i18n="head.owner">Owner</span></span></div>
+        </div>
       </div>
     </header>
     <div id="top-feedback" class="action-feedback" style="display: none;"></div>
@@ -2389,7 +2516,7 @@
     <!-- Bảng goal & ticket & Nhật ký -->
     <div class="board-and-log-layout">
       <!-- Bảng goal & ticket -->
-      <section class="card task-board-section goals-board-section">
+      <section class="card task-board-section goals-board-section" id="goals-board">
         <h2 class="section-title" data-i18n="goals.title">Goals</h2>
         <div id="goals-container" class="goals-container">
           <div class="empty-placeholder" data-i18n="goals.empty">No goals yet</div>
@@ -2397,7 +2524,7 @@
       </section>
 
       <!-- Nhật ký -->
-      <section class="card log-panel">
+      <section class="card log-panel" id="logs-section">
         <h2 class="section-title" data-i18n="log.title">Log</h2>
         <div class="log-list" id="log-list">
           <div class="empty-placeholder" data-i18n="log.empty">No log entries</div>
@@ -2434,6 +2561,28 @@
           'btn.stop': 'Stop',
           'btn.resume': 'Resume',
           'btn.theme': 'Toggle light/dark',
+          'nav.label': 'Navigation',
+          'nav.dashboard': 'Dashboard',
+          'nav.accounts': 'Accounts',
+          'nav.goals': 'Tasks & Goals',
+          'nav.instances': 'Instances',
+          'nav.logs': 'Logs',
+          'nav.reports': 'Reports',
+          'nav.settings': 'Settings',
+          'nav.soon': 'Soon',
+          'nav.soonMsg': '{name}: coming soon',
+          'nav.collapse': 'Collapse',
+          'nav.open': 'Open menu',
+          'sys.title': 'System status',
+          'page.title': 'Dashboard',
+          'page.sub': 'Team, sessions and accounts at a glance',
+          'head.refresh': 'Refresh energy',
+          'head.bell': 'Things waiting for you',
+          'head.help': 'Help',
+          'head.lang': 'Language',
+          'head.helpMsg': 'Help page coming soon – docs are in the docs/ folder of the BTM repo',
+          'head.viSoon': 'Tiếng Việt: coming soon',
+          'head.owner': 'Owner',
           'confirm.stop': 'Stop everything? The running agent will be killed and the queue cleared.',
           'confirm.stopCard': 'Stop this card? Its running turn will be killed; the queue is kept.',
           'seat.stopFor': 'Stop {seat}',
@@ -2685,6 +2834,73 @@
         }
       }
       initTheme();
+
+      // Plan 9 Task 1: sidebar (neo cuộn, thu gọn, ☰ trên màn hẹp), nút header, chuyển ngôn ngữ.
+      (function initShell() {
+        var app = document.getElementById('app');
+        var collapseBtn = document.getElementById('sidebar-collapse');
+        var menuBtn = document.getElementById('menu-btn');
+        var backdrop = document.getElementById('sidebar-backdrop');
+        var collapsed = false;
+        try { collapsed = localStorage.getItem('btm.sidebar') === 'collapsed'; } catch (e) {}
+        function setCollapsed(v) {
+          collapsed = v;
+          if (app) app.classList.toggle('sidebar-collapsed', v);
+          if (collapseBtn) collapseBtn.setAttribute('aria-expanded', v ? 'false' : 'true');
+          try { localStorage.setItem('btm.sidebar', v ? 'collapsed' : 'open'); } catch (e) {}
+        }
+        setCollapsed(collapsed);
+        if (collapseBtn) collapseBtn.addEventListener('click', function () { setCollapsed(!collapsed); });
+        function setOpen(v) {
+          if (app) app.classList.toggle('sidebar-open', v);
+          if (menuBtn) menuBtn.setAttribute('aria-expanded', v ? 'true' : 'false');
+        }
+        if (menuBtn) menuBtn.addEventListener('click', function () { setOpen(!(app && app.classList.contains('sidebar-open'))); });
+        if (backdrop) backdrop.addEventListener('click', function () { setOpen(false); });
+        document.querySelectorAll('.sidebar .nav-item').forEach(function (item) {
+          item.addEventListener('click', function (ev) {
+            var soon = item.getAttribute('data-soon');
+            if (soon) {
+              // Phần dư (Plan 9): chưa có chức năng.
+              showFeedback(topFeedback, tx('nav.soonMsg', { name: tx(soon) }), false);
+              return;
+            }
+            var href = item.getAttribute('href') || '';
+            var target = href.charAt(0) === '#' ? document.getElementById(href.slice(1)) : null;
+            if (target) {
+              ev.preventDefault();
+              target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            document.querySelectorAll('.sidebar .nav-item').forEach(function (n) { n.classList.toggle('active', n === item); });
+            setOpen(false);
+          });
+        });
+        var headRefresh = document.getElementById('head-refresh');
+        if (headRefresh) headRefresh.addEventListener('click', function () {
+          var b = document.getElementById('refresh-energy-btn');
+          if (b) b.click();
+        });
+        var headHelp = document.getElementById('head-help');
+        if (headHelp) headHelp.addEventListener('click', function () {
+          // Phần dư (Plan 9): trang hướng dẫn làm sau; tạm chỉ chỗ tài liệu.
+          showFeedback(topFeedback, tx('head.helpMsg'), false);
+        });
+        var headBell = document.getElementById('head-bell');
+        if (headBell) headBell.addEventListener('click', function () {
+          var q = document.getElementById('questions-section');
+          var target = q && q.style.display !== 'none' ? q : document.getElementById('goals-board');
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        document.querySelectorAll('.lang-switch button').forEach(function (b) {
+          b.setAttribute('aria-pressed', b.getAttribute('data-lang') === LANG ? 'true' : 'false');
+          b.addEventListener('click', function () {
+            if (b.getAttribute('data-lang') === 'vi') {
+              // Phần dư (Plan 9): bản tiếng Việt làm sau, giữ tiếng Anh.
+              showFeedback(topFeedback, tx('head.viSoon'), false);
+            }
+          });
+        });
+      })();
 
       // 2. Status Translations
       var STATUS_MAP = {
@@ -4466,11 +4682,26 @@
         }
       }
 
+      // Plan 9 Task 1: phiên bản + số việc chờ anh (câu hỏi, phiên cần anh, goal chờ duyệt merge).
+      function renderShell(state) {
+        var ver = document.getElementById('app-version');
+        if (ver) ver.textContent = state.version ? 'v' + String(state.version) : '';
+        var n = Array.isArray(state.questions) ? state.questions.length : 0;
+        var st = state.session ? state.session.status : '';
+        if (st === 'needs_owner' || st === 'out_of_turns' || st === 'awaiting_approval') n += 1;
+        (Array.isArray(state.goals) ? state.goals : []).forEach(function (g) {
+          if (g.state === 'audit_passed' || (g.state === 'qc_done' && !state.seats.some(function (x) { return x.seat === 'audit'; }))) n += 1;
+        });
+        var bell = document.getElementById('bell-count');
+        if (bell) { bell.textContent = String(n); bell.hidden = n === 0; }
+      }
+
       function renderSnapshot(state) {
         agentNames = (state && state.settings && state.settings.names) || {};
         agentAvatars = (state && state.settings && state.settings.avatars) || {};
         if (!state) return;
         latestSnapshot = state;
+        renderShell(state);
 
         // Project
         if (projectBadge) {
@@ -5268,5 +5499,7 @@
       }
     })();
   </script>
+  </div>
+  </div>
 </body>
 </html>

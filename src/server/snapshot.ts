@@ -150,6 +150,8 @@ export interface Snapshot {
   /** Plan 6 Task 4: câu hỏi chặn ticket đang chờ anh trả lời (project active). */
   questions: Array<{ id: number; ticket: string; seat: string; agent: string | null; text: string }>;
   sshHint?: string;
+  /** Plan 9: phiên bản BTM (package.json) cho sidebar. */
+  version?: string;
 }
 
 const ANSI_REGEX = /(?:\x1B\]|\u009D)[\s\S]*?(?:\x07|\x1B\\|\u009C)|(?:\x1B\[|\u009B)[0-?]*[ -/]*[@-~]|[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]|\x1B[@-Z\\-_]/g;
@@ -465,6 +467,16 @@ function buildGoals(
   }
 }
 
+// Plan 9: phiên bản hiện ở sidebar; đọc một lần lúc nạp module.
+const BTM_VERSION: string = (() => {
+  try {
+    const v = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version?: unknown }).version;
+    return typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v) ? v : '';
+  } catch {
+    return '';
+  }
+})();
+
 export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const project = store.getActiveProject();
   const queue = store.listQueue(50);
@@ -537,6 +549,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       seatWarnings: resolveSeats(cfg, store).warnings,
       questions: openQuestions(store),
       sshHint,
+      version: BTM_VERSION,
     };
   }
 
@@ -564,6 +577,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       seatWarnings: resolveSeats(cfg, store).warnings,
       questions: openQuestions(store),
       sshHint,
+      version: BTM_VERSION,
     };
   }
 
@@ -584,6 +598,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       seatWarnings: resolveSeats(cfg, store).warnings,
       questions: openQuestions(store),
       sshHint,
+      version: BTM_VERSION,
     };
   }
 
@@ -706,5 +721,6 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     seatWarnings: resolveSeats(cfg, store).warnings,
     questions: openQuestions(store),
     sshHint,
+    version: BTM_VERSION,
   };
 }
