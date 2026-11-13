@@ -584,12 +584,17 @@ export function openStore(file: string): Store {
     UPDATE turns SET ended_at = ?, result = ?, error = ? WHERE id = ?
   `);
 
+  // Lượt tính vào hạn mức: bỏ lượt hỏng vì hết quota/không có tài khoản/bị Stop (không làm gì), và lượt trước
+  // lần Resume phiên hết lượt (settings turns_from:<session> = lúc Resume).
+  const countedTurns = `session_id = ?
+      AND started_at >= COALESCE((SELECT value FROM settings WHERE key = 'turns_from:' || session_id), '')
+      AND (error IS NULL OR (error <> 'aborted' AND error NOT LIKE 'usage_limit_hit:%' AND error NOT LIKE 'no_usable_account:%'))`;
   const countAllTurnsStmt = db.prepare(`
-    SELECT COUNT(*) as count FROM turns WHERE session_id = ?
+    SELECT COUNT(*) as count FROM turns WHERE ${countedTurns}
   `);
 
   const countSeatTurnsStmt = db.prepare(`
-    SELECT COUNT(*) as count FROM turns WHERE session_id = ? AND seat = ?
+    SELECT COUNT(*) as count FROM turns WHERE ${countedTurns} AND seat = ?
   `);
 
   const recordHandoffFailureStmt = db.prepare(`

@@ -3108,7 +3108,7 @@
           approveBtn.disabled = false;
           approveBtn.textContent = tx('btn.approve');
           approveBtn.removeAttribute('title');
-        } else if (status === 'needs_owner' || status === 'stopped') {
+        } else if (status === 'needs_owner' || status === 'stopped' || status === 'out_of_turns') {
           approveBtn.disabled = false;
           approveBtn.textContent = tx('btn.resume');
           approveBtn.removeAttribute('title');
@@ -4894,7 +4894,7 @@
       if (approveBtn) {
         approveBtn.addEventListener('click', async function () {
           var status = latestSnapshot && latestSnapshot.session ? latestSnapshot.session.status : null;
-          var isResume = status === 'needs_owner' || status === 'stopped';
+          var isResume = status === 'needs_owner' || status === 'stopped' || status === 'out_of_turns';
           var endpoint = isResume ? '/api/resume' : '/api/approve';
           var successMsg = isResume ? tx('fb.resumeSent') : tx('fb.approved');
           approveBtn.disabled = true;

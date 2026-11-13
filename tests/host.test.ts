@@ -76,6 +76,19 @@ done_when: done
     expect(host.busy()).toBe(false);
   });
 
+  it('resume() chọn phiên out_of_turns mới nhất (mới hơn phiên stopped cũ)', async () => {
+    const old = store.createSession(['G0'], repoDir);
+    store.setSessionStatus(old, 'stopped');
+    const sid = store.createSession(['G1'], repoDir);
+    store.setSessionStatus(sid, 'out_of_turns');
+    const resumeSession = vi.fn(async () => ({ status: 'done', sessionId: sid, tasks: {}, notes: [] }));
+    const host = createHost({ cfg, store, runner: vi.fn() as any, logDir, dataDir, env: {}, resumeSession: resumeSession as any });
+    expect((await (host as any).resume()).ok).toBe(true);
+    for (let i = 0; i < 40 && host.busy(); i++) await new Promise((r) => setTimeout(r, 25));
+    expect(resumeSession).toHaveBeenCalledTimes(1);
+    expect((resumeSession.mock.calls[0] as any[])[1]).toBe(sid);
+  });
+
   it('P6-T2: bấm Dừng trong lúc phiên kết thúc vì usage_limit_hit → không tự Tiếp tục', async () => {
     const sid = store.createSession(['G'], repoDir);
     store.setSessionStatus(sid, 'needs_owner');
