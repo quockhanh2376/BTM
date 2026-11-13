@@ -11,6 +11,9 @@ export interface ArgvOpts {
   effort?: Effort;
 }
 
+// Ghế chỉ đọc (Plan 8 Task 1): QC và Audit không được ghi file. agy không có chế độ chỉ đọc nên bị cấm ở config.
+export const READ_ONLY_SEATS: ReadonlySet<Seat> = new Set<Seat>(['qc', 'audit']);
+
 function shQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
@@ -37,7 +40,7 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
         ...(o.model ? ['-m', o.model] : []),
         ...(codexEffort ? ['-c', `model_reasoning_effort="${codexEffort}"`] : []),
         '--sandbox',
-        o.seat === 'qc' ? 'read-only' : 'workspace-write',
+        READ_ONLY_SEATS.has(o.seat) ? 'read-only' : 'workspace-write',
         '-o',
         o.outFile,
         ...imageArgs,
@@ -47,8 +50,8 @@ export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
     }
     case 'claude-code': {
       const flags = [...(o.model ? ['--model', o.model] : []), ...(o.effort ? ['--effort', o.effort] : [])];
-      if (o.seat === 'qc') {
-        return ['claude', ...flags, '-p', prompt, '--allowedTools', 'Read'];
+      if (READ_ONLY_SEATS.has(o.seat)) {
+        return ['claude', ...flags, '-p', prompt, '--allowedTools', 'Read,Grep,Glob'];
       }
       return [
         'claude',
