@@ -117,7 +117,7 @@ export function devTicketPrompt(
   const cleanNotes = fixNotes.map((n) => n.replace(/\r?\n/g, ' ').trim()).join('; ');
   const notesLine = cleanNotes ? `Lưu ý cần sửa: ${cleanNotes}` : `Không có ghi chú sửa.`;
   const allowText = allow.join(', ');
-  const allowLine = `Lệnh được phép: ${allowText}; mỗi lệnh chạy riêng lẻ, không nối &&/;/|, không find/sed/rm, đọc file bằng công cụ đọc file.`;
+  const allowLine = `Lệnh được phép: ${allowText}; mỗi lệnh chạy riêng lẻ, không nối &&/;/|, không find/sed/rm, đọc file bằng công cụ đọc file. Không chạy code viết thẳng trên dòng lệnh (node -e, node -p, node --input-type): agy chặn và cả lượt bị bỏ; muốn thử nhanh thì viết file test rồi chạy npm test.`;
   const header = reportHeader(t, agentName, 'Dev');
 
   const lines = [
