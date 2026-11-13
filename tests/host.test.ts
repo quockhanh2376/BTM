@@ -63,6 +63,24 @@ done_when: done
     store.setActiveProject(repoDir);
   });
 
+  it('decision 0006: approveGoal ok → push release chạy nền; lỗi thì retryRelease push lại; merge fail thì không push', async () => {
+    const publishGoal = vi.fn(async (_s: any, _r: string, _c: any, n: number) => ({ goal: n, tag: 'v1.0.0', target: 'a/b', url: 'u', ok: true, at: 'now' }));
+    let approveOk = true;
+    const approveGoal = vi.fn(() => (approveOk ? { ok: true as const, sha: 'abc' } : { ok: false as const, code: 'conflict' as const, message: 'x' }));
+    const host = createHost({ cfg, store, runner: vi.fn() as any, logDir, dataDir, env: {}, approveGoal: approveGoal as any, publishGoal: publishGoal as any });
+    expect(host.approveGoal!(1)).toEqual({ ok: true, sha: 'abc' });
+    await vi.waitFor(() => expect(publishGoal).toHaveBeenCalledTimes(1));
+    expect(publishGoal.mock.calls[0]![1]).toBe(repoDir);
+    expect(publishGoal.mock.calls[0]![3]).toBe(1);
+    approveOk = false;
+    host.approveGoal!(2);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(publishGoal).toHaveBeenCalledTimes(1);
+    const again = await host.retryRelease!(1);
+    expect(again?.ok).toBe(true);
+    expect(publishGoal).toHaveBeenCalledTimes(2);
+  });
+
   it('P6-T2: phiên dừng vì usage_limit_hit → host tự Tiếp tục, tối đa 2 lần/phiên; lý do khác thì không', async () => {
     const sid = store.createSession(['G'], repoDir);
     store.setSessionStatus(sid, 'needs_owner');

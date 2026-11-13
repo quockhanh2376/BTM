@@ -1560,6 +1560,29 @@ describe('HTTP Server & SSE', () => {
     });
   });
 
+  describe('POST /api/goal/push (decision 0006)', () => {
+    const post = (body: unknown) => fetch(`${baseUrl}/api/goal/push`, {
+      method: 'POST',
+      headers: { 'x-btm': '1', 'content-type': 'application/json', Origin: `http://127.0.0.1:${port}` },
+      body: JSON.stringify(body),
+    });
+    it('400 khi goal sai dạng, 501 khi host không hỗ trợ', async () => {
+      expect((await post({ goal: 'x' })).status).toBe(400);
+      expect((await post({ goal: 'G1' })).status).toBe(501);
+    });
+    it('gọi host.retryRelease: ok → 200, lỗi → 502, chưa cấu hình → 409', async () => {
+      const seen: number[] = [];
+      let next: unknown = { goal: 1, tag: 'v1.0.0', target: 'a/b', url: 'https://github.com/a/b/tree/v1.0.0', ok: true, at: 'now' };
+      (host as any).retryRelease = async (n: number) => { seen.push(n); return next; };
+      expect((await post({ goal: 'G1' })).status).toBe(200);
+      next = { goal: 1, tag: 'v1.0.0', target: 'a/b', url: '', ok: false, error: 'push_timeout', at: 'now' };
+      expect((await post({ goal: 'G1' })).status).toBe(502);
+      next = null;
+      expect((await post({ goal: 'G1' })).status).toBe(409);
+      expect(seen).toEqual([1, 1, 1]);
+    });
+  });
+
   describe('P4-T9: POST /api/goal/approve', () => {
     it('returns 403 when x-btm header is missing', async () => {
       const res = await fetch(`${baseUrl}/api/goal/approve`, {

@@ -1,3 +1,4 @@
+import { readRelease, type ReleaseInfo } from '../release/publish.ts';
 import { existsSync, statSync, openSync, readSync, closeSync, readFileSync, lstatSync } from 'node:fs';
 import { agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
 import { cleanStatus, isIsolated, readWorkerStatus, STATUS_FILE } from '../isolation/trusted.ts';
@@ -35,6 +36,8 @@ export interface GoalSnapshot {
   passed: number;
   total: number;
   tickets: GoalTicketSnapshot[];
+  /** Decision 0006: kết quả push GitHub sau khi merge (chỉ có khi project có cấu hình release.github). */
+  release?: ReleaseInfo;
 }
 
 export interface SeatCard {
@@ -443,6 +446,7 @@ function buildGoals(
         stage = 'release';
       }
 
+      const release = readRelease(store, project, g.n);
       goals.push({
         n: g.n,
         title: g.title,
@@ -451,6 +455,7 @@ function buildGoals(
         passed,
         total,
         tickets: combinedTickets,
+        ...(release ? { release } : {}),
       });
     }
 

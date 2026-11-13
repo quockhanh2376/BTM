@@ -154,6 +154,15 @@ const BaseConfigSchema = z.object({
     on: z.array(z.enum(['needs_owner', 'awaiting_approval', 'done', 'stopped', 'out_of_turns']))
       .default(['needs_owner', 'awaiting_approval', 'out_of_turns']),
   }).strict().optional(),
+  /** Decision 0006: vòng release. Mặc định tắt hết (giữ hành vi cũ). */
+  release: z.object({
+    // Không có ghế audit thì dừng (needs_owner) thay vì bỏ qua audit.
+    require_audit: z.boolean().default(false),
+    // PM luôn thêm ticket cuối viết README/CHANGELOG/version.
+    docs_ticket: z.boolean().default(false),
+    // project key -> "owner/repo" trên GitHub; core push main + tag bằng deploy key <data_dir>/keys/<KEY>.
+    github: z.record(z.string().regex(/^[A-Z]{2,5}$/), z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/)).default({}),
+  }).strict().optional(),
   rules: RulesSchema,
   energy: EnergySchema,
   login: LoginSchema,

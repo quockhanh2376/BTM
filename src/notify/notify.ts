@@ -5,10 +5,10 @@ import type { Config } from '../config.ts';
 // Plan 6 Task 1 (decision 0004): báo anh Zon qua ntfy khi phiên cần anh. Tin nhắn chỉ gồm mẫu cố định + mã lý do
 // đã lọc, không chép chữ tự do của agent. Địa chỉ topic nằm trong file ngoài git (0600, user agent).
 
-export type NotifyKind = 'needs_owner' | 'awaiting_approval' | 'done' | 'stopped' | 'out_of_turns' | 'account_switch' | 'account_logout';
+export type NotifyKind = 'needs_owner' | 'awaiting_approval' | 'done' | 'stopped' | 'out_of_turns' | 'account_switch' | 'account_logout' | 'released' | 'release_failed';
 
 // Plan 7: tin về tài khoản luôn gửi khi đã cấu hình notify (anh Zon yêu cầu), không cần nằm trong notify.on.
-const ALWAYS: ReadonlySet<NotifyKind> = new Set(['account_switch', 'account_logout']);
+const ALWAYS: ReadonlySet<NotifyKind> = new Set(['account_switch', 'account_logout', 'released', 'release_failed']);
 
 export interface NotifyEvent {
   kind: NotifyKind;
@@ -41,6 +41,8 @@ const LABEL: Record<NotifyKind, string> = {
   out_of_turns: 'Out of turns',
   account_switch: 'Account switched',
   account_logout: 'Account logged out (maybe used on another machine)',
+  released: 'Released to GitHub',
+  release_failed: 'GitHub push failed',
 };
 
 function defaultDeps(): NotifyDeps {
@@ -65,7 +67,7 @@ export async function notify(cfg: Config, ev: NotifyEvent, deps: NotifyDeps = de
   try {
     const url = deps.readUrl(n.url_file);
     if (!/^https:\/\/[^\s]+$/.test(url)) throw new Error('notify url must be https');
-    const headers: Record<string, string> = { Title: `BTM ${project}`, Tags: ev.kind === 'done' ? 'white_check_mark' : 'bell' };
+    const headers: Record<string, string> = { Title: `BTM ${project}`, Tags: ev.kind === 'done' || ev.kind === 'released' ? 'white_check_mark' : 'bell' };
     if (n.dashboard_url) headers.Click = n.dashboard_url;
     await deps.send(url, {
       method: 'POST',

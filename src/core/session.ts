@@ -622,6 +622,7 @@ async function processGoal(
     const pmPromptText = pmTicketPrompt({ n: goal.n, title: goal.title }, key, nextId, {
       notes: promptNotes,
       hasOpenspec,
+      docsTicket: Boolean(d.cfg.release?.docs_ticket),
     });
     const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
     if (pmSnapshot.protectedBranchMoved) {
@@ -1569,6 +1570,11 @@ async function processGoal(
   }
 
   let auditAgent = effectiveSeats(d.cfg, d.store, d.repo).audit || d.cfg.seats.audit;
+  if (!auditAgent && d.cfg.release?.require_audit) {
+    // Decision 0006: không được bỏ qua audit khi đã bật require_audit.
+    d.store.setGoalState(d.repo, goal.n, 'qc_done', 'core', 'all tickets passed; audit seat missing');
+    return { status: 'needs_owner', sessionId, tasks, notes: ['audit_seat_missing'] };
+  }
   if (!auditAgent) {
     writeGoalSummaryAndCommit(d.repo, goal, goalTicketsAfter, d.store);
     const reviewedSha = git(d.repo, 'rev-parse', `refs/heads/${goal.branch}`).trim();

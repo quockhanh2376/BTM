@@ -47,6 +47,15 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(html).toMatch(/async function renameAgent\(agent\)/);
   });
 
+  it('goal card shows the GitHub release link (github.com only, textContent) and a Push again button on failure', () => {
+    const fn = html.slice(html.indexOf('var rel = g.release;'), html.indexOf('card.appendChild(header);'));
+    expect(fn).toContain(String.raw`/^https:\/\/github\.com\//.test(String(rel.url || ''))`);
+    expect(fn).toContain("postJson('/api/goal/push', { goal: 'G' + g.n })");
+    expect(fn).toContain("relLink.rel = 'noopener noreferrer'");
+    expect(fn).not.toContain('innerHTML');
+    for (const k of ['goal.released', 'goal.pushFailed', 'goal.pushAgain']) expect(html).toContain(`'${k}':`);
+  });
+
   it('puts the recipient radios on the Command title row and hides the textarea label visually', () => {
     const head = html.slice(html.indexOf('<div class="cmd-head">'), html.indexOf('<div class="form-group">', html.indexOf('<div class="cmd-head">')));
     expect(head).toContain('data-i18n="cmd.title"');

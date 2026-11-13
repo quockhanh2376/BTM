@@ -1419,6 +1419,10 @@
     }
 
     /* Pipeline 6 stages */
+    .goal-release { gap: 8px; font-size: 12px; }
+    .goal-release a { color: var(--accent); }
+    .goal-release-error { color: var(--danger, #e5484d); }
+
     .pipeline-bar {
       display: flex;
       align-items: center;
@@ -2483,6 +2487,9 @@
           'goal.confirmMerge': 'Merge goal G{n} into main?',
           'goal.merged': 'Goal G{n} merged ({sha})',
           'goal.approveError': 'Goal approval failed',
+          'goal.released': 'GitHub {tag} ↗',
+          'goal.pushFailed': 'GitHub push failed: {error}',
+          'goal.pushAgain': 'Push again',
           'goal.tableTitle': 'G{n} tickets',
           'goal.col.title': 'Title',
           'goal.col.rounds': 'Fix rounds',
@@ -3630,6 +3637,42 @@
             });
             actions.appendChild(approveGoalBtn);
             header.appendChild(actions);
+          }
+
+          // Decision 0006: kết quả push GitHub (tag + link), lỗi thì có nút Push lại.
+          var rel = g.release;
+          if (rel && typeof rel === 'object') {
+            var relWrap = document.createElement('div');
+            relWrap.className = 'goal-group-actions goal-release';
+            if (rel.ok && /^https:\/\/github\.com\//.test(String(rel.url || ''))) {
+              var relLink = document.createElement('a');
+              relLink.href = rel.url;
+              relLink.target = '_blank';
+              relLink.rel = 'noopener noreferrer';
+              relLink.textContent = tx('goal.released', { tag: String(rel.tag || '') });
+              relWrap.appendChild(relLink);
+            } else if (!rel.ok) {
+              var relErr = document.createElement('span');
+              relErr.className = 'goal-release-error';
+              relErr.textContent = tx('goal.pushFailed', { error: String(rel.error || '') });
+              relWrap.appendChild(relErr);
+              var pushBtn = document.createElement('button');
+              pushBtn.type = 'button';
+              pushBtn.className = 'btn btn-secondary btn-sm';
+              pushBtn.textContent = tx('goal.pushAgain');
+              pushBtn.addEventListener('click', async function () {
+                pushBtn.disabled = true;
+                try {
+                  await postJson('/api/goal/push', { goal: 'G' + g.n });
+                } catch (err) {
+                  showFeedback(topFeedback, err.message, true);
+                } finally {
+                  pushBtn.disabled = false;
+                }
+              });
+              relWrap.appendChild(pushBtn);
+            }
+            header.appendChild(relWrap);
           }
 
           card.appendChild(header);

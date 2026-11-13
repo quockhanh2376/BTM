@@ -47,6 +47,7 @@ export function pmTicketPrompt(
     notes?: Array<string | PromptNote>;
     hasOpenspec?: boolean;
     auditFindings?: AuditFinding[];
+    docsTicket?: boolean;
   }
 ): string {
   const cleanTitle = g.title.replace(/\r?\n/g, ' ').trim();
@@ -62,6 +63,10 @@ export function pmTicketPrompt(
     `acceptance và done_when chỉ mô tả kết quả sản phẩm kiểm tra được; KHÔNG ghi quy trình git vì Core tự lo.`,
     `Chỉ ghi file vào team/tickets/, không sửa file khác, cấm git commit và push.`,
   ];
+
+  if (opts?.docsTicket) {
+    lines.push(`Ticket cuối cùng (number = of) luôn là ticket tài liệu: type chore, scope [README.md, CHANGELOG.md, package.json]; README ghi cách cài, chạy, test trên Windows; CHANGELOG thêm mục cho ${goalId}; package.json có "version" dạng x.y.z (bản đầu 1.0.0). Ticket này có depends_on là mọi ticket khác của goal.`);
+  }
 
   if (opts?.hasOpenspec) {
     lines.push('Đề xuất thay đổi bằng OpenSpec (openspec/changes/<tên>), mỗi thẻ ghi openspec_change: <tên>.');

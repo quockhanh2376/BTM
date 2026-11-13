@@ -84,6 +84,9 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | goal.confirmMerge | Duyệt merge goal G{n} vào nhánh chính? | Merge goal G{n} into main? |
 | goal.merged | Đã duyệt và merge goal G{n} | Goal G{n} merged |
 | goal.approveError | Lỗi duyệt goal | Goal approval failed |
+| goal.released | GitHub {tag} ↗ | GitHub {tag} ↗ |
+| goal.pushFailed | Push GitHub lỗi: {error} | GitHub push failed: {error} |
+| goal.pushAgain | Push lại | Push again |
 | goal.tableTitle | Bảng ticket G{n} | G{n} tickets |
 | goal.col.title | Mục tiêu | Title |
 | goal.col.rounds | Vòng sửa | Fix rounds |

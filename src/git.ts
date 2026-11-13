@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 // Agent chạy cùng user với BTM: không dùng thư mục/file trong tmp (agent ghi được). /dev/null không tồn tại hook,
 // và Git for Windows hiểu /dev/null là NUL.
 const NO_FILE = '/dev/null';
@@ -39,6 +39,16 @@ export function gitBuffer(repo: string, ...args: string[]): Buffer {
 
 export function git(repo: string, ...args: string[]): string {
   return gitBuffer(repo, ...args).toString('utf8');
+}
+
+// Bản async cho lệnh chạy lâu (push qua mạng): không chặn event loop của dashboard.
+export function gitAsync(repo: string, args: string[], timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile('git', safeGitArgs(args), { cwd: repo, timeout: timeoutMs, maxBuffer: 1024 * 1024, env: safeGitEnv() }, (err, stdout, stderr) => {
+      if (err) reject(Object.assign(err, { stderr: String(stderr ?? '') }));
+      else resolve(String(stdout));
+    });
+  });
 }
 
 export function headSha(repo: string): string {
