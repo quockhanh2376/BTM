@@ -957,6 +957,20 @@ describe('HTTP Server & SSE', () => {
       expect((await post(`/api/questions/${other}/answer`, { text: 'x' })).status).toBe(404);
       expect((await post(`/api/questions/${id}/answer`, { text: '' })).status).toBe(400);
     });
+    it('trả lời câu hỏi kèm ảnh: lưu .git/btm-answers/Q-<id>.png (ngoài cây git); ảnh sai định dạng 415, quá 5 MB 413', async () => {
+      const project = tmpRepo({ 'README.md': 'x' });
+      store.setActiveProject(project);
+      const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]);
+      const bad = store.addQuestion(project, 'GTM-0001', 'qc', 'jenny', 'ảnh?');
+      expect((await post(`/api/questions/${bad}/answer`, { text: 'x', image: { base64: Buffer.from('hello').toString('base64') } })).status).toBe(415);
+      expect((await post(`/api/questions/${bad}/answer`, { text: 'x', image: { base64: Buffer.alloc(5 * 1024 * 1024 + 1).toString('base64') } })).status).toBe(413);
+      expect(store.getQuestion(bad)?.state).toBe('open');
+      const id = store.addQuestion(project, 'GTM-0001', 'qc', 'jenny', 'Cần ảnh?');
+      expect((await post(`/api/questions/${id}/answer`, { text: 'Xem ảnh', image: { base64: png.toString('base64') } })).status).toBe(200);
+      expect(store.getQuestion(id)?.image).toBe(`Q-${id}.png`);
+      expect(readFileSync(join(project, '.git', 'btm-answers', `Q-${id}.png`)).equals(png)).toBe(true);
+      expect(execFileSync('git', ['status', '--porcelain'], { cwd: project, encoding: 'utf8' })).toBe('');
+    });
   });
 
   describe('P5-T5: POST /api/agent (model + effort theo agent)', () => {

@@ -43,6 +43,8 @@ export interface QuestionRow {
   agent: string | null;
   text: string;
   answer: string | null;
+  /** Ảnh anh Zon kèm câu trả lời: tên file trong .git/btm-answers (Q-<id>.<ext>). */
+  image: string | null;
   state: QuestionState;
   created_at: string;
 }
@@ -180,7 +182,7 @@ export interface Store {
   addQuestion(project: string, ticket: string, seat: string, agent: string | null, text: string): number;
   listQuestions(project: string, state?: QuestionState): QuestionRow[];
   getQuestion(id: number): QuestionRow | null;
-  answerQuestion(id: number, answer: string): void;
+  answerQuestion(id: number, answer: string, image?: string | null): void;
   markQuestionsUsed(project: string, ticket: string): void;
   setSetting(key: string, value: string): void;
   setSessionTasks(sessionId: number, taskIds: string[]): void;
@@ -525,6 +527,11 @@ export function openStore(file: string): Store {
   const hasBaseSha = taskStateCols.some((c) => c.name.toLowerCase() === 'base_sha');
   if (!hasBaseSha) {
     db.exec('ALTER TABLE task_states ADD COLUMN base_sha TEXT');
+  }
+
+  const questionCols = db.pragma('table_info(questions)') as Array<{ name: string }>;
+  if (!questionCols.some((c) => c.name.toLowerCase() === 'image')) {
+    db.exec('ALTER TABLE questions ADD COLUMN image TEXT');
   }
 
   const goalCols = db.pragma('table_info(goals)') as Array<{ name: string }>;
@@ -1179,8 +1186,8 @@ export function openStore(file: string): Store {
       return (db.prepare('SELECT * FROM questions WHERE id = ?').get(id) as QuestionRow | undefined) ?? null;
     },
 
-    answerQuestion(id: number, answer: string): void {
-      db.prepare("UPDATE questions SET answer = ?, state = 'answered' WHERE id = ? AND state = 'open'").run(answer, id);
+    answerQuestion(id: number, answer: string, image: string | null = null): void {
+      db.prepare("UPDATE questions SET answer = ?, image = ?, state = 'answered' WHERE id = ? AND state = 'open'").run(answer, image, id);
     },
 
     markQuestionsUsed(project: string, ticket: string): void {

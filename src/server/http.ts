@@ -11,7 +11,7 @@ import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
 import { ticketDiff } from './diff.ts';
 import { commitAll } from '../git.ts';
-import { inboxPath, detectImage, readInboxFile, removeInboxFromMain } from './inbox.ts';
+import { inboxPath, answerImagePath, detectImage, readInboxFile, removeInboxFromMain } from './inbox.ts';
 import { protectedShaKey } from '../core/guard.ts';
 import { activeAccountKeys } from '../agents/accounts.ts';
 import { handleAccountsGet, handleAccountsPost, IMPORT_MAX_BYTES } from './accounts-api.ts';
@@ -381,7 +381,7 @@ export function createServer(o: {
         }
 
         // 4. Read body (max 16 KB, or 7 MB for team-note)
-        const maxBytes = pathname === '/api/team-note' ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : pathname === '/api/agent' ? 96 * 1024 : 16384;
+        const maxBytes = pathname === '/api/team-note' || /^\/api\/questions\/\d{1,9}\/answer$/.test(pathname) ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : pathname === '/api/agent' ? 96 * 1024 : 16384;
         let body: unknown;
         try {
           body = await readJsonBody(req, maxBytes);
@@ -780,7 +780,10 @@ export function createServer(o: {
         // Plan 6 Task 4: anh trả lời câu hỏi chặn ticket
         const answerMatch = pathname.match(/^\/api\/questions\/(\d{1,9})\/answer$/);
         if (answerMatch) {
-          const parsed = z.object({ text: z.string().trim().min(1).max(2000) }).strict().safeParse(body);
+          const parsed = z.object({
+            text: z.string().trim().min(1).max(2000),
+            image: z.object({ base64: z.string().min(1).regex(/^[A-Za-z0-9+/]*={0,2}$/) }).strict().optional(),
+          }).strict().safeParse(body);
           if (!parsed.success) {
             sendJson(res, 400, { error: 'Invalid answer' });
             return;
@@ -795,7 +798,28 @@ export function createServer(o: {
             sendJson(res, 409, { error: 'Already answered' });
             return;
           }
-          o.store.answerQuestion(q.id, parsed.data.text);
+          // Ảnh kèm câu trả lời: cùng luật với ảnh Team note (≤ 5 MB, png/jpg/webp theo nội dung file).
+          let imageName: string | null = null;
+          if (parsed.data.image) {
+            const imgBuf = Buffer.from(parsed.data.image.base64, 'base64');
+            if (imgBuf.length > 5 * 1024 * 1024) {
+              sendJson(res, 413, { error: 'Image exceeds 5 MB limit' });
+              return;
+            }
+            const detected = detectImage(imgBuf);
+            if (!detected) {
+              sendJson(res, 415, { error: 'Unsupported image format' });
+              return;
+            }
+            imageName = `Q-${q.id}.${detected.ext}`;
+            try {
+              writeFileSync(answerImagePath(activeProject, imageName), imgBuf);
+            } catch (err: any) {
+              sendJson(res, 400, { error: err?.message || 'Cannot save image' });
+              return;
+            }
+          }
+          o.store.answerQuestion(q.id, parsed.data.text, imageName);
           sendJson(res, 200, { ok: true });
           return;
         }
