@@ -1532,6 +1532,17 @@ describe('P7-T5: giao diện Accounts', () => {
   });
 });
 
+describe('Command trái, Session & queue phải (2026-11-13)', () => {
+  const html = readFileSync(resolve('web/index.html'), 'utf8');
+  it('cmd-section là lưới 2 cột: cmd-main rồi queue-container; màn hẹp xếp chồng', () => {
+    const sec = html.slice(html.indexOf('<section class="card cmd-section">'), html.indexOf('</section>', html.indexOf('<section class="card cmd-section">')));
+    expect(sec.indexOf('<div class="cmd-main">')).toBeGreaterThan(-1);
+    expect(sec.indexOf('id="cmd-feedback"')).toBeLessThan(sec.indexOf('<div class="queue-container">'));
+    expect(html).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);');
+    expect(html).toContain('.cmd-section { grid-template-columns: minmax(0, 1fr); }');
+  });
+});
+
 describe('Đồng hồ bấm giờ trên thẻ đang chạy (2026-11-13)', () => {
   const html = readFileSync(resolve('web/index.html'), 'utf8');
   it('mỗi thẻ có ô đồng hồ cạnh Last log; formatElapsed ra m:ss / h:mm:ss', () => {

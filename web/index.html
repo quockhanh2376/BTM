@@ -1524,10 +1524,23 @@
     }
 
     /* Command Section */
+    /* Command bên trái, Session & queue bên phải (xếp chồng khi màn hẹp). */
     .cmd-section {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .cmd-main {
       display: flex;
       flex-direction: column;
       gap: 10px;
+      min-width: 0;
+    }
+
+    @media (max-width: 900px) {
+      .cmd-section { grid-template-columns: minmax(0, 1fr); }
     }
 
     .recipient-radios {
@@ -1598,9 +1611,11 @@
     }
 
     .queue-container {
-      margin-top: 8px;
-      border-top: 1px solid var(--border-subtle);
-      padding-top: 12px;
+      min-width: 0;
+    }
+
+    @media (max-width: 900px) {
+      .queue-container { border-top: 1px solid var(--border-subtle); padding-top: 12px; }
     }
 
     .queue-title {
@@ -1932,6 +1947,7 @@
 
     <!-- Khung lệnh -->
     <section class="card cmd-section">
+      <div class="cmd-main">
       <h2 class="section-title" data-i18n="cmd.title">Command</h2>
       <div class="recipient-radios" id="recipient-radios">
         <label class="radio-label">
@@ -1970,6 +1986,7 @@
         <p class="cmd-note" id="cmd-note" data-i18n="cmd.hint">PM: starts a session with this goal · Dev/QC: queued after the current turn</p>
       </div>
       <div id="cmd-feedback" class="action-feedback" style="display: none;"></div>
+      </div>
 
       <div class="queue-container">
         <h3 class="queue-title" data-i18n="queue.title">Session &amp; queue</h3>
