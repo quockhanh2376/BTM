@@ -1560,6 +1560,13 @@ describe('HTTP Server & SSE', () => {
     });
   });
 
+  it('Plan 9 Task 2: GET /api/system trả JSON đủ khoá', async () => {
+    const res = await fetch(`${baseUrl}/api/system`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    for (const k of ['cpuPercent', 'ramPercent', 'diskPercent', 'netInBps', 'netOutBps', 'healthy']) expect(body).toHaveProperty(k);
+  });
+
   describe('POST /api/goal/push (decision 0006)', () => {
     const post = (body: unknown) => fetch(`${baseUrl}/api/goal/push`, {
       method: 'POST',

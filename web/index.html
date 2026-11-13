@@ -2058,6 +2058,33 @@
       .user-text { display: none; }
     }
     @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+
+    /* ===== Plan 9 Task 2: thẻ số + System Status ===== */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .kpi-card { display: flex; align-items: center; gap: 12px; padding: 14px; }
+    .kpi-icon { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+    .kpi-icon svg { width: 22px; height: 22px; }
+    .kpi-blue { background: rgba(37, 99, 235, 0.12); color: #2563EB; }
+    .kpi-violet { background: rgba(124, 58, 237, 0.12); color: #7C3AED; }
+    .kpi-green { background: rgba(22, 163, 74, 0.12); color: #16A34A; }
+    .kpi-sky { background: rgba(14, 165, 233, 0.12); color: #0284C7; }
+    [data-theme="dark"] .kpi-blue { color: #60A5FA; }
+    [data-theme="dark"] .kpi-violet { color: #A78BFA; }
+    [data-theme="dark"] .kpi-green { color: #4ADE80; }
+    [data-theme="dark"] .kpi-sky { color: #38BDF8; }
+    .kpi-body { min-width: 0; }
+    .kpi-value { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .kpi-label { font-size: 12px; color: var(--text-muted); }
+    .kpi-delta { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--meter-green); }
+    .kpi-delta[hidden] { display: none; }
+    @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 420px) { .kpi-grid { grid-template-columns: minmax(0, 1fr); } }
+    .sys-bar > span.warn { background: var(--meter-yellow); }
+    .sys-bar > span.bad { background: var(--meter-red); }
+    .sys-dot.ok { background: var(--meter-green); }
+    .sys-dot.bad { background: var(--meter-red); }
+    .sys-health { font-size: 11px; font-weight: 600; margin-left: auto; color: var(--text-muted); }
+    .sys-net { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; gap: 6px; }
   </style>
 </head>
 <body>
@@ -2080,10 +2107,11 @@
     </nav>
     <!-- Plan 9 Task 2 đổ số liệu vào (/api/system) -->
     <div class="sys-status" id="sys-status">
-      <div class="sys-status-title"><span class="sys-dot" id="sys-dot"></span><span data-i18n="sys.title">System status</span></div>
+      <div class="sys-status-title"><span class="sys-dot" id="sys-dot"></span><span data-i18n="sys.title">System status</span><span class="sys-health" id="sys-health"></span></div>
       <div class="sys-row"><span>CPU</span><div class="sys-bar"><span id="sys-cpu-bar"></span></div><span class="sys-val" id="sys-cpu">–</span></div>
       <div class="sys-row"><span>RAM</span><div class="sys-bar"><span id="sys-ram-bar"></span></div><span class="sys-val" id="sys-ram">–</span></div>
       <div class="sys-row"><span>Disk</span><div class="sys-bar"><span id="sys-disk-bar"></span></div><span class="sys-val" id="sys-disk">–</span></div>
+      <div class="sys-net"><span>Net</span><span id="sys-net">–</span></div>
     </div>
     <button type="button" class="sidebar-collapse" id="sidebar-collapse" aria-expanded="true"><span aria-hidden="true">‹</span><span class="collapse-label" data-i18n="nav.collapse">Collapse</span></button>
   </aside>
@@ -2142,6 +2170,15 @@
       </div>
     </header>
     <div id="top-feedback" class="action-feedback" style="display: none;"></div>
+
+    <!-- Plan 9 Task 2: 4 thẻ số (mũi tên % theo 24 giờ có ở Task 5) -->
+    <section class="kpi-grid" aria-label="Summary" data-i18n-aria="kpi.label">
+      <div class="card kpi-card"><span class="kpi-icon kpi-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-4-5.6"/></svg></span><div class="kpi-body"><div class="kpi-value" id="kpi-accounts">–</div><div class="kpi-label" data-i18n="kpi.accounts">Total accounts</div></div><span class="kpi-delta" id="kpi-accounts-delta" hidden></span></div>
+      <div class="card kpi-card"><span class="kpi-icon kpi-violet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/></svg></span><div class="kpi-body"><div class="kpi-value" id="kpi-running">–</div><div class="kpi-label" data-i18n="kpi.running">Running instances</div></div><span class="kpi-delta" id="kpi-running-delta" hidden></span></div>
+      <div class="card kpi-card"><span class="kpi-icon kpi-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><div class="kpi-body"><div class="kpi-value" id="kpi-goals">–</div><div class="kpi-label" data-i18n="kpi.goals">Active goals</div></div><span class="kpi-delta" id="kpi-goals-delta" hidden></span></div>
+      <div class="card kpi-card"><span class="kpi-icon kpi-sky"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><div class="kpi-body"><div class="kpi-value" id="kpi-tasks">–</div><div class="kpi-label" data-i18n="kpi.tasks">Total tasks</div></div><span class="kpi-delta" id="kpi-tasks-delta" hidden></span></div>
+    </section>
+
 
     <!-- Plan 6 Task 4: câu hỏi chặn ticket -->
     <section class="card" id="questions-section" style="display: none;">
@@ -2574,6 +2611,13 @@
           'nav.collapse': 'Collapse',
           'nav.open': 'Open menu',
           'sys.title': 'System status',
+          'sys.healthy': 'Healthy',
+          'sys.busy': 'Busy',
+          'kpi.label': 'Summary',
+          'kpi.accounts': 'Total accounts',
+          'kpi.running': 'Running instances',
+          'kpi.goals': 'Active goals',
+          'kpi.tasks': 'Total tasks',
           'page.title': 'Dashboard',
           'page.sub': 'Team, sessions and accounts at a glance',
           'head.refresh': 'Refresh energy',
@@ -4694,7 +4738,61 @@
         });
         var bell = document.getElementById('bell-count');
         if (bell) { bell.textContent = String(n); bell.hidden = n === 0; }
+        renderKpis(state);
       }
+
+      // Plan 9 Task 2: 4 thẻ số tính từ snapshot.
+      function renderKpis(state) {
+        var set = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+        var accounts = 0;
+        (Array.isArray(state.accounts) ? state.accounts : []).forEach(function (a) {
+          accounts += Array.isArray(a.accounts) && a.accounts.length ? a.accounts.length : 1;
+        });
+        var seats = Array.isArray(state.seats) ? state.seats : [];
+        var running = seats.filter(function (x) { return x.status === 'running'; }).length;
+        var goals = Array.isArray(state.goals) ? state.goals : [];
+        var tasks = 0;
+        goals.forEach(function (g) { tasks += Number(g.total) || 0; });
+        set('kpi-accounts', String(accounts));
+        set('kpi-running', running + ' / ' + seats.length);
+        set('kpi-goals', String(goals.filter(function (g) { return g.state !== 'merged'; }).length));
+        set('kpi-tasks', String(tasks));
+      }
+
+      // Plan 9 Task 2: System Status (sidebar) – đọc /api/system mỗi 10 s khi tab đang hiện.
+      function fmtRate(bps) {
+        if (bps === null || bps === undefined) return '–';
+        if (bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
+        if (bps >= 1024) return (bps / 1024).toFixed(1) + ' KB/s';
+        return bps + ' B/s';
+      }
+      function renderSystem(info) {
+        [['cpu', info.cpuPercent], ['ram', info.ramPercent], ['disk', info.diskPercent]].forEach(function (row) {
+          var v = row[1];
+          var val = document.getElementById('sys-' + row[0]);
+          var bar = document.getElementById('sys-' + row[0] + '-bar');
+          if (val) val.textContent = typeof v === 'number' ? Math.round(v) + '%' : '–';
+          if (bar) {
+            bar.style.width = typeof v === 'number' ? Math.max(0, Math.min(100, v)) + '%' : '0';
+            bar.className = typeof v === 'number' && v >= 90 ? 'bad' : (typeof v === 'number' && v >= 75 ? 'warn' : '');
+          }
+        });
+        var net = document.getElementById('sys-net');
+        if (net) net.textContent = '↓ ' + fmtRate(info.netInBps) + ' · ↑ ' + fmtRate(info.netOutBps);
+        var dot = document.getElementById('sys-dot');
+        if (dot) dot.className = 'sys-dot ' + (info.healthy ? 'ok' : 'bad');
+        var health = document.getElementById('sys-health');
+        if (health) health.textContent = info.healthy ? tx('sys.healthy') : tx('sys.busy');
+      }
+      async function pollSystem() {
+        if (document.visibilityState === 'hidden') return;
+        try {
+          var res = await fetch('/api/system', { cache: 'no-store' });
+          if (res.ok) renderSystem(await res.json());
+        } catch (e) {}
+      }
+      pollSystem();
+      setInterval(pollSystem, 10000);
 
       function renderSnapshot(state) {
         agentNames = (state && state.settings && state.settings.names) || {};

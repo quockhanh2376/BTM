@@ -252,3 +252,10 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 - Tài liệu: `docs/`, `team/`.
 - File tổng kết goal ghi vào repo, ví dụ header `| # | Ticket | Tiêu đề | Trạng thái | Vòng sửa |`. Có thể đổi sau nếu anh muốn.
 - Output lệnh `btm` trên terminal: Task 9 đổi luôn, theo cùng glossary.
+| nav.dashboard / nav.accounts / nav.goals / nav.instances / nav.logs | Mục sidebar | Dashboard / Accounts / Tasks & Goals / Instances / Logs |
+| nav.reports / nav.settings / nav.soon / nav.soonMsg | Mục chưa làm (phần dư Plan 9) | Reports / Settings / Soon / {name}: coming soon |
+| nav.label / nav.collapse / nav.open | Điều hướng / Thu gọn / Mở menu | Navigation / Collapse / Open menu |
+| page.title / page.sub | Tiêu đề trang | Dashboard / Team, sessions and accounts at a glance |
+| head.refresh / head.bell / head.help / head.helpMsg / head.lang / head.viSoon / head.owner | Nút header | Refresh energy / Things waiting for you / Help / … / Language / Tiếng Việt: coming soon / Owner |
+| sys.title / sys.healthy / sys.busy | Trạng thái máy | System status / Healthy / Busy |
+| kpi.label / kpi.accounts / kpi.running / kpi.goals / kpi.tasks | Thẻ số | Summary / Total accounts / Running instances / Active goals / Total tasks |
