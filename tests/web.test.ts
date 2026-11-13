@@ -117,7 +117,7 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(html.toLowerCase()).toContain('#f5f7fb');
     expect(html.toLowerCase()).toContain('#ffffff');
     expect(html.toLowerCase()).toContain('#0f172a');
-    expect(html.toLowerCase()).toContain('#5b6577');
+    expect(html.toLowerCase()).toContain('#3f4a5c');
     expect(html.toLowerCase()).toContain('#2563eb');
     expect(html.toLowerCase()).toContain('#dce6fb');
     expect(html.toLowerCase()).toContain('#1e3f99');
@@ -186,8 +186,8 @@ describe('Web Dashboard (web/index.html)', () => {
     const errContrast = getContrastRatio('#FF8A80', '#171A21');
     expect(errContrast).toBeGreaterThanOrEqual(4.5);
     // Plan 9: chữ phụ đọc được ở cả hai chế độ
-    expect(getContrastRatio('#5B6577', '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
-    expect(getContrastRatio('#5B6577', '#F5F7FB')).toBeGreaterThanOrEqual(4.5);
+    expect(getContrastRatio('#3F4A5C', '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
+    expect(getContrastRatio('#3F4A5C', '#F5F7FB')).toBeGreaterThanOrEqual(4.5);
     expect(getContrastRatio('#9CA3AF', '#171A21')).toBeGreaterThanOrEqual(4.5);
     expect(getContrastRatio('#E5E7EB', '#0F1115')).toBeGreaterThanOrEqual(4.5);
 

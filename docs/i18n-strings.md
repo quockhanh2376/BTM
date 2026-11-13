@@ -264,3 +264,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | q.attach / q.imageAlt / q.removeImage | Ảnh / Ảnh cho câu hỏi {id} / Bỏ ảnh | Image / Image for question {id} / Remove image |
 | acc.addShort | Thêm tài khoản | Add Account |
 | agents.title / agents.view / agents.card / agents.refresh | Agents ({n}) / Xem: / Thẻ / Làm mới | Agents ({n}) / View: / Card / Refresh |
+| inbox.expand / inbox.collapse / inbox.new / goals.add / log.full / log.less | Mở rộng / Thu gọn / Ghi chú mới / Thêm goal / Xem toàn bộ log / Thu gọn | Expand / Collapse / New note / Add Goal / View full logs / Show less |
