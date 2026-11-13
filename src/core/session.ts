@@ -405,6 +405,12 @@ async function processGoal(
   // Plan 5 Task 7: người chính hết Energy/đăng nhập → người dự phòng (seats_backup) còn Energy và không vi phạm
   // luật cứng (exclude). Không còn ai → phiên dừng với all_agents_exhausted. Không có dự phòng → như cũ.
   // Plan 6 Task 4: lưu câu hỏi mới (bỏ câu đã hỏi trước đó cho ticket này). true = có câu mới → chặn ticket.
+  // Câu trả lời của anh cho ticket (cả câu đã dùng ở lượt trước): đi kèm mọi lượt Dev và QC sau đó của ticket.
+  function ownerAnswers(ticketId: string): string[] {
+    return d.store.listQuestions(d.repo).filter((q) => q.ticket === ticketId && q.answer)
+      .map((q) => `Hỏi: ${q.text} → Anh Zon trả lời: ${q.answer}`);
+  }
+
   function askQuestions(ticketId: string, seat: Seat, agent: string, items: string[]): number {
     const asked = new Set(d.store.listQuestions(d.repo).filter((q) => q.ticket === ticketId).map((q) => q.text));
     const fresh = items.filter((text) => !asked.has(text));
@@ -883,8 +889,7 @@ async function processGoal(
     // Plan 6 Task 3+4: ghi chú dòng và câu trả lời của anh đi trước ghi chú QC.
     const ownerNotes = [
       ...d.store.listLineNotes(d.repo, ticket.id, true).map((n) => `Anh Zon (${n.path}:${n.line}): ${n.text}`),
-      ...d.store.listQuestions(d.repo, 'answered').filter((q) => q.ticket === ticket.id)
-        .map((q) => `Hỏi: ${q.text} → Anh Zon trả lời: ${q.answer ?? ''}`),
+      ...ownerAnswers(ticket.id),
     ];
     if (ownerNotes.length > 0) fixNotes = [...ownerNotes, ...fixNotes];
 
@@ -1395,7 +1400,7 @@ async function processGoal(
       const qcTurnId = d.store.startTurn(sessionId, 'qc', qcAgent, ticket.id);
       const qcLogFile = join(d.logDir, `turn-${qcTurnId}.log`);
       d.store.setTurnLog(qcTurnId, qcLogFile);
-      const qcPromptText = qcTicketPrompt(ticket, base, qcAgent);
+      const qcPromptText = qcTicketPrompt(ticket, base, qcAgent, ownerAnswers(ticket.id));
       const qcSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'qc');
       if (qcSnapshot.protectedBranchMoved) {
         d.store.endTurn(qcTurnId, 'rejected', 'protected_branch_moved');

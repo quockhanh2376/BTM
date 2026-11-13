@@ -136,7 +136,7 @@ export function devTicketPrompt(
   return lines.join('\n');
 }
 
-export function qcTicketPrompt(t: Ticket, base: string, agentName: string): string {
+export function qcTicketPrompt(t: Ticket, base: string, agentName: string, ownerAnswers: string[] = []): string {
   const title = t.title.replace(/\r?\n/g, ' ').trim();
   const scope = t.scope.map((s) => s.replace(/\r?\n/g, ' ').trim()).join(', ');
   const doneWhen = t.done_when.replace(/\r?\n/g, ' ').trim();
@@ -154,6 +154,10 @@ export function qcTicketPrompt(t: Ticket, base: string, agentName: string): stri
   if (t.note) {
     const noteId = t.note.replace(/^team\/inbox\//, '').replace(/\.md$/, '');
     lines.splice(3, 0, `Đọc team/inbox/${noteId}.md và ảnh đính kèm; làm/chấm theo ảnh.`);
+  }
+  if (ownerAnswers.length > 0) {
+    const ans = ownerAnswers.map((a) => a.replace(/\r?\n/g, ' ').trim()).join(' | ');
+    lines.splice(3, 0, `Anh Zon đã chốt (đúng hơn chỗ ticket ghi "chưa chốt"): ${ans}`);
   }
 
   return lines.join('\n');
