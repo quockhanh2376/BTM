@@ -119,8 +119,19 @@
 ## Thứ tự
 1 → 2 → 3 → 4 → 5 → 6 → 7. Task 1 đổi khung nên làm trước; Task 4 xong là có mũi tên trên từng thẻ Accounts.
 
-## Anh cần chốt (đề xuất của Cheki ở cuối mỗi dòng)
-1. **Reports và Settings** ở sidebar: chưa có trang riêng → *đề xuất: tạm ẩn, làm sau khi có nội dung thật* (Reports = báo cáo goal/audit; Settings = config chỉ đọc).
-2. **Ô IP / Proxy / Server** ở thẻ Accounts: BTM không có các trường này → *đề xuất: thay bằng Tool, Model · Effort, Energy, tài khoản đang dùng.*
-3. **Ngôn ngữ giao diện:** mẫu trộn Anh và Việt → *đề xuất: giữ tiếng Anh như hiện tại (qua `tx()`), sau này thêm bản Việt.*
-4. **Progress trên thẻ ghế:** mẫu là % thành công → *đề xuất: dùng Energy còn lại (có ích hơn để biết sắp hết quota); % thành công đã có ở dòng Success.*
+## Anh đã chốt (2026-11-13)
+1. **Reports và Settings:** hiện trên sidebar để anh thấy bố cục, **không code chức năng** (bấm vào chỉ hiện "Coming soon"). Không code các phần UI dư, ghi vào danh sách dưới đây để làm thành chức năng sau.
+2. **IP / Proxy / Server** trên thẻ Accounts → thay bằng Tool, Model · Effort, Energy, tài khoản đang dùng.
+3. **Ngôn ngữ:** 100% tiếng Anh trước, nhưng **phải có nút chuyển EN / VI** ở header. Chọn VI lúc này chỉ hiện "Tiếng Việt: coming soon" và giữ tiếng Anh; bản dịch làm sau qua bảng `tx()`.
+4. **Progress trên thẻ ghế** = Energy còn lại.
+
+## Phần UI dư: chỉ hiện, chưa có chức năng (làm thành tính năng sau)
+| Phần | Hiện tại | Chức năng dự kiến sau này |
+|---|---|---|
+| Sidebar → Reports | Mục menu, bấm hiện "Coming soon" | Trang báo cáo: tổng hợp goal, audit, release theo thời gian |
+| Sidebar → Settings | Mục menu, bấm hiện "Coming soon" | Xem config (chỉ đọc), sau đó sửa các mục an toàn qua dashboard |
+| Nút ngôn ngữ VI | Nút có, chọn VI hiện "coming soon" | Bản dịch tiếng Việt cho toàn bộ `tx()` |
+| Menu người dùng (tên + mũi tên ở góc phải) | Chỉ hiện tên chủ | Đổi tên hiển thị, đăng xuất khi dashboard có đăng nhập |
+| Nút ? (help) | Mở thư mục `docs/` trên GitHub | Trang hướng dẫn trong dashboard |
+
+Task nào gặp thêm phần dư thì bổ sung vào bảng này.

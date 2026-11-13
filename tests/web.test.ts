@@ -56,6 +56,23 @@ describe('Web Dashboard (web/index.html)', () => {
     for (const k of ['goal.released', 'goal.pushFailed', 'goal.pushAgain']) expect(html).toContain(`'${k}':`);
   });
 
+  it('Plan 9 Task 1: sidebar, header tools, EN/VI switch; Reports/Settings are placeholders only', () => {
+    expect(html).toContain('<aside class="sidebar" id="sidebar"');
+    for (const id of ['menu-btn', 'sidebar-collapse', 'head-refresh', 'head-bell', 'bell-count', 'head-help', 'app-version', 'sys-cpu', 'sys-ram', 'sys-disk']) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    expect(html).toContain('data-lang="en"');
+    expect(html).toContain('data-lang="vi"');
+    expect(html).toContain('data-soon="nav.reports"');
+    expect(html).toContain('data-soon="nav.settings"');
+    // nút cũ vẫn còn
+    for (const id of ['project-badge', 'session-badge', 'turns-badge', 'holder-box', 'auto-approve-toggle', 'approve-btn', 'stop-btn', 'theme-toggle', 'top-feedback']) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    expect(html).toMatch(/\[data-theme="dark"\][^}]*--sidebar-bg/);
+    expect(html).toMatch(/@media \(max-width: 900px\)[\s\S]*\.menu-btn \{ display: inline-flex; \}/);
+  });
+
   it('puts the recipient radios on the Command title row and hides the textarea label visually', () => {
     const head = html.slice(html.indexOf('<div class="cmd-head">'), html.indexOf('<div class="form-group">', html.indexOf('<div class="cmd-head">')));
     expect(head).toContain('data-i18n="cmd.title"');
@@ -75,21 +92,22 @@ describe('Web Dashboard (web/index.html)', () => {
 
   it('supports light and dark themes using specified color tokens', () => {
     // Light palette
-    expect(html.toLowerCase()).toContain('#f4f4f1');
+    // Plan 9 Task 1: bảng màu mới theo ảnh mẫu
+    expect(html.toLowerCase()).toContain('#f5f7fb');
     expect(html.toLowerCase()).toContain('#ffffff');
-    expect(html.toLowerCase()).toContain('#1a1a18');
-    expect(html.toLowerCase()).toContain('#55554f');
-    expect(html.toLowerCase()).toContain('#2b5bd7');
+    expect(html.toLowerCase()).toContain('#0f172a');
+    expect(html.toLowerCase()).toContain('#5b6577');
+    expect(html.toLowerCase()).toContain('#2563eb');
     expect(html.toLowerCase()).toContain('#dce6fb');
     expect(html.toLowerCase()).toContain('#1e3f99');
     expect(html.toLowerCase()).toContain('#b42318');
 
     // Dark palette
-    expect(html.toLowerCase()).toContain('#141413');
-    expect(html.toLowerCase()).toContain('#1f1f1d');
-    expect(html.toLowerCase()).toContain('#f2f2ef');
-    expect(html.toLowerCase()).toContain('#b5b5ae');
-    expect(html.toLowerCase()).toContain('#8aaeff');
+    expect(html.toLowerCase()).toContain('#0f1115');
+    expect(html.toLowerCase()).toContain('#171a21');
+    expect(html.toLowerCase()).toContain('#e5e7eb');
+    expect(html.toLowerCase()).toContain('#9ca3af');
+    expect(html.toLowerCase()).toContain('#60a5fa');
 
     // Theme selector and preference
     expect(html).toContain('[data-theme="dark"]');
@@ -124,7 +142,7 @@ describe('Web Dashboard (web/index.html)', () => {
 
   it('dark theme button and error text satisfy contrast >= 4.5:1', () => {
     expect(html.toLowerCase()).toContain('#ff8a80');
-    expect(html.toLowerCase()).toContain('#1f1f1d');
+    expect(html.toLowerCase()).toContain('#171a21');
 
     const getLuminance = (hex: string): number => {
       const clean = hex.replace('#', '');
@@ -143,9 +161,14 @@ describe('Web Dashboard (web/index.html)', () => {
       return (lighter + 0.05) / (darker + 0.05);
     };
 
-    // Dark error text #FF8A80 on #1F1F1D
-    const errContrast = getContrastRatio('#FF8A80', '#1F1F1D');
+    // Dark error text #FF8A80 on card #171A21
+    const errContrast = getContrastRatio('#FF8A80', '#171A21');
     expect(errContrast).toBeGreaterThanOrEqual(4.5);
+    // Plan 9: chữ phụ đọc được ở cả hai chế độ
+    expect(getContrastRatio('#5B6577', '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
+    expect(getContrastRatio('#5B6577', '#F5F7FB')).toBeGreaterThanOrEqual(4.5);
+    expect(getContrastRatio('#9CA3AF', '#171A21')).toBeGreaterThanOrEqual(4.5);
+    expect(getContrastRatio('#E5E7EB', '#0F1115')).toBeGreaterThanOrEqual(4.5);
 
     // Dark button text contrast >= 4.5:1 (e.g. #8AAEFF with #141413 text or #3B6FE0 with #FFFFFF text)
     expect(html).toMatch(/(--btn-primary-bg|--btn-bg|--accent)[^;]*#8aaeff/i);
