@@ -1532,6 +1532,18 @@ describe('P7-T5: giao diện Accounts', () => {
   });
 });
 
+describe('Accounts thu gọn bằng nút ▸/▾ (2026-11-13)', () => {
+  const html = readFileSync(resolve('web/index.html'), 'utf8');
+  it('mặc định thu gọn, chỉ giữ dòng tài khoản đang dùng; mở ra tự gập sau 3 phút', () => {
+    expect(html).toContain('id="acc-details-toggle"');
+    expect(html).toContain('aria-controls="accounts-list"');
+    expect(html).toContain('.accounts-list.acc-collapsed .acc-item:not(.acc-primary)');
+    expect(html).toContain("list.classList.toggle('acc-collapsed', !open)");
+    expect(html).toContain('accDetailsTimer = null; syncAccDetails(); }, ACC_SLEEP_COLLAPSE_MS);');
+    expect(html).toContain("awake.find(function (a) { return a.status === 'in_use'; }) || awake[0]");
+  });
+});
+
 describe('Command trái, Session & queue phải (2026-11-13)', () => {
   const html = readFileSync(resolve('web/index.html'), 'utf8');
   it('cmd-section là lưới 2 cột: cmd-main rồi queue-container; màn hẹp xếp chồng', () => {

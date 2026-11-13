@@ -769,6 +769,31 @@
       font-size: 11px;
     }
 
+    .acc-tabs-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .acc-details-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    .acc-details-toggle:hover { background: var(--bg); }
+
+    /* Thu gọn: chỉ còn phần Worker + dòng tài khoản đang dùng; ẩn nút của tài khoản, tài khoản khác, tài khoản ngủ. */
+    .accounts-list.acc-collapsed .acc-ctrl,
+    .accounts-list.acc-collapsed .acc-item:not(.acc-primary),
+    .accounts-list.acc-collapsed .acc-sleep-toggle { display: none; }
+
     .acc-sleep-toggle {
       align-self: flex-start;
       background: none;
@@ -2008,11 +2033,14 @@
           <button id="acc-add-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.add">+ Add Account</button>
         </div>
       </div>
-      <div class="acc-tabs" role="tablist" id="acc-tabs">
-        <button type="button" role="tab" data-tab="all" data-i18n="acc.tabAll">All</button>
-        <button type="button" role="tab" data-tab="ide">IDE</button>
-        <button type="button" role="tab" data-tab="cli">CLI</button>
-        <button type="button" role="tab" data-tab="plugin">Plugin</button>
+      <div class="acc-tabs-row">
+        <div class="acc-tabs" role="tablist" id="acc-tabs">
+          <button type="button" role="tab" data-tab="all" data-i18n="acc.tabAll">All</button>
+          <button type="button" role="tab" data-tab="ide">IDE</button>
+          <button type="button" role="tab" data-tab="cli">CLI</button>
+          <button type="button" role="tab" data-tab="plugin">Plugin</button>
+        </div>
+        <button type="button" id="acc-details-toggle" class="acc-details-toggle" aria-expanded="false" aria-controls="accounts-list" data-i18n-aria="acc.details">▸</button>
       </div>
       <div id="acc-add-panel" class="acc-panel" hidden>
         <div class="acc-panel-row">
@@ -2492,6 +2520,8 @@
           'acc.importRejected': 'Skipped: {entry} ({reason})',
           'acc.importNothing': 'Nothing to import',
           'acc.sleepingN': '{n} sleeping',
+          'acc.details': 'Show all accounts and controls',
+          'acc.detailsHide': 'Hide account details',
           'acc.imported': 'Imported {n} account(s) – they start Sleeping; turn on Active here to use them',
           'acc.activeHere': 'Active here',
           'acc.activeFor': 'Use {key} on this machine',
@@ -4508,7 +4538,8 @@
           if (items.length && !shown.length) return;
           var awake = shown.filter(function (a) { return a.active; });
           var sleeping = shown.filter(function (a) { return !a.active; });
-          if (awake.length) row.appendChild(buildAccountItems(acc, awake, sshTarget));
+          var primary = awake.find(function (a) { return a.status === 'in_use'; }) || awake[0];
+          if (awake.length) row.appendChild(buildAccountItems(acc, awake, sshTarget, primary));
           if (sleeping.length) {
             var open = Boolean(accSleepOpen[acc.agent]);
             var toggle = document.createElement('button');
@@ -4538,6 +4569,28 @@
       // Danh sách tài khoản ngủ: mở theo Worker, tự gập sau 3 phút (giống Team inbox).
       var ACC_SLEEP_COLLAPSE_MS = 3 * 60 * 1000;
       var accSleepOpen = {};
+      // Nút ▸/▾ cạnh tab: mở chi tiết mọi Worker, tự thu gọn sau 3 phút. Thu gọn chỉ còn dòng tài khoản đang dùng.
+      var accDetailsTimer = null;
+      function syncAccDetails() {
+        var list = document.getElementById('accounts-list');
+        var btn = document.getElementById('acc-details-toggle');
+        var open = accDetailsTimer !== null;
+        if (list) list.classList.toggle('acc-collapsed', !open);
+        if (btn) {
+          btn.textContent = open ? '▾' : '▸';
+          btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          btn.setAttribute('aria-label', tx(open ? 'acc.detailsHide' : 'acc.details'));
+        }
+      }
+      (function () {
+        var btn = document.getElementById('acc-details-toggle');
+        if (btn) btn.addEventListener('click', function () {
+          if (accDetailsTimer !== null) { clearTimeout(accDetailsTimer); accDetailsTimer = null; }
+          else accDetailsTimer = setTimeout(function () { accDetailsTimer = null; syncAccDetails(); }, ACC_SLEEP_COLLAPSE_MS);
+          syncAccDetails();
+        });
+        syncAccDetails();
+      })();
       var lastAccounts = [];
       var lastSshHint = null;
 
@@ -4576,12 +4629,12 @@
         return tx(ACC_STATUS[a.status] || 'acc.st.free');
       }
 
-      function buildAccountItems(worker, items, sshTarget) {
+      function buildAccountItems(worker, items, sshTarget, primary) {
         var box = document.createElement('div');
         box.className = 'acc-items';
         items.forEach(function (a) {
           var line = document.createElement('div');
-          line.className = 'acc-item';
+          line.className = 'acc-item' + (a === primary ? ' acc-primary' : '');
 
           var name = document.createElement('span');
           name.className = 'acc-item-name';
