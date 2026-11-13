@@ -39,6 +39,14 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(box).toMatch(/id="cmd-send-btn"[^>]*data-i18n-title="cmd\.send"/);
   });
 
+  it('shows worker names without the word Worker and puts a rename button on seat cards', () => {
+    expect(html).toContain("'acc.workerTitle': '{name} · accounts: {n}',");
+    const fn = html.slice(html.indexOf('function renderSeatAvatar('), html.indexOf('function agentLabel(id)'));
+    expect(fn).toContain("ren.className = 'acc-rename-btn'");
+    expect(fn).toContain('renameAgent(ren.dataset.agent)');
+    expect(html).toMatch(/async function renameAgent\(agent\)/);
+  });
+
   it('puts the recipient radios on the Command title row and hides the textarea label visually', () => {
     const head = html.slice(html.indexOf('<div class="cmd-head">'), html.indexOf('<div class="form-group">', html.indexOf('<div class="cmd-head">')));
     expect(head).toContain('data-i18n="cmd.title"');
@@ -1542,7 +1550,7 @@ describe('P7-T5: giao diện Accounts', () => {
   it('không còn tab lọc; đổi tên Worker chỉ hiển thị; link đăng nhập chỉ https; dữ liệu tài khoản không qua innerHTML', () => {
     expect(section).not.toContain('data-tab=');
     expect(html).not.toContain('acc.labelFor');
-    expect(html).toContain("postJson('/api/agent', { agent: acc.agent, name: v.trim() })");
+    expect(html).toContain("postJson('/api/agent', { agent: agent, name: v.trim() })");
     expect(html).toContain('agentNames = (state && state.settings && state.settings.names) || {};');
     const fmt = html.slice(html.indexOf('function formatAgentDisplayName'), html.indexOf('var formatAgent ='));
     expect(fmt).toContain('agentLabel(agentId)');
