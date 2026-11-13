@@ -1,4 +1,5 @@
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import { AGENT_NAME_RE, agentNameKey } from '../agents/names.ts';
 import type { Socket } from 'node:net';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
@@ -753,19 +754,26 @@ export function createServer(o: {
             agent: z.string(),
             model: z.union([z.literal(''), ModelSchema]).optional(),
             effort: EffortSchema.optional(),
+            name: z.string().transform((x) => x.trim()).refine((x) => x === '' || AGENT_NAME_RE.test(x)).optional(),
           }).strict();
           const parsed = AgentBodySchema.safeParse(body);
           if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid model or effort' });
+            sendJson(res, 400, { error: 'Invalid model, effort or name' });
+            return;
+          }
+          const { agent, model, effort, name } = parsed.data;
+          if (!Object.hasOwn(o.cfg.agents, agent)) {
+            sendJson(res, 400, { error: `Unknown agent "${agent}"` });
+            return;
+          }
+          // Đổi tên chỉ là hiển thị: được đổi cả lúc phiên đang chạy. '' = về tên gốc.
+          if (name !== undefined && model === undefined && effort === undefined) {
+            o.store.setSetting(agentNameKey(agent), name);
+            sendJson(res, 200, { ok: true, agent, name });
             return;
           }
           if (o.host.busy?.()) {
             sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-          const { agent, model, effort } = parsed.data;
-          if (!Object.hasOwn(o.cfg.agents, agent)) {
-            sendJson(res, 400, { error: `Unknown agent "${agent}"` });
             return;
           }
           if (model !== undefined) o.store.setSetting(agentModelKey(agent), model);

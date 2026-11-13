@@ -982,6 +982,17 @@ describe('HTTP Server & SSE', () => {
       expect((await post({ agent: 'jacky', effort: 'low' })).status).toBe(409);
       expect(store.getSetting('agent_effort:jacky')).toBeNull();
     });
+    it('đổi tên hiển thị: được cả khi đang chạy; tên lạ → 400; rỗng = về mặc định', async () => {
+      host.busy = vi.fn().mockReturnValue(true);
+      expect((await post({ agent: 'jacky', name: '  David Nguyễn ' })).status).toBe(200);
+      expect(store.getSetting('agent_name:jacky')).toBe('David Nguyễn');
+      expect((await post({ agent: 'jacky', name: '<img src=x>' })).status).toBe(400);
+      expect((await post({ agent: 'jacky', name: 'x'.repeat(25) })).status).toBe(400);
+      expect((await post({ agent: 'ghost', name: 'Bob' })).status).toBe(400);
+      expect((await post({ agent: 'jacky', name: 'Bob', effort: 'low' })).status).toBe(409);
+      expect((await post({ agent: 'jacky', name: '' })).status).toBe(200);
+      expect(store.getSetting('agent_name:jacky')).toBe('');
+    });
   });
 
   describe('POST /api/seat', () => {

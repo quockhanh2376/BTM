@@ -668,28 +668,11 @@
     }
 
     .acc-toolbar,
-    .acc-tabs,
     .acc-panel-row {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
       align-items: center;
-    }
-
-    .acc-tabs button {
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text-muted);
-      border-radius: 999px;
-      padding: 3px 12px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .acc-tabs button[aria-selected="true"] {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
     }
 
     .acc-panel {
@@ -769,12 +752,16 @@
       font-size: 11px;
     }
 
-    .acc-tabs-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
+    .acc-rename-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0 4px;
     }
+
+    .acc-rename-btn:hover { color: var(--text); }
 
     .acc-details-toggle {
       background: none;
@@ -2031,16 +2018,8 @@
           <button id="acc-export-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.export">Export</button>
           <button id="refresh-energy-btn" class="btn btn-primary btn-sm" type="button" data-i18n="btn.refreshEnergy">Refresh energy</button>
           <button id="acc-add-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.add">+ Add Account</button>
+          <button type="button" id="acc-details-toggle" class="acc-details-toggle" aria-expanded="false" aria-controls="accounts-list" data-i18n-aria="acc.details">▸</button>
         </div>
-      </div>
-      <div class="acc-tabs-row">
-        <div class="acc-tabs" role="tablist" id="acc-tabs">
-          <button type="button" role="tab" data-tab="all" data-i18n="acc.tabAll">All</button>
-          <button type="button" role="tab" data-tab="ide">IDE</button>
-          <button type="button" role="tab" data-tab="cli">CLI</button>
-          <button type="button" role="tab" data-tab="plugin">Plugin</button>
-        </div>
-        <button type="button" id="acc-details-toggle" class="acc-details-toggle" aria-expanded="false" aria-controls="accounts-list" data-i18n-aria="acc.details">▸</button>
       </div>
       <div id="acc-add-panel" class="acc-panel" hidden>
         <div class="acc-panel-row">
@@ -2498,7 +2477,6 @@
           'acc.import': 'Import',
           'acc.export': 'Export',
           'acc.add': '+ Add Account',
-          'acc.tabAll': 'All',
           'acc.worker': 'Worker',
           'acc.workerTitle': 'Worker {name} · accounts: {n}',
           'acc.slug': 'Name (a-z0-9)',
@@ -2520,6 +2498,8 @@
           'acc.importRejected': 'Skipped: {entry} ({reason})',
           'acc.importNothing': 'Nothing to import',
           'acc.sleepingN': '{n} sleeping',
+          'acc.renameFor': 'Rename worker {agent} (display only)',
+          'acc.renamePrompt': 'Display name for {agent} (1–24 letters/numbers; empty = default):',
           'acc.details': 'Show all accounts and controls',
           'acc.detailsHide': 'Hide account details',
           'acc.imported': 'Imported {n} account(s) – they start Sleeping; turn on Active here to use them',
@@ -2527,12 +2507,6 @@
           'acc.activeFor': 'Use {key} on this machine',
           'acc.up': 'Move {key} up',
           'acc.down': 'Move {key} down',
-          'acc.labelFor': 'Where else {key} is used',
-          'acc.lbl.none': '—',
-          'acc.lbl.ide': 'IDE',
-          'acc.lbl.cli': 'CLI',
-          'acc.lbl.plugin': 'Plugin',
-          'acc.lbl.other': 'Other machine',
           'acc.st.in_use': 'In use',
           'acc.st.next': 'Next',
           'acc.st.free': 'Active, free',
@@ -2683,11 +2657,18 @@
       }
       var formatSeat = formatSeatLabel;
 
+      // Tên anh Zon đặt cho Worker (snapshot settings.names); chỉ để hiển thị, API vẫn dùng id.
+      var agentNames = {};
+      function agentLabel(id) {
+        id = id ? String(id) : '';
+        if (Object.prototype.hasOwnProperty.call(agentNames, id) && agentNames[id]) return String(agentNames[id]);
+        return id ? (id.charAt(0).toUpperCase() + id.slice(1)) : '';
+      }
+
       function formatAgentDisplayName(agentId, seatKey) {
         if (!agentId && !seatKey) return '—';
         var seatLabel = formatSeatLabel(seatKey);
-        var id = agentId ? String(agentId) : '';
-        var capId = id ? (id.charAt(0).toUpperCase() + id.slice(1)) : '';
+        var capId = agentLabel(agentId);
         return (capId && seatLabel) ? (capId + '-' + seatLabel) : (capId || seatLabel || '—');
       }
       var formatAgent = formatAgentDisplayName;
@@ -4289,6 +4270,7 @@
       }
 
       function renderSnapshot(state) {
+        agentNames = (state && state.settings && state.settings.names) || {};
         if (!state) return;
         latestSnapshot = state;
 
@@ -4533,9 +4515,24 @@
 
           // Plan 7: tên Worker + danh sách tài khoản theo thứ tự (lọc theo tab).
           var items = Array.isArray(acc.accounts) ? acc.accounts : [];
-          nameEl.textContent = tx('acc.workerTitle', { name: acc.agent, n: items.length || 1 });
-          var shown = items.filter(accountMatchesTab);
-          if (items.length && !shown.length) return;
+          nameEl.textContent = tx('acc.workerTitle', { name: agentLabel(acc.agent), n: items.length || 1 });
+          var renameBtn = document.createElement('button');
+          renameBtn.type = 'button';
+          renameBtn.className = 'acc-rename-btn';
+          renameBtn.textContent = '✎';
+          renameBtn.setAttribute('aria-label', tx('acc.renameFor', { agent: acc.agent }));
+          renameBtn.title = tx('acc.renameFor', { agent: acc.agent });
+          renameBtn.addEventListener('click', async function () {
+            var v = prompt(tx('acc.renamePrompt', { agent: acc.agent }), agentNames[acc.agent] || '');
+            if (v === null) return;
+            try {
+              await postJson('/api/agent', { agent: acc.agent, name: v.trim() });
+            } catch (err) {
+              showFeedback(topFeedback, err.message, true);
+            }
+          });
+          nameEl.insertAdjacentElement('afterend', renameBtn);
+          var shown = items;
           var awake = shown.filter(function (a) { return a.active; });
           var sleeping = shown.filter(function (a) { return !a.active; });
           var primary = awake.find(function (a) { return a.status === 'in_use'; }) || awake[0];
@@ -4563,9 +4560,6 @@
       }
 
       // ===== Plan 7: tài khoản của Worker =====
-      var accTab = 'all';
-      try { accTab = localStorage.getItem('btm.accTab') || 'all'; } catch (e) {}
-      if (accTab === 'btm') accTab = 'all'; // tab BTM đã bỏ: tài khoản ngủ giờ gom lại bên dưới
       // Danh sách tài khoản ngủ: mở theo Worker, tự gập sau 3 phút (giống Team inbox).
       var ACC_SLEEP_COLLAPSE_MS = 3 * 60 * 1000;
       var accSleepOpen = {};
@@ -4594,25 +4588,6 @@
       var lastAccounts = [];
       var lastSshHint = null;
 
-      function accountMatchesTab(a) {
-        if (accTab === 'all') return true;
-        return a.label === accTab;
-      }
-
-      function syncAccTabs() {
-        document.querySelectorAll('#acc-tabs [data-tab]').forEach(function (b) {
-          b.setAttribute('aria-selected', b.getAttribute('data-tab') === accTab ? 'true' : 'false');
-        });
-      }
-      syncAccTabs();
-      document.querySelectorAll('#acc-tabs [data-tab]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          accTab = b.getAttribute('data-tab') || 'all';
-          try { localStorage.setItem('btm.accTab', accTab); } catch (e) {}
-          syncAccTabs();
-          renderAccounts(lastAccounts, lastSshHint);
-        });
-      });
 
       async function accountPost(key, body) {
         try {
@@ -4623,7 +4598,6 @@
       }
 
       var ACC_STATUS = { in_use: 'acc.st.in_use', next: 'acc.st.next', free: 'acc.st.free', sleeping: 'acc.st.sleeping', relogin: 'acc.st.relogin' };
-      var ACC_LABELS = [['none', 'acc.lbl.none'], ['ide', 'acc.lbl.ide'], ['cli', 'acc.lbl.cli'], ['plugin', 'acc.lbl.plugin'], ['other', 'acc.lbl.other']];
       function statusText(a) {
         if (a.status === 'limited') return tx('acc.st.limited', { time: a.resetsAt ? formatTime(a.resetsAt) : '—' });
         return tx(ACC_STATUS[a.status] || 'acc.st.free');
@@ -4656,18 +4630,6 @@
 
           var ctrl = document.createElement('span');
           ctrl.className = 'acc-ctrl';
-
-          var label = document.createElement('select');
-          label.setAttribute('aria-label', tx('acc.labelFor', { key: a.key }));
-          ACC_LABELS.forEach(function (pair) {
-            var o = document.createElement('option');
-            o.value = pair[0];
-            o.textContent = tx(pair[1]);
-            if (a.label === pair[0]) o.selected = true;
-            label.appendChild(o);
-          });
-          label.addEventListener('change', function () { accountPost(a.key, { label: label.value }); });
-          ctrl.appendChild(label);
 
           var activeWrap = document.createElement('label');
           var active = document.createElement('input');

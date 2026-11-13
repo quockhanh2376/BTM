@@ -1,4 +1,5 @@
 import { existsSync, statSync, openSync, readSync, closeSync, readFileSync, lstatSync } from 'node:fs';
+import { agentNameKey } from '../agents/names.ts';
 import { cleanStatus, isIsolated, readWorkerStatus, STATUS_FILE } from '../isolation/trusted.ts';
 import { join } from 'node:path';
 import type { Config, Effort, Seat, Tool } from '../config.ts';
@@ -133,6 +134,8 @@ export interface Snapshot {
   queue: QueueItem[];
   settings: {
     autoApprove: boolean;
+    /** Tên hiển thị anh Zon đặt cho Worker (chỉ UI; backend vẫn dùng id agent). */
+    names: Record<string, string>;
   };
   members: string[];
   notes: SnapshotNote[];
@@ -460,8 +463,13 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   const queue = store.listQueue(50);
   const autoApproveVal = store.getSetting('auto_approve');
   const autoApprove = autoApproveVal !== null ? autoApproveVal === 'true' : !cfg.session.require_task_approval;
-  const settings = { autoApprove };
   const members = Object.keys(cfg.agents);
+  const names: Record<string, string> = {};
+  for (const a of members) {
+    const n = store.getSetting(agentNameKey(a));
+    if (n) names[a] = n;
+  }
+  const settings = { autoApprove, names };
 
   const rawNotes = project ? store.listNotes(project, 10) : [];
   let allTickets: Ticket[] = [];
