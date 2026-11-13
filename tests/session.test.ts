@@ -4536,6 +4536,9 @@ describe('P6-T3/T4: câu hỏi chặn ticket, ghi chú của anh vào lượt De
     expect(c2.map((c) => c.seat)).toEqual(['dev', 'qc', 'dev', 'qc']);
     expect(prompts[0]).toContain('Anh Zon trả lời: SQLite');
     expect(prompts[0]).toContain('Anh Zon (src/app.ts:1): đổi tên biến app');
+    // câu trả lời đã dùng ở lượt Dev vẫn đi kèm lượt QC (QC không chấm fail vì ticket ghi "chưa chốt")
+    expect(c2[1]!.prompt).toContain('Anh Zon đã chốt (đúng hơn chỗ ticket ghi "chưa chốt"): Hỏi: Dùng SQLite hay PostgreSQL? → Anh Zon trả lời: SQLite');
+    expect(c2[3]!.prompt).not.toContain('Anh Zon đã chốt');
     expect(store.getTicketState(repo, 'GTM-0001')?.base_sha).toBe(baseBefore); // QC vẫn xem toàn bộ base..HEAD
     expect(out2.tasks['GTM-0001']).toBe('passed');
     expect(store.listQuestions(repo, 'used')).toHaveLength(1);
