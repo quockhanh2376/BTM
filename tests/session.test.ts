@@ -4571,7 +4571,9 @@ describe('P6-T3/T4: câu hỏi chặn ticket, ghi chú của anh vào lượt De
     expect(again.notes[0]).toBe('questions_open:1');
     expect(c0).toHaveLength(0);
 
-    store.answerQuestion(q[0]!.id, 'SQLite');
+    mkdirSync(join(repo, '.git', 'btm-answers'), { recursive: true });
+    writeFileSync(join(repo, '.git', 'btm-answers', `Q-${q[0]!.id}.png`), 'img');
+    store.answerQuestion(q[0]!.id, 'SQLite', `Q-${q[0]!.id}.png`);
     store.addLineNote(repo, 'GTM-0001', 'src/app.ts', 1, 'đổi tên biến app');
     const { runner: r2, calls: c2 } = createFakeRunner([
       (_s, agent, prompt, cwd) => {
@@ -4591,7 +4593,11 @@ describe('P6-T3/T4: câu hỏi chặn ticket, ghi chú của anh vào lượt De
     store.setSessionStatus(sid2, 'needs_owner');
     const out2 = await resumeSession(deps, sid2);
     expect(c2.map((c) => c.seat)).toEqual(['dev', 'qc', 'dev', 'qc']);
-    expect(prompts[0]).toContain('Anh Zon trả lời: SQLite');
+    expect(prompts[0]).toContain(`Anh Zon trả lời: SQLite (kèm ảnh Q-${q[0]!.id}.png, đã đính kèm lượt này)`);
+    // ảnh trả lời đi kèm mọi lượt Dev/QC của ticket đó, không sang ticket khác
+    expect(c2[0]!.options.images).toEqual([resolve(repo, '.git', 'btm-answers', `Q-${q[0]!.id}.png`)]);
+    expect(c2[1]!.options.images).toEqual([resolve(repo, '.git', 'btm-answers', `Q-${q[0]!.id}.png`)]);
+    expect(c2[2]!.options.images).toBeUndefined();
     expect(prompts[0]).toContain('Anh Zon (src/app.ts:1): đổi tên biến app');
     // câu trả lời đã dùng ở lượt Dev vẫn đi kèm lượt QC (QC không chấm fail vì ticket ghi "chưa chốt")
     expect(c2[1]!.prompt).toContain('Anh Zon đã chốt (đúng hơn chỗ ticket ghi "chưa chốt"): Hỏi: Dùng SQLite hay PostgreSQL? → Anh Zon trả lời: SQLite');

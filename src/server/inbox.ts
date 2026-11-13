@@ -4,6 +4,26 @@ import { git, gitBuffer } from '../git.ts';
 
 const VALID_INBOX_NAME = /^N-\d+(\.(md|png|jpg|webp))?$/;
 
+// Ảnh kèm câu trả lời của anh Zon: nằm trong .git/btm-answers của checkout, ngoài cây làm việc, nên không bao giờ
+// bị commit WIP gom vào nhánh goal (rồi push lên GitHub) hay bị git clean xoá; worker vẫn đọc được như ảnh Team note.
+const VALID_ANSWER_IMAGE = /^Q-\d{1,9}\.(png|jpg|webp)$/;
+
+export function answerImagePath(project: string, name: string): string {
+  if (!VALID_ANSWER_IMAGE.test(name)) throw new Error(`Invalid answer image name: ${name}`);
+  const gitDir = resolve(project, '.git');
+  if (!lstatSync(gitDir).isDirectory()) throw new Error('.git must be a directory');
+  const dir = resolve(gitDir, 'btm-answers');
+  mkdirSync(dir, { recursive: true });
+  if (lstatSync(dir).isSymbolicLink()) throw new Error('btm-answers cannot be a symlink');
+  const filePath = resolve(dir, name);
+  try {
+    if (lstatSync(filePath).isSymbolicLink()) throw new Error(`Target file cannot be a symlink: ${filePath}`);
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') throw err;
+  }
+  return filePath;
+}
+
 /**
  * Returns the absolute path to an inbox note or image file inside a project.
  * Throws if the name format is invalid, if team/inbox is outside the project,

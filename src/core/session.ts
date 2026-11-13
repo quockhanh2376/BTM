@@ -16,7 +16,7 @@ import { parseTicketQcResult } from '../qc/result.ts';
 import { parseReportQuestions, cleanConfirmItems } from '../qc/questions.ts';
 import { parseAuditResult } from '../audit/result.ts';
 import { pmTicketPrompt, devTicketPrompt, qcTicketPrompt, auditPrompt } from './prompts.ts';
-import { inboxPath } from '../server/inbox.ts';
+import { inboxPath, answerImagePath } from '../server/inbox.ts';
 import {
   type TurnGuardSnapshot,
   type GuardTurnResult,
@@ -408,7 +408,20 @@ async function processGoal(
   // Câu trả lời của anh cho ticket (cả câu đã dùng ở lượt trước): đi kèm mọi lượt Dev và QC sau đó của ticket.
   function ownerAnswers(ticketId: string): string[] {
     return d.store.listQuestions(d.repo).filter((q) => q.ticket === ticketId && q.answer)
-      .map((q) => `Hỏi: ${q.text} → Anh Zon trả lời: ${q.answer}`);
+      .map((q) => `Hỏi: ${q.text} → Anh Zon trả lời: ${q.answer}${q.image ? ` (kèm ảnh ${q.image}, đã đính kèm lượt này)` : ''}`);
+  }
+
+  // Ảnh anh Zon kèm câu trả lời của ticket: đưa cho agent như ảnh Team note (-i), chỉ file còn trong inbox.
+  function answerImages(ticketId: string): string[] {
+    const out: string[] = [];
+    for (const q of d.store.listQuestions(d.repo)) {
+      if (q.ticket !== ticketId || !q.answer || !q.image) continue;
+      try {
+        const p = answerImagePath(d.repo, q.image);
+        if (existsSync(p)) out.push(p);
+      } catch {}
+    }
+    return out;
   }
 
   function askQuestions(ticketId: string, seat: Seat, agent: string, items: string[]): number {
@@ -926,6 +939,9 @@ async function processGoal(
         }
       }
     }
+
+    const qImages = answerImages(ticket.id);
+    if (qImages.length > 0) ticketImages = [...(ticketImages ?? []), ...qImages];
 
     while (true) {
       if (d.signal?.aborted) {

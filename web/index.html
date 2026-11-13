@@ -22,6 +22,8 @@
       --border-subtle: #EEF0F4;
       --badge-bg: #EEF2F7;
       --badge-text: #475569;
+      --live-bg: #DCFCE7;
+      --live-text: #166534;
       --tab-active-bg: var(--accent);
       --tab-active-text: #FFFFFF;
       --tab-inactive-bg: #E5E5DF;
@@ -79,6 +81,8 @@
       --border-subtle: #1F232B;
       --badge-bg: #222733;
       --badge-text: #9CA3AF;
+      --live-bg: #12352A;
+      --live-text: #32D583;
       --shadow: none;
       --sidebar-bg: #13161C;
       --nav-active-bg: #2563EB;
@@ -464,6 +468,12 @@
     .status-running {
       background-color: #DCE6FB;
       color: #1E3F99;
+    }
+
+    /* Ghế đang chạy: chip Live cạnh nút Stop (anh Zon 2026-11-13) */
+    .status-live {
+      background-color: var(--live-bg);
+      color: var(--live-text);
     }
 
     .status-waiting {
@@ -960,6 +970,10 @@
     .diff-ctx .diff-text::before { content: '  '; }
     .diff-add { background-color: rgba(46, 160, 67, 0.15); }
     .diff-del { background-color: rgba(248, 81, 73, 0.15); }
+
+    .q-attach-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .q-attach-preview { display: inline-flex; align-items: center; gap: 6px; }
+    .q-attach-preview img { max-height: 64px; max-width: 160px; border-radius: 4px; border: 1px solid var(--border); }
 
     .question-item {
       display: flex;
@@ -2653,6 +2667,7 @@
           'fb.seatChanged': '{seat} seat reassigned',
           'fb.serverError': 'Server error ({status})',
           'seat.idle': 'Idle',
+          'seat.live': 'Live',
           'seat.running': 'Running',
           'seat.waiting': 'Waiting',
           'seat.task': 'Task:',
@@ -2817,6 +2832,9 @@
           'q.from': '{ticket} · {seat} ({agent})',
           'q.placeholder': 'Your answer…',
           'q.answer': 'Answer',
+          'q.attach': 'Image',
+          'q.imageAlt': 'Image for question {id}',
+          'q.removeImage': 'Remove image',
           'q.answerFor': 'Answer question {id}',
           'q.answered': 'Answered – press Resume to continue',
           'diff.open': 'Diff',
@@ -3333,12 +3351,36 @@
       }
 
       // ===== Plan 6 Task 4: câu hỏi chặn ticket =====
+      // Bản nháp trả lời + ảnh kèm theo từng câu hỏi: giữ lại qua mỗi lần vẽ lại danh sách (poll).
+      var qDrafts = {};
+      var qImages = {};
+
+      function readAnswerImage(qId, file, done) {
+        if (!file) return;
+        if (['image/png', 'image/jpeg', 'image/webp'].indexOf(file.type) < 0) {
+          showFeedback(topFeedback, tx('cmd.imageType'), true);
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          showFeedback(topFeedback, tx('cmd.imageSize'), true);
+          return;
+        }
+        var r = new FileReader();
+        r.onload = function (e) {
+          var dataUrl = String(e.target.result || '');
+          var comma = dataUrl.indexOf(',');
+          qImages[qId] = { dataUrl: dataUrl, base64: comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl, name: file.name || 'image.png' };
+          done();
+        };
+        r.readAsDataURL(file);
+      }
+
       function renderQuestions(questions) {
         var section = document.getElementById('questions-section');
         var list = document.getElementById('questions-list');
         if (!section || !list) return;
         var active = document.activeElement;
-        if (active && list.contains(active) && active.tagName === 'TEXTAREA') return;
+        if (active && list.contains(active) && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) return;
         clearChildren(list);
         if (!Array.isArray(questions) || questions.length === 0) {
           section.style.display = 'none';
@@ -3361,19 +3403,81 @@
           area.maxLength = 2000;
           area.placeholder = tx('q.placeholder');
           area.setAttribute('aria-label', tx('q.answerFor', { id: q.id }));
+          area.value = qDrafts[q.id] || '';
+          area.addEventListener('input', function () { qDrafts[q.id] = area.value; });
           item.appendChild(area);
+
+          // Ảnh kèm câu trả lời: dán (Ctrl+V) vào ô hoặc bấm 📎; xem trước + nút bỏ ảnh.
+          var bar = document.createElement('div');
+          bar.className = 'q-attach-bar';
+          var fileId = 'q-image-' + q.id;
+          var fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.id = fileId;
+          fileInput.accept = 'image/png,image/jpeg,image/webp';
+          fileInput.className = 'sr-only';
+          var attach = document.createElement('label');
+          attach.htmlFor = fileId;
+          attach.className = 'btn btn-secondary btn-sm';
+          attach.textContent = '📎 ' + tx('q.attach');
+          var preview = document.createElement('span');
+          preview.className = 'q-attach-preview';
+          function showPreview() {
+            clearChildren(preview);
+            var im = qImages[q.id];
+            if (!im) return;
+            var img = document.createElement('img');
+            img.src = im.dataUrl;
+            img.alt = tx('q.imageAlt', { id: q.id });
+            var rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'btn btn-secondary btn-sm';
+            rm.textContent = '✕';
+            rm.setAttribute('aria-label', tx('q.removeImage'));
+            rm.addEventListener('click', function () { delete qImages[q.id]; fileInput.value = ''; showPreview(); });
+            preview.appendChild(img);
+            preview.appendChild(rm);
+          }
+          fileInput.addEventListener('change', function () {
+            if (fileInput.files && fileInput.files[0]) readAnswerImage(q.id, fileInput.files[0], showPreview);
+          });
+          area.addEventListener('paste', function (e) {
+            var items = e.clipboardData && e.clipboardData.items;
+            if (!items) return;
+            for (var i = 0; i < items.length; i++) {
+              if (items[i].type && items[i].type.indexOf('image/') === 0) {
+                var f = items[i].getAsFile();
+                if (f) { e.preventDefault(); readAnswerImage(q.id, f, showPreview); break; }
+              }
+            }
+          });
+          bar.appendChild(fileInput);
+          bar.appendChild(attach);
+          bar.appendChild(preview);
+          item.appendChild(bar);
+          showPreview();
+
           var btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'btn btn-primary btn-sm';
           btn.textContent = tx('q.answer');
           btn.addEventListener('click', async function () {
             if (!area.value.trim()) return;
+            var payload = { text: area.value.trim() };
+            if (qImages[q.id]) payload.image = { base64: qImages[q.id].base64 };
+            btn.disabled = true;
             try {
-              var res = await postJson('/api/questions/' + q.id + '/answer', { text: area.value.trim() });
+              var res = await postJson('/api/questions/' + q.id + '/answer', payload);
               if (res && res.error) showFeedback(topFeedback, res.error, true);
-              else showFeedback(topFeedback, tx('q.answered'), false);
+              else {
+                delete qDrafts[q.id];
+                delete qImages[q.id];
+                showFeedback(topFeedback, tx('q.answered'), false);
+              }
             } catch (err) {
               showFeedback(topFeedback, err.message, true);
+            } finally {
+              btn.disabled = false;
             }
           });
           item.appendChild(btn);
@@ -4661,8 +4765,9 @@
           if (cardData.status === 'running') {
             if (spinnerEl) setDisplay(spinnerEl, true, 'inline-block');
             if (statusBadge) {
-              setDisplay(statusBadge, false);
-              statusBadge.textContent = '';
+              setDisplay(statusBadge, true, 'inline-block');
+              statusBadge.className = 'seat-status-badge status-live';
+              statusBadge.textContent = tx('seat.live');
             }
           } else {
             if (spinnerEl) setDisplay(spinnerEl, false);
