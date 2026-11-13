@@ -2545,7 +2545,7 @@
           'acc.export': 'Export',
           'acc.add': '+ Add Account',
           'acc.worker': 'Worker',
-          'acc.workerTitle': 'Worker {name} · accounts: {n}',
+          'acc.workerTitle': '{name} · accounts: {n}',
           'acc.slug': 'Name (a-z0-9)',
           'acc.agyPlaceholder': 'Paste {"email": "…", "refresh_token": "…"} or choose a JSON file',
           'acc.create': 'Create',
@@ -2746,6 +2746,18 @@
         });
       }
 
+      // Đổi tên hiển thị của agent (chỉ UI; backend vẫn dùng id).
+      async function renameAgent(agent) {
+        if (!agent) return;
+        var v = prompt(tx('acc.renamePrompt', { agent: agent }), agentNames[agent] || '');
+        if (v === null) return;
+        try {
+          await postJson('/api/agent', { agent: agent, name: v.trim() });
+        } catch (err) {
+          showFeedback(topFeedback, err.message, true);
+        }
+      }
+
       // Vòng tròn avatar trước tên trên thẻ ghế: bấm để chọn ảnh, chuột phải để bỏ ảnh.
       function renderSeatAvatar(cardEl, agent) {
         var wrap = cardEl.querySelector('.seat-title-wrap');
@@ -2779,6 +2791,20 @@
           wrap.insertBefore(btn, wrap.firstChild);
           wrap.appendChild(input);
         }
+        var ren = wrap.querySelector('.acc-rename-btn');
+        if (!ren) {
+          ren = document.createElement('button');
+          ren.type = 'button';
+          ren.className = 'acc-rename-btn';
+          ren.textContent = '✎';
+          ren.addEventListener('click', function () { renameAgent(ren.dataset.agent); });
+          var titleEl = wrap.querySelector('.seat-title');
+          if (titleEl) titleEl.insertAdjacentElement('afterend', ren); else wrap.appendChild(ren);
+        }
+        ren.dataset.agent = agent || '';
+        ren.hidden = !agent;
+        ren.setAttribute('aria-label', tx('acc.renameFor', { agent: agent || '' }));
+        ren.title = tx('acc.renameFor', { agent: agent || '' });
         var ver = agent ? agentAvatars[agent] : '';
         var key = (agent || '') + '|' + (ver || '');
         btn.setAttribute('aria-label', tx('seat.avatarFor', { agent: agentLabel(agent) }));
@@ -4651,15 +4677,7 @@
           renameBtn.textContent = '✎';
           renameBtn.setAttribute('aria-label', tx('acc.renameFor', { agent: acc.agent }));
           renameBtn.title = tx('acc.renameFor', { agent: acc.agent });
-          renameBtn.addEventListener('click', async function () {
-            var v = prompt(tx('acc.renamePrompt', { agent: acc.agent }), agentNames[acc.agent] || '');
-            if (v === null) return;
-            try {
-              await postJson('/api/agent', { agent: acc.agent, name: v.trim() });
-            } catch (err) {
-              showFeedback(topFeedback, err.message, true);
-            }
-          });
+          renameBtn.addEventListener('click', function () { renameAgent(acc.agent); });
           nameEl.insertAdjacentElement('afterend', renameBtn);
           var shown = items;
           var awake = shown.filter(function (a) { return a.active; });

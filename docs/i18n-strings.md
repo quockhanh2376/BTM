@@ -157,7 +157,7 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 |---|---|---|
 | acc.title | Tài khoản | Accounts |
 | acc.import / acc.export / acc.add | Nhập / Xuất / + Thêm tài khoản | Import / Export / + Add Account |
-| acc.workerTitle | Worker {name} · tài khoản: {n} | Worker {name} · accounts: {n} |
+| acc.workerTitle | {name} · tài khoản: {n} | {name} · accounts: {n} |
 | acc.worker / acc.slug | Worker / Tên (a-z0-9) | Worker / Name (a-z0-9) |
 | acc.agyPlaceholder | Dán {"email", "refresh_token"} hoặc chọn file JSON | Paste {"email": "…", "refresh_token": "…"} or choose a JSON file |
 | acc.create / acc.cancel / acc.send | Tạo / Huỷ / Gửi | Create / Cancel / Send |
