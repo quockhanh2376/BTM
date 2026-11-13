@@ -1,6 +1,6 @@
 # Đề xuất: một goal chạy trọn vòng, từ lúc giao goal đến bản release a tải về test
 
-- Ngày: 2026-11-13 · Người đề xuất: Cheki · Người quyết: anh Zon · Trạng thái: **chờ anh duyệt**
+- Ngày: 2026-11-13 · Người đề xuất: Cheki · Người quyết: anh Zon · Trạng thái: **anh đã duyệt 2026-11-13**
 
 ## Vì sao
 Anh muốn G1 chạy hết một vòng thật: giao goal → làm → kiểm tra bảo mật → đẩy code lên GitHub và cập nhật tài liệu → có bản release. Sau bước cuối, anh tải app về máy và tự test.
@@ -41,7 +41,7 @@ Goal → Plan (PM) → Build (Dev) ⇄ Verify (QC) → Audit bảo mật → Doc
 - Anh vẫn bấm Approve trên dashboard. Không push nếu anh chưa duyệt.
 
 ### D. Push lên GitHub (mới, do core làm, agent không làm)
-- Mỗi project có một repo GitHub riêng (private), ví dụ `quockhanh2376/mini-game`.
+- Mỗi project có một repo GitHub riêng. Lần test này: **`quockhanh2376/GameTest-BTM`, public** (anh chốt; anh tự xoá sau). Repo chỉ chứa code của goal, không có key hay thông tin tài khoản nào.
 - Dùng **deploy key**: một khoá SSH chỉ có quyền ghi vào đúng repo đó, không phải API key.
   - Khoá nằm ở `/var/lib/btm/keys/<project>` (user `agent`, quyền 0600). Agent không đọc được, giống file ntfy.
   - Ghim `known_hosts` của github.com.
@@ -60,11 +60,11 @@ Tải zip tag v1.0.0 từ GitHub → giải nén → npm test → npm start → 
 ```
 Lỗi hoặc góp ý thì anh giao thành goal mới (G2) ở ô Command.
 
-## Chạy lại G1 từ đầu
-G1 hiện tại đã merge mà không qua audit. Để test trọn vòng, đề xuất:
-1. Đổi tên thư mục `mini-game` cũ thành `mini-game-old` để giữ lại tham khảo.
-2. Tạo project mới `mini-game` và giao lại đúng goal G1. Lần này ghi luôn "tối đa 10 lượt" vào goal để khỏi phải hỏi lại.
-3. Chạy hết các bước A → F.
+## Chạy trọn vòng trên project mới (anh chốt)
+- Giữ nguyên project `mini-game` (G1 cũ) để tham khảo.
+- Project mới **GameTest-BTM** (key `GT`), goal G1 mới, ví dụ:
+  > Game bắn máy bay mini chạy trên trình duyệt: 1 người chơi (phím mũi tên + Space) đấu 1 bot tự động. Một file `server.js` (Node, không thư viện ngoài) phục vụ trang HTML/JS và chạy `npm start` → mở http://localhost:3000. Có điểm, máu, màn thắng/thua. Logic game tách module có test bằng `node --test`.
+- Chạy hết các bước A → F. Sau bước F anh tải zip tag `v1.0.0` về máy: `npm test`, `npm start`, mở trình duyệt chơi thử.
 
 ## Việc phải làm (sau khi anh duyệt)
 1. Thêm Worker Bruno (codex, user `btm-bruno`), ghế `audit: bruno`. Audit bắt buộc (A).
@@ -73,8 +73,8 @@ G1 hiện tại đã merge mà không qua audit. Để test trọn vòng, đề 
 4. Dashboard: giai đoạn Release hiện tag và link.
 5. Test, PR, VM xanh, rồi deploy (cần anh OK).
 
-## Anh cần chốt
-1. ~~Ai làm audit?~~ Anh đã chốt: **Bruno (codex)**.
-2. **Repo GitHub:** tên repo và để private hay public? Anh tạo repo và dán deploy key (em đưa public key cho anh).
-3. **Release:** chỉ tag + zip của GitHub (đề xuất), hay cần thêm trang GitHub Release có ghi chú? Cách thứ hai cần token API, đang bị cấm.
-4. **Chạy lại G1 từ đầu** như trên, hay chỉ chạy bù audit, docs và push cho G1 hiện tại?
+## Anh đã chốt (2026-11-13)
+1. Audit: **Bruno (codex)**, thẻ riêng.
+2. Repo: **GameTest-BTM, public**, Cheki tạo; anh tự xoá sau. Không key, không thông tin tài khoản trên repo.
+3. Release: **tag + zip của GitHub** là đủ.
+4. Goal mới trên project mới: game bắn máy bay trên trình duyệt (người chơi đấu bot), `server.js`.
