@@ -1,3 +1,4 @@
+import { createSystemReader } from './system.ts';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { AGENT_NAME_RE, AVATAR_MAX_BYTES, agentAvatarKey, agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
 import type { Socket } from 'node:net';
@@ -125,6 +126,7 @@ export function createServer(o: {
   accountExec?: AdminExec;
   loginSpawn?: SpawnFn;
 }): http.Server {
+  const readSystem = createSystemReader(o.cfg.host.data_dir);
   interface SseClient {
     res: ServerResponse;
     cleanup: () => void;
@@ -159,6 +161,12 @@ export function createServer(o: {
 
       const accountsCtx = { cfg: o.cfg, store: o.store, busy: () => Boolean(o.host.busy?.()), exec: o.accountExec, spawn: o.loginSpawn };
       if (method === 'GET' && handleAccountsGet(pathname, accountsCtx, res, sendJson)) return;
+
+      // Plan 9 Task 2: CPU/RAM/Disk/Net cho khung System Status (chỉ đọc).
+      if (method === 'GET' && pathname === '/api/system') {
+        sendJson(res, 200, readSystem());
+        return;
+      }
 
       // State snapshot route
       if (method === 'GET' && pathname === '/api/state') {

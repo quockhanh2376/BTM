@@ -73,6 +73,16 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(html).toMatch(/@media \(max-width: 900px\)[\s\S]*\.menu-btn \{ display: inline-flex; \}/);
   });
 
+  it('Plan 9 Task 2: 4 thẻ số tính từ snapshot; System Status đọc /api/system mỗi 10 s khi tab hiện', () => {
+    for (const id of ['kpi-accounts', 'kpi-running', 'kpi-goals', 'kpi-tasks', 'sys-net', 'sys-health']) expect(html).toContain(`id="${id}"`);
+    const fn = html.slice(html.indexOf('function renderKpis(state)'), html.indexOf('function fmtRate('));
+    expect(fn).toContain("g.state !== 'merged'");
+    expect(fn).toContain("x.status === 'running'");
+    expect(html).toContain("fetch('/api/system', { cache: 'no-store' })");
+    expect(html).toContain("document.visibilityState === 'hidden'");
+    expect(html).toContain('setInterval(pollSystem, 10000)');
+  });
+
   it('puts the recipient radios on the Command title row and hides the textarea label visually', () => {
     const head = html.slice(html.indexOf('<div class="cmd-head">'), html.indexOf('<div class="form-group">', html.indexOf('<div class="cmd-head">')));
     expect(head).toContain('data-i18n="cmd.title"');
