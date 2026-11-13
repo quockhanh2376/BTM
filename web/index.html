@@ -1683,19 +1683,6 @@
     .cmd-send-icon { color: var(--accent); margin-left: auto; }
     .cmd-send-icon:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    .cmd-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .cmd-note {
-      font-size: 12px;
-      color: var(--text-muted);
-      margin: 0;
-    }
-
     .queue-container {
       min-width: 0;
     }
@@ -2078,9 +2065,6 @@
         </div>
       </div>
 
-      <div class="cmd-actions">
-        <p class="cmd-note" id="cmd-note" data-i18n="cmd.hint">PM: starts a session with this goal · Dev/QC: queued after the current turn</p>
-      </div>
       <div id="cmd-feedback" class="action-feedback" style="display: none;"></div>
       </div>
 
@@ -2550,10 +2534,6 @@
           'cmd.preview': 'Attached image preview',
           'cmd.removeImage': 'Remove image',
           'cmd.send': 'Send',
-          'cmd.hint': 'PM: starts a session with this goal · Dev/QC: queued after the current turn',
-          'cmd.hintPm': 'PM: starts a session with this goal',
-          'cmd.hintSeat': '{seat}: queued after the current turn',
-          'cmd.hintTeam': 'Team: starts a session with this note · attach or paste an image',
           'cmd.imageType': 'PNG, JPEG or WebP only',
           'cmd.imageSize': 'Image over 5 MB',
           'cmd.empty': 'Enter a command or goal',
@@ -3933,7 +3913,6 @@
       var imagePreview = document.getElementById('image-preview');
       var imagePreviewName = document.getElementById('image-preview-name');
       var removeImageBtn = document.getElementById('remove-image-btn');
-      var cmdNote = document.getElementById('cmd-note');
 
       var imageToken = 0;
       var reader = null;
@@ -4000,15 +3979,6 @@
         var checkedRadio = document.querySelector('input[name="cmd-to"]:checked');
         var to = checkedRadio ? checkedRadio.value : 'team';
         setDisplay(attachImageGroup, to === 'team', 'flex');
-        if (cmdNote) {
-          if (to === 'team') {
-            cmdNote.textContent = tx('cmd.hintTeam');
-          } else if (to === 'pm') {
-            cmdNote.textContent = tx('cmd.hintPm');
-          } else {
-            cmdNote.textContent = tx('cmd.hintSeat', { seat: formatSeatLabel(to) });
-          }
-        }
       }
 
       if (recipientRadios) {

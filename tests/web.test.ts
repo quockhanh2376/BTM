@@ -32,7 +32,7 @@ describe('Web Dashboard (web/index.html)', () => {
   });
 
   it('puts the attach and Send buttons inside the command box', () => {
-    const box = html.slice(html.indexOf('<div class="cmd-composer">'), html.indexOf('class="cmd-actions"'));
+    const box = html.slice(html.indexOf('<div class="cmd-composer">'), html.indexOf('id="cmd-feedback"'));
     expect(box).toContain('id="cmd-text"');
     expect(box).toContain('id="attach-image-label"');
     expect(box).toContain('id="cmd-send-btn"');
@@ -44,6 +44,7 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(head).toContain('data-i18n="cmd.title"');
     expect(head).toContain('id="recipient-radios"');
     expect(html).toMatch(/<label for="cmd-text" class="sr-only"/);
+    expect(html).not.toContain('id="cmd-note"');
   });
 
   it('theme toggle uses aria-label, SVG icon, and no emoji', () => {
@@ -245,7 +246,6 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(html).toContain('Returned');
     expect(html).toContain('Log');
     expect(html).toContain('Send');
-    expect(html).toContain('PM: starts a session with this goal · Dev/QC: queued after the current turn');
     expect(html).toContain('Queue');
   });
 

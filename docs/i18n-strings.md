@@ -144,10 +144,6 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | cmd.attach | Đính kèm ảnh | Attach image |
 | cmd.removeImage | Bỏ ảnh | Remove image |
 | cmd.send | Gửi lệnh | Send |
-| cmd.hint | Lệnh cho PM = mở phiên với mục tiêu này; lệnh cho Dev/QC xếp hàng sau lượt đang chạy | PM: starts a session with this goal · Dev/QC: queued after the current turn |
-| cmd.hintPm | Lệnh cho PM = mở phiên với mục tiêu này | PM: starts a session with this goal |
-| cmd.hintSeat | Lệnh cho {seat} xếp hàng sau lượt đang chạy | {seat}: queued after the current turn |
-| cmd.hintTeam | Gửi Cả team = mở phiên với ghi chú này; có thể đính kèm hoặc dán ảnh | Team: starts a session with this note · attach or paste an image |
 | cmd.imageType | Chỉ chấp nhận ảnh PNG, JPEG hoặc WebP | PNG, JPEG or WebP only |
 | cmd.imageSize | Ảnh vượt quá giới hạn 5 MB | Image over 5 MB |
 | cmd.empty | Vui lòng nhập nội dung lệnh hoặc mục tiêu | Enter a command or goal |
