@@ -31,6 +31,14 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(html).toContain('id="conn-banner"');
   });
 
+  it('puts the attach and Send buttons inside the command box', () => {
+    const box = html.slice(html.indexOf('<div class="cmd-composer">'), html.indexOf('class="cmd-actions"'));
+    expect(box).toContain('id="cmd-text"');
+    expect(box).toContain('id="attach-image-label"');
+    expect(box).toContain('id="cmd-send-btn"');
+    expect(box).toMatch(/id="cmd-send-btn"[^>]*data-i18n-title="cmd\.send"/);
+  });
+
   it('theme toggle uses aria-label, SVG icon, and no emoji', () => {
     expect(html).toContain('aria-label="Toggle light/dark"');
     expect(html).toContain('<svg');
