@@ -5,13 +5,15 @@ import type { Config, Seat } from '../config.ts';
 import { buildArgv } from './argv.ts';
 import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerKillAll, workerReset, wrapForWorker } from '../isolation/worker.ts';
-import { importTurn, isIsolated, readWorkerOut, STATUS_FILE, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
+import { agyActiveSince, importTurn, isIsolated, readWorkerOut, STATUS_FILE, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
 
 export interface ProcResult {
   exitCode: number | null;
   timedOut: boolean;
   /** Bị dừng vì không có output trong idleTimeoutMs (cũng đặt timedOut). */
   idleTimedOut?: boolean;
+  /** Bị dừng vì agent không ra bước mới trong progress.idleMs (cũng đặt timedOut). */
+  noProgress?: boolean;
   durationMs: number;
   output: string;
 }
@@ -74,6 +76,8 @@ export function runProcess(
     onKill?: () => void;
     /** Plan 6 Task 6: không có byte output nào trong khoảng này → giết như hết giờ. 0/undefined = tắt. */
     idleTimeoutMs?: number;
+    /** Kế hoạch 8: đo tiến độ bên ngoài output (agy -p không in gì tới khi xong). activeSince(t) = có bước mới sau t. */
+    progress?: { idleMs: number; checkEveryMs: number; activeSince: (sinceMs: number) => boolean };
   }
 ): Promise<ProcResult> {
   return new Promise((resolve, reject) => {
@@ -102,6 +106,8 @@ export function runProcess(
 
     let timedOut = false;
     let idleTimedOut = false;
+    let noProgress = false;
+    let progressTimer: NodeJS.Timeout | null = null;
     let idleTimer: NodeJS.Timeout | null = null;
     let aborted = false;
     let killInitiated = false;
@@ -160,6 +166,10 @@ export function runProcess(
         clearTimeout(idleTimer);
         idleTimer = null;
       }
+      if (progressTimer) {
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
       if (groupCheckInterval) {
         clearInterval(groupCheckInterval);
         groupCheckInterval = null;
@@ -214,6 +224,7 @@ export function runProcess(
           exitCode: childCloseCode,
           timedOut,
           ...(idleTimedOut ? { idleTimedOut: true } : {}),
+          ...(noProgress ? { noProgress: true } : {}),
           durationMs,
           output,
         });
@@ -326,6 +337,23 @@ export function runProcess(
     };
     armIdle();
 
+    if (o.progress && o.progress.idleMs > 0) {
+      const p = o.progress;
+      let lastActive = startTime;
+      progressTimer = setInterval(() => {
+        if (resolved || killInitiated) return;
+        let active = false;
+        try { active = p.activeSince(lastActive); } catch { active = false; }
+        const now = Date.now();
+        if (active) lastActive = now;
+        else if (now - lastActive >= p.idleMs) {
+          timedOut = true;
+          noProgress = true;
+          killAll();
+        }
+      }, p.checkEveryMs);
+    }
+
     if (o.signal) {
       if (o.signal.aborted) {
         abortListener();
@@ -403,6 +431,8 @@ export interface Isolation {
   sync: (cfg: Config, agentId: string, checkout: string) => void;
   importTurn: (cfg: Config, agentId: string, checkout: string) => TurnImport;
   readOut: (cfg: Config, agentId: string) => string;
+  /** Kế hoạch 8: agy có ghi bước mới (thư mục brain) sau sinceMs không. */
+  agyActiveSince?: (cfg: Config, agentId: string, sinceMs: number) => boolean;
 }
 
 export function makeRunner(
@@ -415,6 +445,7 @@ export function makeRunner(
     sync: (c, a, k) => syncWorkspace(c, a, k),
     importTurn: (c, a, k) => importTurn(c, a, k),
     readOut: (c, a) => readWorkerOut(c, a),
+    agyActiveSince: (c, a, s) => agyActiveSince(c, a, s),
   },
   /** Store: model/effort chọn trên dashboard ghi đè config. */
   settings?: { getSetting(key: string): string | null } | null
@@ -432,7 +463,10 @@ export function makeRunner(
       throw new Error(`Agent '${agentId}' not found in config`);
     }
 
-    const timeoutMin = cfg.turn.timeout_minutes[seat];
+    // Kế hoạch 8: agy đo tiến độ bằng bước mới thay cho giờ cố định: còn ra bước thì chạy tới max_minutes,
+    // im idle_minutes thì cắt. Chỉ khi cách ly (đọc được thư mục agy qua worker).
+    const agyProgress = agent.tool === 'antigravity-cli' && isIsolated(cfg) && isolation.agyActiveSince ? cfg.turn.agy_progress : undefined;
+    const timeoutMin = agyProgress ? agyProgress.max_minutes : cfg.turn.timeout_minutes[seat];
     const timeoutMs = timeoutMin * 60 * 1000;
     const allow = cfg.runner.agy_allow_commands;
 
@@ -481,12 +515,20 @@ export function makeRunner(
         signal: options?.signal ?? defaultSignal,
         onKill: isolated ? () => killAll(cfg, w) : undefined,
         idleTimeoutMs: (cfg.turn.idle_minutes?.[agent.tool] ?? 0) * 60 * 1000,
+        ...(agyProgress ? {
+          progress: {
+            idleMs: agyProgress.idle_minutes * 60 * 1000,
+            checkEveryMs: 60 * 1000,
+            activeSince: (since: number) => isolation.agyActiveSince!(cfg, w, since),
+          },
+        } : {}),
       });
     } finally {
       killAll(cfg, w);
     }
     let lastMessage = '';
     if (result.idleTimedOut) result = { ...result, output: `${result.output}\n[btm] idle_timeout` };
+    if (result.noProgress) result = { ...result, output: `${result.output}\n[btm] no_progress` };
     if (isolated) {
       try {
         const imp = isolation.importTurn(cfg, w, cwd);

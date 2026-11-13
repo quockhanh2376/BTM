@@ -484,3 +484,54 @@ describe('P6-T6: phát hiện lượt treo (không ra output)', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe('Kế hoạch 8: agy cắt theo tiến độ (bước mới) thay vì giờ cố định', () => {
+  it.skipIf(process.platform === 'win32')('không có bước mới trong idleMs → giết, noProgress; còn bước mới → chạy tới khi xong', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'btm-prog-'));
+    const stuck = await runProcess(['node', '-e', 'setTimeout(() => {}, 5000)'], {
+      cwd: dir, timeoutMs: 10_000, logFile: join(dir, 'a.log'),
+      progress: { idleMs: 300, checkEveryMs: 50, activeSince: () => false },
+    });
+    expect(stuck.timedOut).toBe(true);
+    expect(stuck.noProgress).toBe(true);
+    expect(stuck.durationMs).toBeLessThan(4000);
+    const busy = await runProcess(['node', '-e', 'setTimeout(() => {}, 900)'], {
+      cwd: dir, timeoutMs: 10_000, logFile: join(dir, 'b.log'),
+      progress: { idleMs: 300, checkEveryMs: 50, activeSince: () => true },
+    });
+    expect(busy.timedOut).toBe(false);
+    expect(busy.noProgress).toBeUndefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('runner: agy + cách ly + turn.agy_progress → hạn = max_minutes, có progress; tắt hoặc công cụ khác → như cũ', async () => {
+    const base = loadConfig('btm.config.yaml');
+    expect(base.turn.agy_progress).toBeUndefined();
+    const iso = {
+      reset: () => {}, sync: () => {},
+      importTurn: () => ({ ok: true as const, changed: false }),
+      readOut: () => '',
+      agyActiveSince: (_c: unknown, a: string, since: number) => { calls.push([a, since]); return true; },
+    };
+    const calls: Array<[string, number]> = [];
+    const seen: any[] = [];
+    const proc = (async (argv: string[], o: any) => { seen.push({ argv, o }); return { exitCode: 0, timedOut: false, durationMs: 1, output: '' }; }) as any;
+    const on = { ...base, host: { ...base.host, worker_prefix: 'btm-', work_root: '/srv/btm-work' }, turn: { ...base.turn, agy_progress: { idle_minutes: 5, max_minutes: 60 } } } as any;
+    const dir = mkdtempSync(join(tmpdir(), 'btm-prog2-'));
+    await makeRunner(on, undefined, proc, () => {}, iso)('dev', 'jacky', 'x', dir, join(dir, 'a.log'));
+    expect(seen[0].o.timeoutMs).toBe(60 * 60 * 1000);
+    expect(seen[0].o.progress.idleMs).toBe(5 * 60 * 1000);
+    expect(seen[0].argv.join(' ')).toContain('--print-timeout 60m');
+    expect(seen[0].o.progress.activeSince(123)).toBe(true);
+    expect(calls).toEqual([['jacky', 123]]);
+    await makeRunner(on, undefined, proc, () => {}, iso)('qc', 'jenny', 'x', dir, join(dir, 'b.log'));
+    expect(seen[1].o.progress).toBeUndefined();
+    expect(seen[1].o.timeoutMs).toBe(base.turn.timeout_minutes.qc * 60 * 1000);
+    const off = { ...on, turn: { ...base.turn } };
+    await makeRunner(off, undefined, proc, () => {}, iso)('dev', 'jacky', 'x', dir, join(dir, 'c.log'));
+    expect(seen[2].o.progress).toBeUndefined();
+    expect(seen[2].o.timeoutMs).toBe(base.turn.timeout_minutes.dev * 60 * 1000);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+

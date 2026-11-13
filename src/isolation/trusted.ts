@@ -112,6 +112,21 @@ export function readWorkerStatus(cfg: Config, agentId: string, checkout: string,
   }
 }
 
+// Kế hoạch 8: agy ghi mỗi bước vào ~/.gemini/antigravity-cli/brain/<hội thoại>/… → có file mới sau sinceMs = còn làm.
+// Chỉ dùng find (tên file), không đọc nội dung hội thoại.
+export function agyActiveSince(cfg: Config, agentId: string, sinceMs: number, exec: ExecFn = execFileSync): boolean {
+  const user = workerUser(cfg, agentId);
+  if (!user) return false;
+  const home = `/home/${user}`;
+  try {
+    const out = runWorker(cfg, agentId, home, ['find', `${home}/.gemini/antigravity-cli/brain`, '-type', 'f',
+      '-newermt', `@${Math.floor(sinceMs / 1000)}`, '-print', '-quit'], exec, 10_000);
+    return out.toString('utf8').trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function readWorkerOut(cfg: Config, agentId: string, exec: ExecFn = execFileSync): string {
   try {
     const f = workerOutFile(cfg, agentId);
