@@ -83,6 +83,17 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(html).toContain('setInterval(pollSystem, 10000)');
   });
 
+  it('thẻ ghế có Last run (ticket · thời gian · kết quả, có màu) và On ticket (tổng thời gian · số lượt)', () => {
+    for (const seat of ['pm', 'dev', 'qc', 'audit']) {
+      expect(html).toContain(`id="${seat}-lastrun"`);
+      expect(html).toContain(`id="${seat}-ontask"`);
+    }
+    const fn = html.slice(html.indexOf('function renderSeatTiming('), html.indexOf('function tickSeatElapsed()'));
+    expect(fn).toContain('formatElapsed(lr.durationMs || 0)');
+    expect(fn).toContain("setAttribute('data-result'");
+    expect(fn).not.toContain('innerHTML');
+  });
+
   it('puts the recipient radios on the Command title row and hides the textarea label visually', () => {
     const head = html.slice(html.indexOf('<div class="cmd-head">'), html.indexOf('<div class="form-group">', html.indexOf('<div class="cmd-head">')));
     expect(head).toContain('data-i18n="cmd.title"');

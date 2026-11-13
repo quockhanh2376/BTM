@@ -259,3 +259,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | head.refresh / head.bell / head.help / head.helpMsg / head.lang / head.viSoon / head.owner | Nút header | Refresh energy / Things waiting for you / Help / … / Language / Tiếng Việt: coming soon / Owner |
 | sys.title / sys.healthy / sys.busy | Trạng thái máy | System status / Healthy / Busy |
 | kpi.label / kpi.accounts / kpi.running / kpi.goals / kpi.tasks | Thẻ số | Summary / Total accounts / Running instances / Active goals / Total tasks |
+| seat.lastRun / seat.onTask / seat.runs / seat.run1 | Lượt gần nhất / Trên ticket / {n} lượt / 1 lượt | Last run: / On ticket: / {n} runs / 1 run |

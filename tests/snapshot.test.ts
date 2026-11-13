@@ -740,3 +740,27 @@ describe('P6-T7: snapshot đọc .btm-status của ghế đang chạy (không c�
     store.close();
   });
 });
+
+describe('thẻ ghế: Last run / On ticket', () => {
+  it('lượt xong gần nhất + tổng thời gian trên ticket; lượt đang chạy không cộng', () => {
+    const store = openStore(':memory:');
+    const cfg = loadConfig('btm.config.yaml');
+    const repo = '/tmp/proj-timing';
+    store.setActiveProject(repo);
+    const sid = store.createSession(['G'], repo);
+    const t1 = store.startTurn(sid, 'dev', 'jacky', 'GT-0001');
+    store.endTurn(t1, 'timeout', 'timeout');
+    const t2 = store.startTurn(sid, 'dev', 'jacky', 'GT-0001');
+    store.endTurn(t2, 'ok');
+    const snap = buildSnapshot(store, cfg);
+    const dev = snap.seats.find((x) => x.seat === 'dev')!;
+    expect(dev.lastRun).toMatchObject({ task: 'GT-0001', result: 'ok' });
+    expect(dev.onTask).toMatchObject({ task: 'GT-0001', runs: 2 });
+    expect(dev.onTask!.totalMs).toBeGreaterThanOrEqual(0);
+    const pm = snap.seats.find((x) => x.seat === 'pm')!;
+    expect(pm.lastRun ?? null).toBeNull();
+    expect(pm.onTask ?? null).toBeNull();
+    store.close();
+  });
+});
+

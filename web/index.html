@@ -2085,6 +2085,10 @@
     .sys-dot.bad { background: var(--meter-red); }
     .sys-health { font-size: 11px; font-weight: 600; margin-left: auto; color: var(--text-muted); }
     .sys-net { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; gap: 6px; }
+    /* Khung thời gian trên thẻ ghế (anh Zon 2026-11-13) */
+    .seat-run[data-result="ok"] { color: var(--meter-green); }
+    .seat-run[data-result="warn"] { color: var(--meter-yellow); }
+    .seat-run[data-result="bad"] { color: var(--error-text); }
   </style>
 </head>
 <body>
@@ -2326,6 +2330,8 @@
           <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="pm-task">—</span></div>
           <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="pm-since">—</span></div>
           <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="pm-turns">0</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.lastRun">Last run:</span><span id="pm-lastrun" class="seat-run">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.onTask">On ticket:</span><span id="pm-ontask">—</span></div>
         </div>
         <div class="seat-swap-row">
           <label for="pm-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
@@ -2382,6 +2388,8 @@
           <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="dev-task">—</span></div>
           <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="dev-since">—</span></div>
           <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="dev-turns">0</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.lastRun">Last run:</span><span id="dev-lastrun" class="seat-run">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.onTask">On ticket:</span><span id="dev-ontask">—</span></div>
         </div>
         <div class="seat-swap-row">
           <label for="dev-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
@@ -2438,6 +2446,8 @@
           <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="qc-task">—</span></div>
           <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="qc-since">—</span></div>
           <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="qc-turns">0</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.lastRun">Last run:</span><span id="qc-lastrun" class="seat-run">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.onTask">On ticket:</span><span id="qc-ontask">—</span></div>
         </div>
         <div class="seat-swap-row">
           <label for="qc-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
@@ -2494,6 +2504,8 @@
           <div class="seat-info-item"><span data-i18n="seat.task">Task:</span><span id="audit-task">—</span></div>
           <div class="seat-info-item"><span data-i18n="seat.started">Started:</span><span id="audit-since">—</span></div>
           <div class="seat-info-item"><span data-i18n="seat.turns">Turns:</span><span id="audit-turns">0</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.lastRun">Last run:</span><span id="audit-lastrun" class="seat-run">—</span></div>
+          <div class="seat-info-item"><span data-i18n="seat.onTask">On ticket:</span><span id="audit-ontask">—</span></div>
         </div>
         <div class="seat-swap-row">
           <label for="audit-agent-select" class="seat-swap-label" data-i18n="seat.agent">Seated agent</label>
@@ -2646,6 +2658,10 @@
           'seat.task': 'Task:',
           'seat.started': 'Started:',
           'seat.turns': 'Turns:',
+          'seat.lastRun': 'Last run:',
+          'seat.onTask': 'On ticket:',
+          'seat.runs': '{n} runs',
+          'seat.run1': '1 run',
           'seat.agent': 'Seated agent',
           'seat.lastLog': 'Last log:',
           'seat.also': 'also {seats}',
@@ -4541,6 +4557,20 @@
         return (h > 0 ? h + ':' : '') + mm + ':' + (sec < 10 ? '0' : '') + sec;
       }
 
+      // Lượt xong gần nhất (ticket · thời gian · kết quả) và tổng thời gian trên ticket đang/vừa làm.
+      function renderSeatTiming(seatKey, cardData) {
+        var lastEl = document.getElementById(seatKey + '-lastrun');
+        var onEl = document.getElementById(seatKey + '-ontask');
+        var lr = cardData.lastRun;
+        if (lastEl) {
+          lastEl.textContent = lr ? [lr.task || '—', formatElapsed(lr.durationMs || 0), String(lr.result || '')].join(' · ') : '—';
+          var r = lr ? String(lr.result || '') : '';
+          lastEl.setAttribute('data-result', r === 'ok' ? 'ok' : (/^(timeout|no_progress|aborted|usage_limit_hit|idle_timeout)$/.test(r) ? 'warn' : (r ? 'bad' : '')));
+        }
+        var ot = cardData.onTask;
+        if (onEl) onEl.textContent = ot && ot.runs > 0 ? ot.task + ' · ' + formatElapsed(ot.totalMs || 0) + ' · ' + (ot.runs === 1 ? tx('seat.run1') : tx('seat.runs', { n: ot.runs })) : '—';
+      }
+
       function tickSeatElapsed() {
         document.querySelectorAll('.seat-elapsed').forEach(function (el) {
           var since = el.dataset.since ? Date.parse(el.dataset.since) : NaN;
@@ -4613,6 +4643,7 @@
           var taskEl = document.getElementById(seatKey + '-task');
           var sinceEl = document.getElementById(seatKey + '-since');
           var turnsEl = document.getElementById(seatKey + '-turns');
+          renderSeatTiming(seatKey, cardData);
           var lastLineEl = document.getElementById(seatKey + '-last-line');
 
           if (titleEl) titleEl.textContent = formatAgentDisplayName(cardData.agent, seatKey);
