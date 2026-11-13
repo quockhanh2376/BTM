@@ -17,6 +17,7 @@ import {
 import { acquireLock } from '../cli.ts';
 import { inboxPath } from './inbox.ts';
 import { approveGoal as approveGoalFn, type ApproveGoalResult } from '../ticket/goal.ts';
+import { publishGoal, type ReleaseInfo } from '../release/publish.ts';
 import { createMonitor } from '../energy/monitor.ts';
 import { readEnergy } from '../energy/quota.ts';
 import { checkLogin } from '../energy/login.ts';
@@ -32,6 +33,7 @@ export interface HostDeps {
   runSession?: typeof runSession;
   resumeSession?: typeof resumeSession;
   approveGoal?: typeof approveGoalFn;
+  publishGoal?: typeof publishGoal;
   monitor?: ReturnType<typeof createMonitor>;
 }
 
@@ -1067,13 +1069,35 @@ export function createHost(d: HostDeps): HostApi & {
       return { ok: false, code: 'not_ready', message: 'No active project' };
     }
     const fn = d.approveGoal ?? approveGoalFn;
-    return fn(d.store, activeProject, d.cfg, n);
+    const res = fn(d.store, activeProject, d.cfg, n);
+    if (res.ok) void pushRelease(activeProject, n);
+    return res;
+  }
+
+  // Decision 0006: push main + tag lên GitHub chạy nền sau khi merge; lỗi thì anh bấm Push lại.
+  async function pushRelease(project: string, n: number): Promise<ReleaseInfo | null> {
+    const publish = d.publishGoal ?? publishGoal;
+    let info: ReleaseInfo | null = null;
+    try {
+      info = await publish(d.store, project, d.cfg, n);
+    } catch (err) {
+      console.error(`[release] G${n}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (info) void notify(d.cfg, { kind: info.ok ? 'released' : 'release_failed', project, notes: [info.ok ? info.tag : (info.error ?? 'push_failed')] });
+    return info;
+  }
+
+  async function retryRelease(n: number): Promise<ReleaseInfo | null> {
+    const project = d.store.getActiveProject();
+    if (!project || busy()) return null;
+    return pushRelease(project, n);
   }
 
   return {
     start,
     approve,
     approveGoal,
+    retryRelease,
     resume,
     stop,
     command,

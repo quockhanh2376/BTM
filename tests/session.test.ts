@@ -309,6 +309,34 @@ describe('Goal & Ticket Session Coordinator', () => {
     store.close();
   });
 
+  it('release.require_audit: thiếu ghế audit thì dừng audit_seat_missing (không bỏ qua audit); PM được dặn ticket docs', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
+    const base = loadConfig('btm.config.yaml');
+    const { deps, store } = makeDeps(repo, {
+      seats: { ...base.seats, audit: '' },
+      release: { require_audit: true, docs_ticket: true, github: {} },
+    } as Partial<Config>);
+    const { runner } = createFakeRunner([
+      (_seat, _agent, prompt, cwd) => {
+        expect(prompt).toContain('ticket tài liệu');
+        writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1, title: 'Only ticket' });
+      },
+      (_seat, agent, _prompt, cwd) => {
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+        writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+      },
+      () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+    ]);
+    deps.runner = runner;
+
+    const outcome = await runSession(deps, ['Build feature'], { approved: true });
+
+    expect(outcome.status).toBe('needs_owner');
+    expect(outcome.notes).toContain('audit_seat_missing');
+    expect(store.getGoal(repo, 1)?.state).toBe('qc_done');
+    expect(existsSync(join(repo, 'team', 'goals', 'G1.md'))).toBe(false);
+  });
+
   it('case 1: goal mới tạo branch goal/G1-<slug>, PM ghi 2 ticket -> Dev/QC chạy theo number, goal qc_done, có team/goals/G1.md, mọi commit started bằng GTM- hoặc G1:', async () => {
     const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
     const { deps, store } = makeDeps(repo);

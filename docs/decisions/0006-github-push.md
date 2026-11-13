@@ -12,3 +12,13 @@
 ## Giới hạn
 - Ai có file khoá thì ghi được vào repo đó (chỉ repo đó). Xoá repo hoặc gỡ deploy key trên GitHub là thu hồi.
 - Nội dung push là code do agent viết: audit (Bruno) phải pass trước khi Approve, để không đẩy secret lên repo public.
+
+## Cấu hình (btm.config.yaml trên VM)
+```yaml
+release:
+  require_audit: true      # thiếu ghế audit → needs_owner audit_seat_missing (không bỏ qua)
+  docs_ticket: true        # PM luôn thêm ticket cuối: README, CHANGELOG, version
+  github:
+    GT: quockhanh2376/GameTest-BTM   # project key → owner/repo
+```
+Push chạy nền sau Approve trên dashboard (`btm goal approve` ở CLI chỉ merge, không push). Dashboard hiện link tag hoặc lỗi + nút Push lại (`POST /api/goal/push`).

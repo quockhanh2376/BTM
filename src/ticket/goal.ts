@@ -95,6 +95,9 @@ export function approveGoal(
 
     const auditAgent = (effectiveSeats(cfg, store, repo).audit || cfg.seats?.audit || '').trim();
     const hasAudit = auditAgent.length > 0;
+    if (!hasAudit && cfg.release?.require_audit) {
+      return { ok: false, code: 'not_ready', message: 'audit_seat_missing' };
+    }
     const isReady = hasAudit
       ? goal.state === 'audit_passed'
       : (goal.state === 'qc_done' || goal.state === 'audit_passed');

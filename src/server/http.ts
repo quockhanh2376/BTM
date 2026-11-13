@@ -18,6 +18,7 @@ import type { AdminExec } from '../isolation/account-admin.ts';
 import type { SpawnFn } from '../agents/login-flow.ts';
 import type { createMonitor } from '../energy/monitor.ts';
 import { approveGoal, type ApproveGoalResult } from '../ticket/goal.ts';
+import type { ReleaseInfo } from '../release/publish.ts';
 
 export interface HostApi {
   start(
@@ -44,6 +45,7 @@ export interface HostApi {
     agent: string
   ): { ok: boolean; status?: number; error?: string };
   approveGoal?(n: number): ApproveGoalResult | Promise<ApproveGoalResult>;
+  retryRelease?(n: number): Promise<ReleaseInfo | null>;
 }
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
@@ -442,6 +444,30 @@ export function createServer(o: {
           } else {
             sendJson(res, 409, { ok: false, code: resGoal.code, message: resGoal.message, error: resGoal.message });
           }
+          return;
+        }
+
+        // Decision 0006: Push lại main + tag lên GitHub khi lần push sau Approve bị lỗi.
+        if (pathname === '/api/goal/push') {
+          const parsed = z.object({ goal: z.string().regex(/^G?(\d+)$/i) }).strict().safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: 'Invalid goal format, expected G<n>' });
+            return;
+          }
+          if (o.host.busy?.()) {
+            sendJson(res, 409, { error: 'Session running' });
+            return;
+          }
+          if (!o.host.retryRelease) {
+            sendJson(res, 501, { error: 'Not implemented' });
+            return;
+          }
+          const info = await o.host.retryRelease(parseInt(parsed.data.goal.replace(/^G/i, ''), 10));
+          if (!info) {
+            sendJson(res, 409, { error: 'No GitHub release configured for this project' });
+            return;
+          }
+          sendJson(res, info.ok ? 200 : 502, info);
           return;
         }
 

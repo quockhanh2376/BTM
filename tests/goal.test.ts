@@ -215,6 +215,16 @@ describe('approveGoal', () => {
     }
   });
 
+  it('release.require_audit mà không có seats.audit → không merge (audit_seat_missing)', () => {
+    const repo = tmpRepo({ 'README.md': '# Repo' });
+    const cfg = { ...makeTestConfig(dataDir, { auditSeat: '' }), release: { require_audit: true, docs_ticket: false, github: {} } } as Config;
+    const created = store.createGoal(repo, 'Can audit');
+    store.setGoalState(repo, created.n, 'qc_done', 'jenny');
+    const res = approveGoal(store, repo, cfg, created.n);
+    expect(res).toMatchObject({ ok: false, code: 'not_ready', message: 'audit_seat_missing' });
+    expect(store.getGoal(repo, created.n)?.state).toBe('qc_done');
+  });
+
   it('không có seats.audit và goal qc_done → approved và merged', () => {
     const repo = tmpRepo({ 'README.md': '# Repo' });
     const cfg = makeTestConfig(dataDir, { auditSeat: '' });
