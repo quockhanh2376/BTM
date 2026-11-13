@@ -162,7 +162,7 @@ describe('Runner Argv', () => {
         '-p',
         'review task',
         '--allowedTools',
-        'Read',
+        'Read,Grep,Glob',
       ]);
     });
   });
@@ -180,7 +180,7 @@ describe('P5-T2: model + effort', () => {
   const base = { seat: 'dev' as const, timeoutMin: 5, allow: ['npm test'], outFile: '/tmp/o' };
   it('claude: --model/--effort trước -p; không model → chỉ effort', () => {
     expect(buildArgv('claude-code', 'x', { ...base, model: 'opus', effort: 'high' }).slice(0, 6)).toEqual(['claude', '--model', 'opus', '--effort', 'high', '-p']);
-    expect(buildArgv('claude-code', 'x', { ...base, seat: 'qc', effort: 'medium' })).toEqual(['claude', '--effort', 'medium', '-p', 'x', '--allowedTools', 'Read']);
+    expect(buildArgv('claude-code', 'x', { ...base, seat: 'qc', effort: 'medium' })).toEqual(['claude', '--effort', 'medium', '-p', 'x', '--allowedTools', 'Read,Grep,Glob']);
   });
   it('codex: -m + model_reasoning_effort (Codex 0.167 có cả xhigh/max)', () => {
     const a = buildArgv('codex-cli', 'x', { ...base, model: 'gpt-6-luna', effort: 'max' });
@@ -207,3 +207,21 @@ describe('P5-T2: agentModel/agentEffort', () => {
     expect(agentEffort(cfg, store({ 'agent_effort:jenny': 'ultra' }), 'jenny')).toBe('medium');
   });
 });
+
+describe('Plan 8 Task 1: ghế Audit chỉ đọc', () => {
+  const o = { seat: 'audit' as const, timeoutMin: 20, allow: ['npm test'], outFile: '/tmp/out.txt' };
+  it('codex ở ghế audit chạy sandbox read-only', () => {
+    const argv = buildArgv('codex-cli', 'p', o);
+    expect(argv).toContain('read-only');
+    expect(argv).not.toContain('workspace-write');
+  });
+  it('claude ở ghế audit chỉ có Read/Grep/Glob, không acceptEdits/Edit/Write/Bash', () => {
+    const argv = buildArgv('claude-code', 'p', o);
+    expect(argv).toEqual(['claude', '-p', 'p', '--allowedTools', 'Read,Grep,Glob']);
+  });
+  it('ghế dev vẫn được ghi', () => {
+    expect(buildArgv('codex-cli', 'p', { ...o, seat: 'dev' })).toContain('workspace-write');
+    expect(buildArgv('claude-code', 'p', { ...o, seat: 'dev' })).toContain('acceptEdits');
+  });
+});
+

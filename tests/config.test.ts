@@ -40,7 +40,7 @@ describe('Config', () => {
 
   it('P5-T1: agent có model + effort; mặc định effort medium; model/effort lạ hoặc id không hợp user Linux → lỗi', () => {
     const ok = loadConfig(writeTestConfig((raw) => {
-      raw.agents.kai = { tool: 'antigravity-cli', command: 'agy', can_sit: ['audit'], model: 'gemini-3.8-flash-high' };
+      raw.agents.kai = { tool: 'antigravity-cli', command: 'agy', can_sit: ['dev'], model: 'gemini-3.8-flash-high' };
     }));
     expect(ok.agents.kai.model).toBe('gemini-3.8-flash-high');
     expect(ok.agents.kai.effort).toBeUndefined(); // mặc định medium ở agentEffort (Task 2)
@@ -54,6 +54,14 @@ describe('Config', () => {
     }))).toThrow(ConfigError);
   });
 
+  it('Plan 8 Task 1: agy (không có chế độ chỉ đọc) không được ngồi QC hay Audit', () => {
+    for (const seat of ['qc', 'audit']) {
+      expect(() => loadConfig(writeTestConfig((raw) => {
+        raw.agents.kai = { tool: 'antigravity-cli', command: 'agy', can_sit: ['dev', seat] };
+      }))).toThrow(/no read-only mode/);
+    }
+  });
+
   it('rejects auto_schedule true', () => {
     const configFile = writeTestConfig((raw) => {
       raw.session.auto_schedule = true;
@@ -64,8 +72,8 @@ describe('Config', () => {
   it('loads config with audit seat when agent can sit in audit', () => {
     const configFile = writeTestConfig((raw) => {
       raw.agents.kai = {
-        tool: 'antigravity-cli',
-        command: 'agy',
+        tool: 'codex-cli',
+        command: 'codex',
         can_sit: ['audit'],
       };
       raw.seats.audit = 'kai';
