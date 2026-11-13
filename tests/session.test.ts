@@ -522,6 +522,12 @@ describe('Goal & Ticket Session Coordinator', () => {
     expect(outcome.status).toBe('out_of_turns');
     expect(qcCalled).toBe(false);
 
+    // Resume phiên hết lượt: được hạn mức mới, chạy tiếp QC (không làm lại Dev).
+    const resumed = await resumeSession(deps, outcome.sessionId);
+    expect(qcCalled).toBe(true);
+    expect(resumed.status).not.toBe('out_of_turns');
+    expect(store.countTurns(outcome.sessionId)).toBe(1);
+
     store.close();
   });
 

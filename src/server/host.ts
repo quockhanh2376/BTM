@@ -816,9 +816,10 @@ export function createHost(d: HostDeps): HostApi & {
 
     const latestNeedsOwner = d.store.getLatestSession('needs_owner', activeProject);
     const latestStopped = d.store.getLatestSession('stopped', activeProject);
+    const latestOutOfTurns = d.store.getLatestSession('out_of_turns', activeProject);
     let target = latestNeedsOwner;
-    if (!target || (latestStopped && latestStopped.id > target.id)) {
-      target = latestStopped;
+    for (const s of [latestStopped, latestOutOfTurns]) {
+      if (s && (!target || s.id > target.id)) target = s;
     }
     if (!target) {
       return { ok: false, status: 400, error: 'No session to resume' };

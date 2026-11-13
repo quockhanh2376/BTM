@@ -2287,10 +2287,11 @@ export async function resumeSession(
     !session ||
     (session.status !== 'awaiting_approval' &&
       session.status !== 'needs_owner' &&
-      session.status !== 'stopped')
+      session.status !== 'stopped' &&
+      session.status !== 'out_of_turns')
   ) {
     throw new Error(
-      `Session ${sessionId} is not in awaiting_approval, needs_owner, or stopped status`
+      `Session ${sessionId} is not in awaiting_approval, needs_owner, stopped, or out_of_turns status`
     );
   }
 
@@ -2298,6 +2299,8 @@ export async function resumeSession(
     throw new Error(`Session ${sessionId} belongs to project "${session.project}", not "${d.repo}"`);
   }
 
+  // Resume phiên hết lượt = anh Zon cấp thêm một hạn mức lượt mới (đếm lại từ bây giờ).
+  if (session.status === 'out_of_turns') d.store.setSetting(`turns_from:${sessionId}`, new Date().toISOString());
   d.store.setSessionStatus(sessionId, 'running');
   let sessionStatus: SessionOutcome['status'] = 'needs_owner';
   const allTasks: Record<string, TicketState> = {};

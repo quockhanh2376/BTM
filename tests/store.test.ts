@@ -130,6 +130,20 @@ describe('Store SQLite', () => {
       expect(store.countTurns(999, 'dev')).toBe(0);
     });
 
+    it('countTurns bỏ lượt hỏng vì quota/không tài khoản/Stop, và lượt trước turns_from', () => {
+      const s1 = store.createSession(['Goal 1']);
+      for (const err of ['usage_limit_hit:jacky', 'no_usable_account:jacky', 'aborted']) {
+        store.endTurn(store.startTurn(s1, 'dev', 'jacky', 'T-001'), 'error', err);
+      }
+      store.endTurn(store.startTurn(s1, 'dev', 'jacky', 'T-001'), 'error', 'exit_1');
+      store.endTurn(store.startTurn(s1, 'dev', 'jacky', 'T-001'), 'ok');
+      expect(store.countTurns(s1)).toBe(2);
+      expect(store.countTurns(s1, 'dev')).toBe(2);
+
+      store.setSetting(`turns_from:${s1}`, new Date(Date.now() + 60_000).toISOString());
+      expect(store.countTurns(s1)).toBe(0);
+    });
+
     it('records handoff failures', () => {
       const s1 = store.createSession(['Goal 1']);
       expect(() => {

@@ -634,7 +634,7 @@ export function createServer(o: {
           const inUse = (n: (typeof picked)[number]) => {
             if (n?.status !== 'open' || !n.session_id) return false;
             const st = o.store.getSession(n.session_id)?.status;
-            return st === 'running' || st === 'needs_owner' || st === 'stopped';
+            return st === 'running' || st === 'needs_owner' || st === 'stopped' || st === 'out_of_turns';
           };
           const skipped = picked.filter(inUse).map((n) => n!.id);
           const rows = picked.filter((n) => !inUse(n));
