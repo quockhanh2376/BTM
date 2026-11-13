@@ -23,6 +23,8 @@
       --badge-bg: #EEF2F7;
       --badge-text: #475569;
       --live-bg: #DCFCE7;
+      --inuse-bg: #DBEAFE;
+      --inuse-text: #1E40AF;
       --live-text: #166534;
       --tab-active-bg: var(--accent);
       --tab-active-text: #FFFFFF;
@@ -82,6 +84,8 @@
       --badge-bg: #222733;
       --badge-text: #9CA3AF;
       --live-bg: #12352A;
+      --inuse-bg: #1E3A8A;
+      --inuse-text: #DBEAFE;
       --live-text: #32D583;
       --shadow: none;
       --sidebar-bg: #13161C;
@@ -779,7 +783,7 @@
       color: var(--badge-text);
     }
 
-    .acc-badge.st-in_use { background: var(--running-bg); color: var(--running-text); }
+    .acc-badge.st-in_use { background: var(--inuse-bg); color: var(--inuse-text); }
     .acc-badge.st-limited, .acc-badge.st-relogin { background: var(--danger); color: var(--danger-text); }
 
     .acc-item .acc-ctrl {
@@ -845,13 +849,56 @@
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 8px;
+      gap: 10px;
       min-width: 0;
-      padding: 10px;
-      border-radius: 8px;
-      background-color: var(--badge-bg);
+      padding: 14px;
+      border-radius: 12px;
+      background-color: var(--card-bg);
       border: 1px solid var(--border);
-      flex-wrap: wrap;
+      box-shadow: var(--shadow);
+    }
+
+    /* Thẻ Worker theo mẫu anh Zon (2026-11-14): đầu thẻ · model · đăng nhập · lệnh login · tài khoản */
+    .acc-title { display: flex; align-items: center; gap: 12px; }
+    .acc-title-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--inuse-bg); color: var(--inuse-text);
+    }
+    .acc-title-icon svg { width: 20px; height: 20px; }
+    .btn-tool { display: inline-flex; align-items: center; gap: 6px; }
+    .btn-ico { width: 15px; height: 15px; flex: none; }
+    /* Nút Add Account theo mẫu: xanh đậm chữ trắng ở cả sáng/tối (tương phản 5.2:1) */
+    .acc-toolbar .btn.btn-primary { background-color: #2563EB; color: #FFFFFF; border-color: #2563EB; }
+    .acc-toolbar .btn.btn-primary:hover { background-color: #1D4ED8; }
+    .btn.btn-accent-outline {
+      background: transparent; color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .btn.btn-accent-outline:hover { background: var(--inuse-bg); }
+    .acc-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .acc-card-head .account-name { white-space: nowrap; flex: none; }
+    .acc-head-sep { width: 1px; height: 16px; background: var(--border); flex: none; }
+    .acc-tool-chip {
+      margin-left: auto; flex: 0 1 auto; min-width: 0;
+      padding: 3px 10px; border-radius: 999px; font-size: 12px;
+      background: var(--badge-bg); color: var(--badge-text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .acc-cmd-prefix {
+      flex: none; padding: 0 8px; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    }
+    .account-row .account-cmd-wrap {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .acc-cmd-box {
+      flex: 1; min-width: 0; display: flex; align-items: center;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+    }
+    .acc-cmd-box .account-cmd-code { border: none; background: transparent; padding-left: 0; }
+    .acc-item-name.acc-slug-pill {
+      padding: 3px 10px; border-radius: 999px; font-weight: 600;
+      background: var(--badge-bg); color: var(--badge-text);
     }
 
     .account-info {
@@ -865,7 +912,6 @@
     .account-row .account-cmd-wrap {
       min-width: 0;
       flex: none;
-      justify-content: stretch;
     }
 
     .account-row .account-cmd-code {
@@ -918,6 +964,10 @@
       flex: 1;
       min-width: 0;
     }
+
+    .account-row .account-model { flex-wrap: nowrap; }
+    .account-row .account-model select { padding: 7px 10px; font-size: 13px; border-radius: 8px; }
+    .account-row .account-model select:nth-child(2) { flex: 0 1 40%; min-width: 0; }
 
     .diff-panel pre {
       margin: 0;
@@ -2265,13 +2315,16 @@
     <!-- Khu Tài khoản -->
     <section class="card accounts-section" id="accounts-container">
       <div class="acc-header">
-        <h2 data-i18n="acc.title">Accounts</h2>
+        <div class="acc-title">
+          <span class="acc-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
+          <h2 data-i18n="acc.title">Accounts</h2>
+        </div>
         <div class="acc-toolbar">
-          <button id="acc-import-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.import">Import</button>
+          <button id="acc-import-btn" class="btn btn-secondary btn-sm btn-tool" type="button"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg><span data-i18n="acc.import">Import</span></button>
           <input id="acc-import-file" type="file" accept="application/json,.json" hidden>
-          <button id="acc-export-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.export">Export</button>
-          <button id="refresh-energy-btn" class="btn btn-primary btn-sm" type="button" data-i18n="btn.refreshEnergy">Refresh energy</button>
-          <button id="acc-add-btn" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.add">+ Add Account</button>
+          <button id="acc-export-btn" class="btn btn-secondary btn-sm btn-tool" type="button"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-i18n="acc.export">Export</span></button>
+          <button id="refresh-energy-btn" class="btn btn-sm btn-tool btn-accent-outline" type="button"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg><span data-i18n="btn.refreshEnergy">Refresh energy</span></button>
+          <button id="acc-add-btn" class="btn btn-primary btn-sm btn-tool" type="button"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="acc.addShort">Add Account</span></button>
           <button type="button" id="acc-details-toggle" class="acc-details-toggle" aria-expanded="false" aria-controls="accounts-list" data-i18n-aria="acc.details">▸</button>
         </div>
       </div>
@@ -2773,6 +2826,7 @@
           'cmd.failed': 'Send failed',
           'acc.title': 'Accounts',
           'acc.import': 'Import',
+          'acc.addShort': 'Add Account',
           'acc.export': 'Export',
           'acc.add': '+ Add Account',
           'acc.worker': 'Worker',
@@ -5112,21 +5166,33 @@
           var row = document.createElement('div');
           row.className = 'account-row';
 
-          var info = document.createElement('div');
-          info.className = 'account-info';
-
+          var lDisp = getLoginDisplay(acc.login);
+          // Đầu thẻ: đèn đăng nhập · "Tên · accounts: N" ✎ | chip công cụ · user
+          var head = document.createElement('div');
+          head.className = 'acc-card-head';
+          var headDot = document.createElement('span');
+          headDot.className = 'login-dot ' + lDisp.dotClass;
+          headDot.setAttribute('aria-hidden', 'true');
+          head.appendChild(headDot);
           var nameEl = document.createElement('span');
           nameEl.className = 'account-name';
           nameEl.textContent = acc.agent;
-          info.appendChild(nameEl);
-
+          head.appendChild(nameEl);
+          var sep = document.createElement('span');
+          sep.className = 'acc-head-sep';
+          head.appendChild(sep);
           var toolEl = document.createElement('span');
-          toolEl.className = 'account-tool';
-          toolEl.textContent = (acc.tool || '') + (acc.user ? ' · ' + acc.user : '');
-          info.appendChild(toolEl);
-          info.appendChild(buildModelControls(acc));
+          toolEl.className = 'account-tool acc-tool-chip';
+          var toolFull = (acc.tool || '') + (acc.user ? ' · ' + acc.user : '');
+          // user dài (tài khoản phụ) thì chip chỉ hiện công cụ, đủ chữ ở title
+          toolEl.textContent = acc.user && acc.user.length <= 12 ? toolFull : (acc.tool || '');
+          toolEl.title = toolFull;
+          head.appendChild(toolEl);
+          row.appendChild(head);
+          row.appendChild(buildModelControls(acc));
 
-          var lDisp = getLoginDisplay(acc.login);
+          var info = document.createElement('div');
+          info.className = 'account-info';
           var loginWrap = document.createElement('div');
           loginWrap.className = 'account-login';
 
@@ -5155,19 +5221,27 @@
           cmdWrap.className = 'account-cmd-wrap';
 
           var cmdStr = getLoginCommand(acc.tool, sshTarget, acc.user);
+          var cmdBox = document.createElement('div');
+          cmdBox.className = 'acc-cmd-box';
+          var prefix = document.createElement('span');
+          prefix.className = 'acc-cmd-prefix';
+          prefix.setAttribute('aria-hidden', 'true');
+          prefix.textContent = '>_';
+          cmdBox.appendChild(prefix);
           var codeEl = document.createElement('input');
           codeEl.type = 'text';
           codeEl.readOnly = true;
           codeEl.className = 'account-cmd-code';
           codeEl.value = cmdStr;
           codeEl.setAttribute('aria-label', tx('acc.loginCmdFor', { agent: acc.agent }));
-          cmdWrap.appendChild(codeEl);
+          cmdBox.appendChild(codeEl);
+          cmdWrap.appendChild(cmdBox);
 
           var copyBtn = document.createElement('button');
           copyBtn.className = 'btn btn-secondary btn-sm copy-btn';
           copyBtn.setAttribute('type', 'button');
           copyBtn.setAttribute('aria-label', tx('acc.copyLoginFor', { agent: acc.agent }));
-          copyBtn.textContent = tx('acc.copy');
+          copyBtn.textContent = '⧉ ' + tx('acc.copy');
 
           copyBtn.addEventListener('click', function () {
             copyLoginCommand(cmdStr, codeEl, copyBtn);
@@ -5266,7 +5340,7 @@
           line.className = 'acc-item' + (a === primary ? ' acc-primary' : '');
 
           var name = document.createElement('span');
-          name.className = 'acc-item-name';
+          name.className = 'acc-item-name' + (a.email ? '' : ' acc-slug-pill');
           name.textContent = a.slug;
           line.appendChild(name);
 
