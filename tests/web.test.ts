@@ -39,6 +39,13 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(box).toMatch(/id="cmd-send-btn"[^>]*data-i18n-title="cmd\.send"/);
   });
 
+  it('puts the recipient radios on the Command title row and hides the textarea label visually', () => {
+    const head = html.slice(html.indexOf('<div class="cmd-head">'), html.indexOf('<div class="form-group">', html.indexOf('<div class="cmd-head">')));
+    expect(head).toContain('data-i18n="cmd.title"');
+    expect(head).toContain('id="recipient-radios"');
+    expect(html).toMatch(/<label for="cmd-text" class="sr-only"/);
+  });
+
   it('theme toggle uses aria-label, SVG icon, and no emoji', () => {
     expect(html).toContain('aria-label="Toggle light/dark"');
     expect(html).toContain('<svg');

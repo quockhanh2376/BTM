@@ -1575,6 +1575,15 @@
       .cmd-section { grid-template-columns: minmax(0, 1fr); }
     }
 
+    .cmd-head {
+      display: flex;
+      align-items: center;
+      gap: 8px 24px;
+      flex-wrap: wrap;
+    }
+
+    .cmd-head .section-title { margin: 0; }
+
     .recipient-radios {
       display: flex;
       align-items: center;
@@ -2025,6 +2034,7 @@
     <!-- Khung lệnh -->
     <section class="card cmd-section">
       <div class="cmd-main">
+      <div class="cmd-head">
       <h2 class="section-title" data-i18n="cmd.title">Command</h2>
       <div class="recipient-radios" id="recipient-radios">
         <label class="radio-label">
@@ -2040,9 +2050,10 @@
           <input type="radio" name="cmd-to" value="qc"> QC
         </label>
       </div>
+      </div>
 
       <div class="form-group">
-        <label for="cmd-text" class="form-label" data-i18n="cmd.label">Command or goal:</label>
+        <label for="cmd-text" class="sr-only" data-i18n="cmd.label">Command or goal:</label>
         <!-- Ô soạn: nút đính kèm + Send nằm bên trong khung, góc dưới phải -->
         <div class="cmd-composer">
           <textarea id="cmd-text" class="form-textarea cmd-composer-text" rows="3" placeholder="Goal for PM, command for Dev/QC, or note for the team…" data-i18n-placeholder="cmd.placeholder"></textarea>
