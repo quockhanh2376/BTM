@@ -114,6 +114,20 @@ Mặc định tắt (`turn.parallel_dev: 1` = như cũ). Chỉ Dev song song; QC
 - [ ] **Bước 3:** Code. Trước khi sửa `processGoal`, đọc hết đoạn Dev → gate → QC (khoảng dòng 700–1560) và liệt kê mọi chỗ dùng `d.repo` HEAD; mỗi chỗ phải nằm trong `withRepoLock` hoặc dùng ref nhánh ticket rõ ràng.
 - [ ] **Bước 4:** Test xanh, full suite, `tsc`. Review độc lập riêng cho task này (nhiều rủi ro nhất). Commit, VM ×3, merge. Bật trên VM chỉ khi anh đồng ý.
 
+### Task 5: agy cắt theo tiến độ thay vì giờ cố định (anh Zon chốt 2026-11-13)
+
+Lý do: GT-0001 (2026-11-13) bị cắt ở 25 phút dù agy vẫn đang làm. Model trả lời chậm 2–3,5 phút mỗi bước, mà agy `-p` không in gì ra stdout nên `idle_minutes` không dùng được.
+
+**Files:** Modify `src/runner/run.ts`, `src/isolation/trusted.ts`, `src/config.ts`; test `tests/run.test.ts`.
+
+**Interfaces – Produces:**
+- Config `turn.agy_progress?: { idle_minutes (mặc định 5), max_minutes (mặc định 60) }`. Không có khối này → như cũ.
+- `agyActiveSince(cfg, agentId, sinceMs, exec)`: chạy `find ~/.gemini/antigravity-cli/brain -type f -newermt @<giây> -print -quit` dưới user của tài khoản (timeout 10 s). Chỉ xem tên file, không đọc nội dung hội thoại.
+- `runProcess` option `progress: { idleMs, checkEveryMs, activeSince }` → `ProcResult.noProgress`; output thêm `[btm] no_progress`.
+- Runner: chỉ áp dụng cho agy khi đang cách ly → hạn giờ cứng và `--print-timeout` = `max_minutes`; kiểm tiến độ mỗi 60 s.
+
+- [x] Test: không có bước mới → bị giết với `noProgress`; còn bước mới → chạy tới khi xong; runner truyền đúng `max_minutes`/`idleMs` chỉ cho agy khi bật.
+
 ## Thứ tự và phụ thuộc
 1 → 2 → 3 → 4. Task 1 sửa lỗ hổng nên làm ngay. Task 3 cần vòng GameTest-BTM G1 đã push thành công một lần (để thử CI thật). Task 4 làm cuối, sau khi G1 chạy trọn vòng.
 

@@ -49,6 +49,11 @@ export const TurnSchema = z.object({
   max_fix_rounds: z.number().int().nonnegative(),
   /** Plan 6 Task 6: dừng lượt khi CLI không in gì N phút. Chỉ đặt cho công cụ có in tiến độ (agy, codex);
    *  claude -p chỉ in khi xong nên để trống. Mặc định tắt. */
+  /** Kế hoạch 8: agy đo tiến độ theo bước mới: im idle_minutes thì cắt, còn làm thì tối đa max_minutes. Mặc định tắt. */
+  agy_progress: z.object({
+    idle_minutes: z.number().positive().default(5),
+    max_minutes: z.number().positive().default(60),
+  }).strict().optional(),
   idle_minutes: z.object({
     'claude-code': z.number().positive().optional(),
     'antigravity-cli': z.number().positive().optional(),
