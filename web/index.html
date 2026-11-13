@@ -498,6 +498,18 @@
       gap: 4px;
     }
 
+    .last-line-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+
+    .seat-elapsed {
+      font-size: 15px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
     .last-line-label {
       font-size: 12px;
       color: var(--text-muted);
@@ -2060,7 +2072,10 @@
           <select id="pm-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
         </div>
         <div class="last-line-container">
-          <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+          <div class="last-line-head">
+            <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+            <span class="seat-elapsed" id="pm-elapsed" hidden></span>
+          </div>
           <pre class="last-line-text" id="pm-last-line">—</pre>
         </div>
         <div class="seat-footer" id="pm-footer">
@@ -2113,7 +2128,10 @@
           <select id="dev-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
         </div>
         <div class="last-line-container">
-          <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+          <div class="last-line-head">
+            <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+            <span class="seat-elapsed" id="dev-elapsed" hidden></span>
+          </div>
           <pre class="last-line-text" id="dev-last-line">—</pre>
         </div>
         <div class="seat-footer" id="dev-footer">
@@ -2166,7 +2184,10 @@
           <select id="qc-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
         </div>
         <div class="last-line-container">
-          <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+          <div class="last-line-head">
+            <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+            <span class="seat-elapsed" id="qc-elapsed" hidden></span>
+          </div>
           <pre class="last-line-text" id="qc-last-line">—</pre>
         </div>
         <div class="seat-footer" id="qc-footer">
@@ -2219,7 +2240,10 @@
           <select id="audit-agent-select" class="seat-swap-select" aria-label="Seated agent" data-i18n-aria="seat.agent"></select>
         </div>
         <div class="last-line-container">
-          <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+          <div class="last-line-head">
+            <span class="last-line-label" data-i18n="seat.lastLog">Last log:</span>
+            <span class="seat-elapsed" id="audit-elapsed" hidden></span>
+          </div>
           <pre class="last-line-text" id="audit-last-line">—</pre>
         </div>
         <div class="seat-footer" id="audit-footer">
@@ -4026,6 +4050,22 @@
         });
       }
 
+      function formatElapsed(ms) {
+        var t = Math.max(0, Math.floor(ms / 1000));
+        var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+        var mm = (h > 0 && m < 10 ? '0' : '') + m;
+        return (h > 0 ? h + ':' : '') + mm + ':' + (sec < 10 ? '0' : '') + sec;
+      }
+
+      function tickSeatElapsed() {
+        document.querySelectorAll('.seat-elapsed').forEach(function (el) {
+          var since = el.dataset.since ? Date.parse(el.dataset.since) : NaN;
+          el.hidden = isNaN(since);
+          el.textContent = isNaN(since) ? '' : formatElapsed(Date.now() - since);
+        });
+      }
+      setInterval(tickSeatElapsed, 1000);
+
       function renderSeat(seatKey, cardData, isCurrentHolder, isBusy) {
         var cardEl = document.getElementById('seat-card-' + seatKey);
         if (!cardEl) return;
@@ -4125,6 +4165,13 @@
 
           if (taskEl) taskEl.textContent = cardData.taskId || '—';
           if (sinceEl) sinceEl.textContent = formatTime(cardData.since);
+          // Đồng hồ bấm giờ của lượt đang chạy (tính từ Started), tick mỗi giây trong tickSeatElapsed.
+          var elapsedEl = document.getElementById(seatKey + '-elapsed');
+          if (elapsedEl) {
+            if (cardData.status === 'running' && cardData.since) elapsedEl.dataset.since = cardData.since;
+            else delete elapsedEl.dataset.since;
+            tickSeatElapsed();
+          }
           if (turnsEl) turnsEl.textContent = String(cardData.turns || 0);
           if (lastLineEl) lastLineEl.textContent = cardData.agentStatus || cardData.lastLine || '—';
 

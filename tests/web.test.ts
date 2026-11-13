@@ -1532,6 +1532,19 @@ describe('P7-T5: giao diện Accounts', () => {
   });
 });
 
+describe('Đồng hồ bấm giờ trên thẻ đang chạy (2026-11-13)', () => {
+  const html = readFileSync(resolve('web/index.html'), 'utf8');
+  it('mỗi thẻ có ô đồng hồ cạnh Last log; formatElapsed ra m:ss / h:mm:ss', () => {
+    for (const k of ['pm', 'dev', 'qc', 'audit']) expect(html).toContain(`id="${k}-elapsed"`);
+    const src = html.slice(html.indexOf('function formatElapsed'), html.indexOf('function tickSeatElapsed'));
+    const formatElapsed = new Function(src + 'return formatElapsed;')() as (ms: number) => string;
+    expect(formatElapsed(35_000)).toBe('0:35');
+    expect(formatElapsed(154_000)).toBe('2:34');
+    expect(formatElapsed(3_725_000)).toBe('1:02:05');
+    expect(formatElapsed(-5)).toBe('0:00');
+  });
+});
+
 describe('Đốm sáng quanh thẻ ghế đang làm (2026-11-12)', () => {
   const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
   it('chỉ thẻ is-holder có hiệu ứng; luôn chạy kể cả reduced-motion (anh Zon chọn)', () => {
