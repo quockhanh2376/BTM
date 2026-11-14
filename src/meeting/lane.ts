@@ -10,6 +10,7 @@ import { agentNameKey } from '../agents/names.ts';
 import { mbStatus } from '../mb/vault.ts';
 import { readProjectKey } from '../ticket/goal.ts';
 import { buildProjectMap } from '../knowledge/map.ts';
+import { skillsFor } from '../skills/lane.ts';
 import { fetchGithubMaterial } from './github.ts';
 import { extractDoc, joinDocs, materialForPrompt, DOCS_MAX, type DocText, type PdfToText } from './docs.ts';
 import {
@@ -297,7 +298,10 @@ export function createMeetingLane(d: MeetingLaneDeps) {
       if (gate && !gate.ok) { skip(gate.reason); return void tick(); }
       inFlight = true;
       try {
-        const prompt = meetingPrompt(m, speaker, round, { material: materialForPrompt(material(project, m), m.topic), knowledge: buildProjectMap(d.store, project, 2500), name: nameOf(speaker.agent) });
+        // Skill anh bật cho ghế của người nói (ghế đầu tiên; Boss không có ghế → không có skill).
+        const seatOf = (['pm', 'dev', 'qc', 'audit'] as const).find((s) => speaker.seats.includes(s));
+        const skills = seatOf ? skillsFor(d.store, dataDir, project, seatOf) : '';
+        const prompt = meetingPrompt(m, speaker, round, { material: materialForPrompt(material(project, m), m.topic), knowledge: buildProjectMap(d.store, project, 2500), name: nameOf(speaker.agent) }) + (skills ? `\n\n${skills}` : '');
         const res = await runAgent(project, m, speaker, prompt, `R${round}`);
         if (res.aborted) return; // Stop / Close: không ghi lượt, Resume sẽ chạy lại người này
         const points = res.text ? parsePoints(res.text) : null;

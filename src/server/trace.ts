@@ -3,10 +3,11 @@
 import { readFileSync } from 'node:fs';
 import { relative, resolve, isAbsolute } from 'node:path';
 import type { Store } from '../store/db.ts';
+import { turnSkills } from '../skills/lane.ts';
 
 export type TraceEvent =
   | { kind: 'state'; at: string; by: string; from: string; to: string; reason: string }
-  | { kind: 'turn'; id: number; at: string; endedAt: string | null; seat: string; agent: string; result: string | null; error: string | null; ms: number; hasLog: boolean };
+  | { kind: 'turn'; id: number; at: string; endedAt: string | null; seat: string; agent: string; result: string | null; error: string | null; ms: number; hasLog: boolean; skills: string[] };
 
 export interface TraceTotals { turns: number; agentMs: number; bySeat: Record<string, number>; fixRounds: number; returns: number }
 
@@ -19,7 +20,7 @@ export function buildTicketTrace(store: Store, project: string, ticketId: string
   }
   for (const t of store.ticketTurns(project, ticketId)) {
     const ms = Math.max(0, (t.ended_at ? Date.parse(t.ended_at) : now) - Date.parse(t.started_at)) || 0;
-    events.push({ kind: 'turn', id: t.id, at: t.started_at, endedAt: t.ended_at, seat: t.seat, agent: t.agent, result: t.result, error: t.error, ms, hasLog: Boolean(t.log_file) });
+    events.push({ kind: 'turn', id: t.id, at: t.started_at, endedAt: t.ended_at, seat: t.seat, agent: t.agent, result: t.result, error: t.error, ms, hasLog: Boolean(t.log_file), skills: turnSkills(store, t.id) });
     totals.turns++;
     totals.agentMs += ms;
     totals.bySeat[t.seat] = (totals.bySeat[t.seat] ?? 0) + ms;

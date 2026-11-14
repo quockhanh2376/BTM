@@ -106,7 +106,7 @@ export async function runAuditPhase(ctx: GoalCtx): Promise<SessionOutcome | 'aga
     auditBase,
     goalTicketsAfter.map((t) => t.id),
     auditAgent,
-    skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'audit')
+    skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'audit', auditTurnId)
   );
   const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'audit');
   if (auditSnapshot.protectedBranchMoved) {

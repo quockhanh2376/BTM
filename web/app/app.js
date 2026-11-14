@@ -874,7 +874,7 @@
                 agent: agentLabel(h.agent),
                 dur: goalsUi.formatDuration(h.ms || 0),
                 result: h.endedAt ? (h.result || '?') + (h.error ? ' – ' + h.error : '') : tx('history.running')
-              });
+              }) + (h.skills && h.skills.length ? ' · ' + tx('history.skills', { list: h.skills.join(', ') }) : '');
               entry.appendChild(turnEl);
               containerEl.appendChild(entry);
               if (!h.hasLog) return;
