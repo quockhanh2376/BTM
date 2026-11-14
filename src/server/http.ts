@@ -1,3 +1,4 @@
+import { cleanKey, mbStatus, removeMbKey, saveMbKey, setMbEnabled } from '../mb/vault.ts';
 import { searchBtm } from './search.ts';
 import { createSystemReader } from './system.ts';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
@@ -570,6 +571,30 @@ export function createServer(o: {
           }
 
           sendJson(res, 200, { id: createdNoteId, note: `N-${createdNoteId}`, ...result });
+          return;
+        }
+
+        // Boss key (decision 0003): set / enable / disable / remove. Trả trạng thái, KHÔNG BAO GIỜ trả key.
+        if (pathname === '/api/mb') {
+          const b = (body ?? {}) as { action?: unknown; key?: unknown };
+          if (b.action === 'set') {
+            const key = cleanKey(b.key);
+            if (!key) {
+              sendJson(res, 400, { error: 'Key must be 20-300 printable characters without spaces' });
+              return;
+            }
+            saveMbKey(o.store, o.cfg.host.data_dir, key);
+          } else if (b.action === 'enable' || b.action === 'disable') {
+            setMbEnabled(o.store, b.action === 'enable');
+          } else if (b.action === 'remove') {
+            removeMbKey(o.store);
+          } else {
+            sendJson(res, 400, { error: 'action must be set|enable|disable|remove' });
+            return;
+          }
+          const monitor = o.monitor ?? (o.host as any)?.monitor;
+          try { await monitor?.refresh?.(Object.keys(o.cfg.agents).filter((a) => o.cfg.agents[a]!.provider === 'zai'), true); } catch {}
+          sendJson(res, 200, mbStatus(o.store));
           return;
         }
 

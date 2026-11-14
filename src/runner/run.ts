@@ -1,3 +1,4 @@
+import { issueTurnToken, revokeTurnToken, MB_PROXY_PORT } from '../mb/proxy.ts';
 import { spawn } from 'node:child_process';
 import { appendFileSync, createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -485,7 +486,7 @@ export function makeRunner(
     const runCwd = isolated ? workspacePath(cfg, w, cwd) : cwd;
     if (!isolated) excludeStatusFile(cwd);
 
-    const argv = buildArgv(agent.tool, prompt, {
+    const cliArgv = buildArgv(agent.tool, prompt, {
       seat,
       timeoutMin,
       allow,
@@ -494,6 +495,10 @@ export function makeRunner(
       model: agentModel(cfg, settings, agentId),
       effort: agentEffort(cfg, settings, agentId),
     });
+    // Boss (decision 0003): agent chỉ cầm mã tạm của lượt; cổng trung gian 127.0.0.1 thay bằng key Z.ai thật.
+    // shortcut: mã tạm nằm trong argv (ps thấy được khi lượt khác chạy song song) – chỉ dùng được qua cổng nội bộ trong lượt này.
+    const turnToken = agent.provider === 'zai' ? issueTurnToken(timeoutMs + 5 * 60 * 1000) : null;
+    const argv = turnToken ? zaiArgv(cliArgv, turnToken) : cliArgv;
 
     let result: ProcResult;
     try {
@@ -533,6 +538,7 @@ export function makeRunner(
       throw err;
     } finally {
       killAll(cfg, w);
+      if (turnToken) revokeTurnToken(turnToken);
     }
     let lastMessage = '';
     if (result.idleTimedOut) result = { ...result, output: `${result.output}\n[btm] idle_timeout` };
@@ -567,4 +573,17 @@ export function makeRunner(
       lastMessage,
     };
   };
+}
+
+/** argv của lượt Boss: env trỏ Claude Code tới cổng trung gian (btm-worker-exec chạy env -i nên phải truyền qua argv). */
+export function zaiArgv(argv: string[], token: string): string[] {
+  return [
+    'env',
+    `ANTHROPIC_BASE_URL=http://127.0.0.1:${MB_PROXY_PORT}`,
+    `ANTHROPIC_AUTH_TOKEN=${token}`,
+    'API_TIMEOUT_MS=3000000',
+    'DISABLE_TELEMETRY=1',
+    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1',
+    ...argv,
+  ];
 }

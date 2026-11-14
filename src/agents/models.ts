@@ -37,9 +37,13 @@ export function parseCodexModels(out: string): string[] {
   return [];
 }
 
-export async function listModels(tool: Tool, run: (argv: string[]) => Promise<ProcResult>): Promise<string[]> {
+// Boss (provider zai): model GLM đã thử thật trên VM 2026-11-14. shortcut: danh sách cố định, thêm khi Z.ai ra model mới.
+export const ZAI_MODELS = ['glm-5.3', 'glm-5.3-flash'];
+
+export async function listModels(tool: Tool, run: (argv: string[]) => Promise<ProcResult>, provider?: 'zai'): Promise<string[]> {
   let models: string[] = [];
-  if (tool === 'claude-code') models = CLAUDE_MODELS;
+  if (provider === 'zai') models = ZAI_MODELS;
+  else if (tool === 'claude-code') models = CLAUDE_MODELS;
   else if (tool === 'antigravity-cli') models = parseAgyModels((await run(['agy', 'models'])).output);
   else models = parseCodexModels((await run(['codex', 'debug', 'models'])).output);
   return [...new Set(models)].filter((m) => ModelSchema.safeParse(m).success);

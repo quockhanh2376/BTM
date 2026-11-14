@@ -1,3 +1,4 @@
+import { mbStatus, type MbStatus } from '../mb/vault.ts';
 import { readRelease, type ReleaseInfo } from '../release/publish.ts';
 import { readAnswers, type AskAnswer } from './ask-lane.ts';
 import { existsSync, statSync, openSync, readSync, closeSync, readFileSync, lstatSync } from 'node:fs';
@@ -127,6 +128,8 @@ function seatTiming(seatTurns: Array<{ task_id: string | null; started_at: strin
 export interface AccountCard {
   agent: string;
   tool: Tool;
+  /** 'zai' = Boss (decision 0003). */
+  provider?: 'zai';
   login: {
     state: LoginState;
     detail: string;
@@ -188,6 +191,8 @@ export interface Snapshot {
     names: Record<string, string>;
     /** Agent có avatar → phiên bản (đổi khi đổi ảnh, để trình duyệt tải lại /api/avatar/<agent>?v=). */
     avatars: Record<string, string>;
+    /** Boss (decision 0003): key đã đặt? 4 ký tự cuối, bật/tắt. Không bao giờ có key thật. */
+    mb?: MbStatus;
   };
   members: string[];
   notes: SnapshotNote[];
@@ -359,6 +364,7 @@ function getAccounts(store: Store, cfg: Config): AccountCard[] {
     return {
       agent,
       tool,
+      ...(cfg.agents[agent].provider ? { provider: cfg.agents[agent].provider } : {}),
       login: getSeatLogin(store, current),
       model: agentModel(cfg, store, agent) ?? null,
       effort: agentEffort(cfg, store, agent),
@@ -543,7 +549,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     const v = store.getSetting(agentAvatarVerKey(a));
     if (v) avatars[a] = v;
   }
-  const settings = { autoApprove, names, avatars };
+  const settings = { autoApprove, names, avatars, mb: mbStatus(store) };
 
   const rawNotes = project ? store.listNotes(project, 10) : [];
   let allTickets: Ticket[] = [];

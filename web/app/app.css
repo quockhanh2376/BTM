@@ -2413,3 +2413,9 @@
 .queue-container { display: flex; flex-direction: column; }
 .queue-list.chat-log { flex: 1 1 auto; height: 460px; max-height: none; }
 
+/* Boss (decision 0003): thẻ key + ID Worker + nhãn dự phòng */
+.mb-key-card input[type=password] { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.mb-key-status { font-size: 12px; color: var(--text-muted); }
+.acc-id { font-size: 11px; color: var(--text-muted); opacity: .75; margin-left: 4px; }
+.acc-boss-badge { font-size: 10px; font-weight: 700; padding: 1px 8px; margin-left: 6px; border-radius: 999px; background: color-mix(in srgb, #F59E0B 22%, var(--card-bg)); color: var(--text); }
+
