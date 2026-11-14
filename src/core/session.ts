@@ -45,7 +45,10 @@ import {
   writeGoalSummaryAndCommit,
   type RecordedTickets,
 } from './session-helpers.ts';
-import { runPmPlanning, runTickets, runAuditPhase, type GoalCtx } from './goal-turns.ts';
+import type { GoalCtx } from './goal/ctx.ts';
+import { runPmPlanning } from './goal/pm-planning.ts';
+import { runTickets } from './goal/tickets.ts';
+import { runAuditPhase } from './goal/audit.ts';
 
 export {
   type TurnGuardSnapshot,
@@ -305,7 +308,7 @@ async function processGoal(
   }
 
   const ctx: GoalCtx = {
-    d, sessionId, goal, key, tasks, o, attachedNote, baseBranch, refreshFn, gateFn, pmAgent, pmAuthor,
+    d, sessionId, goal, key, tasks, attachedNote, baseBranch, pmAgent, pmAuthor,
     ownerAnswers, answerImages, askQuestions, backupsFor, pickSeatAgent,
   };
 
