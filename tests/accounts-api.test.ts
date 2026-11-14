@@ -166,6 +166,16 @@ describe('P7-T4: API tài khoản', () => {
     ]);
   });
 
+  it('import Antigravity chọn Worker đích (agent): mục không ghi agent vào Worker đó (acc cho Finn), ghi agent thì giữ; Worker lạ/Boss bị từ chối', async () => {
+    const file = [{ email: 't1@x.io', refresh_token: AGY_RT }, { email: 't2@x.io', refresh_token: AGY_RT, agent: 'jenny' }];
+    const dry = await (await post('/api/accounts/import', { file, dryRun: true, agent: 'elon' })).json();
+    expect(dry.new).toEqual(['elon/t1', 'jenny/t2']);
+    await post('/api/accounts/import', { file, agent: 'elon' });
+    expect(store.getAccount('elon', 't1')).toMatchObject({ tool: 'antigravity-cli' });
+    expect((await post('/api/accounts/import', { file, dryRun: true, agent: 'nobody' })).status).toBe(400);
+    expect((await post('/api/accounts/import', { file, dryRun: true, agent: 'mb' })).status).toBe(400);
+  });
+
   it('import: dryRun phân loại; chạy thật không ghi đè khi chưa tick; mục mới mặc định ngủ', async () => {
     store.addAccount('jacky', 'b', { active: true });
     const file = {

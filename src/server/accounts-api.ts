@@ -51,9 +51,10 @@ function slugFromEmail(email: string): string {
 
 /** {email, refresh_token} → mục BTM cho Worker agy (ghi rõ `agent`, hoặc Worker agy duy nhất trên máy).
  *  Email đã có ở Worker đó → trùng vào đúng tài khoản ấy; chưa có → slug từ email. */
-function agyShortToEntry(cfg: Config, store: Store, raw: { email: string; refresh_token: string; agent?: string }) {
+function agyShortToEntry(cfg: Config, store: Store, raw: { email: string; refresh_token: string; agent?: string }, target?: string) {
   const agy = Object.keys(cfg.agents).filter((id) => cfg.agents[id]!.tool === 'antigravity-cli');
-  const agent = raw.agent ?? (agy.length === 1 ? agy[0]! : null);
+  // Worker đích: ghi trong mục > Worker anh chọn khi nhập (anh Zon 2026-11-14: acc cho Finn, không phải John) > Worker agy duy nhất.
+  const agent = raw.agent ?? target ?? (agy.length === 1 ? agy[0]! : null);
   if (!agent) return { reason: agy.length ? 'several agy Workers – add "agent" to the entry' : 'no agy Worker on this machine' };
   if (!cfg.agents[agent]) return { reason: 'unknown worker on this machine' };
   let files: Record<string, string>;
@@ -71,7 +72,7 @@ const toolIfOther = (cfg: Config, agent: string, tool: Tool): Tool | null => (cf
 
 type Planned = { key: string; agent: string; slug: string; tool: Tool; email: string | null; label: AccountLabel; files: Record<string, string> };
 
-function planImport(cfg: Config, store: Store, file: unknown) {
+function planImport(cfg: Config, store: Store, file: unknown, target?: string) {
   const list = ListSchema.safeParse(file);
   const parsed = list.success ? null : FileSchema.safeParse(file);
   if (!list.success && !parsed!.success) return { error: 'not an accounts file ([{email, refresh_token}, …])' } as const;
@@ -83,7 +84,7 @@ function planImport(cfg: Config, store: Store, file: unknown) {
     let raw = item;
     const short = AgyShortSchema.safeParse(item);
     if (short.success && !(item as { files?: unknown }).files) {
-      const r = agyShortToEntry(cfg, store, short.data);
+      const r = agyShortToEntry(cfg, store, short.data, target);
       if ('reason' in r) return rejected.push({ entry: `#${i + 1}`, reason: r.reason! });
       raw = r.entry;
     }
@@ -168,11 +169,12 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
   }
 
   if (pathname === '/api/accounts/import') {
-    const p = z.object({ file: z.unknown(), overwrite: z.array(z.string().max(64)).max(200).optional(), dryRun: z.boolean().optional() }).safeParse(body);
+    const p = z.object({ file: z.unknown(), overwrite: z.array(z.string().max(64)).max(200).optional(), dryRun: z.boolean().optional(), agent: z.string().max(40).optional() }).safeParse(body);
     if (!p.success) return send(res, 400, { error: 'Invalid body' }), true;
     if (!isIsolated(cfg)) return send(res, 409, { error: 'isolation required' }), true;
     if (ctx.busy()) return send(res, 409, { error: 'Session running' }), true;
-    const plan = planImport(cfg, store, p.data.file);
+    if (p.data.agent && (!Object.hasOwn(cfg.agents, p.data.agent) || cfg.agents[p.data.agent]!.provider === 'zai')) return send(res, 400, { error: 'Unknown Worker for the import target' }), true;
+    const plan = planImport(cfg, store, p.data.file, p.data.agent);
     if ('error' in plan) return send(res, 400, { error: plan.error }), true;
     const summary = {
       new: plan.fresh.map((x) => `${x.agent}/${x.slug}`),
