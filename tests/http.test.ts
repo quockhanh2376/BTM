@@ -1624,6 +1624,16 @@ describe('HTTP Server & SSE', () => {
       expect((await post({ action: 'add', name: 'a.txt', base64: 'eA==' })).status).toBe(501);
     });
 
+    it('GET /api/skills: thư viện rỗng + gợi ý; xem chữ skill lạ → 404; POST sai → 400, host không hỗ trợ → 501', async () => {
+      const got = await (await fetch(`${baseUrl}/api/skills`)).json();
+      expect(got).toMatchObject({ skills: [], suggested: [], reviewers: [] });
+      expect((await fetch(`${baseUrl}/api/skills/7/text`)).status).toBe(404);
+      const post = (b: unknown) => fetch(`${baseUrl}/api/skills`, { method: 'POST', headers: { 'x-btm': '1', 'content-type': 'application/json' }, body: JSON.stringify(b) });
+      expect((await post({ action: 'dance' })).status).toBe(400);
+      expect((await post({ action: 'update', id: 1, seats: ['boss'] })).status).toBe(400);
+      expect((await post({ action: 'paste', text: 'x'.repeat(60) })).status).toBe(501);
+    });
+
     it('GET/POST /api/standards: mặc định, lưu chuẩn + mặc định dashboard, dữ liệu sai → 400', async () => {
       const got = await (await fetch(`${baseUrl}/api/standards`)).json();
       expect(got.standards).toMatchObject({ utf8: true, theme: true, bilingual: true, timezone: { on: true, value: 'Asia/Ho_Chi_Minh' } });

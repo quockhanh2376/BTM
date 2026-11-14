@@ -3,7 +3,7 @@
 import type { ServerResponse } from 'node:http';
 import type { ServerOpts, SendJson } from '../http.ts';
 import { z } from 'zod';
-import { approveGoal, type ApproveGoalResult } from '../../ticket/goal.ts';
+import { approveGoal, readProjectKey, type ApproveGoalResult } from '../../ticket/goal.ts';
 import { projectLessonsFile, readLessons, sharedLessonsFile, writeLessons, LESSONS_EDIT_MAX } from '../../knowledge/lessons.ts';
 import { archiveGoalAction, restoreGoalAction, purgeGoalAction } from '../goal-trash.ts';
 import { buildGoalDigest, saveGoalDigest } from '../../knowledge/digest.ts';
@@ -11,6 +11,8 @@ import { saveProjectMap, buildProjectMap } from '../../knowledge/map.ts';
 import { readMeetings, readStagedDocs } from '../../meeting/lane.ts';
 import { renderMeetingHtml, renderMeetingMd } from '../../meeting/core.ts';
 import { agentNameKey } from '../../agents/names.ts';
+import { projectSignals, readSkills, skillText } from '../../skills/lane.ts';
+import { fitsProject } from '../../skills/core.ts';
 import { readStandards, readUiDefaults, StandardsSchema, UiDefaultsSchema, STANDARDS_KEY, UI_DEFAULTS_KEY, TIMEZONES } from '../../standards.ts';
 import { readFileSync } from 'node:fs';
 
@@ -37,6 +39,35 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
       n: g.n, title: g.title, state: g.state, archivedAt: g.archived_at,
       tickets: project ? o.store.listTickets(project, `G${g.n}`).length : 0,
     })));
+    return true;
+  }
+
+  // Skill cho agent (2026-11-14): thư viện + gợi ý cho project đang mở + ai kiểm bảo mật; xem toàn văn một skill.
+  if (method === 'GET' && pathname === '/api/skills') {
+    const project = o.store.getActiveProject();
+    let key = '';
+    try { key = project ? readProjectKey(project) : ''; } catch { key = ''; }
+    const sig = project ? projectSignals(project) : { exts: [], hasUi: false, hasTests: false };
+    const skills = readSkills(o.store);
+    const nameOf = (agent: string) => o.store.getSetting(agentNameKey(agent)) || agent;
+    sendJson(res, 200, {
+      skills,
+      project: { key, hasUi: sig.hasUi, hasTests: sig.hasTests, exts: sig.exts.slice(0, 30) },
+      suggested: skills.filter((s) => fitsProject(s.name, s.description, sig)).map((s) => s.id),
+      reviewers: (o.host.skills?.reviewers() ?? []).map(nameOf),
+    });
+    return true;
+  }
+  const skillTextMatch = method === 'GET' ? pathname.match(/^\/api\/skills\/(\d{1,6})\/text$/) : null;
+  if (skillTextMatch) {
+    const id = parseInt(skillTextMatch[1]!, 10);
+    const text = readSkills(o.store).some((s) => s.id === id) ? skillText(o.cfg.host.data_dir, id) : '';
+    if (!text) {
+      sendJson(res, 404, { error: 'Unknown skill' });
+      return true;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    res.end(text);
     return true;
   }
 

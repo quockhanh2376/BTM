@@ -1,4 +1,5 @@
 // Lượt QC của một ticket (tách khỏi runTickets 2026-11-14, không đổi hành vi).
+import { skillsFor } from '../../skills/lane.ts';
 import { standardsFor } from '../../standards.ts';
 import { regressionTickets } from '../../knowledge/map.ts';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -66,7 +67,7 @@ export async function runQcTurn(
   const qcTurnId = d.store.startTurn(sessionId, 'qc', qcAgent, ticket.id);
   const qcLogFile = join(d.logDir, `turn-${qcTurnId}.log`);
   d.store.setTurnLog(qcTurnId, qcLogFile);
-  const qcPromptText = qcTicketPrompt(ticket, base, qcAgent, ownerAnswers(ticket.id), regressionTickets(d.repo, ticket), standardsFor(d.store));
+  const qcPromptText = qcTicketPrompt(ticket, base, qcAgent, ownerAnswers(ticket.id), regressionTickets(d.repo, ticket), standardsFor(d.store), skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'qc'));
   const qcSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'qc');
   if (qcSnapshot.protectedBranchMoved) {
     d.store.endTurn(qcTurnId, 'rejected', 'protected_branch_moved');

@@ -2541,3 +2541,27 @@
 .accounts-section.acc-card-collapsed > :not(.acc-header) { display: none !important; }
 .accounts-section.acc-card-collapsed .acc-header { margin-bottom: 0; }
 
+/* Skills trong Settings (anh Zon 2026-11-14) */
+.skills-add { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.skills-url { flex: 1 1 240px; min-width: 160px; }
+.skills-candidates { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.skill-cand { overflow-wrap: anywhere; }
+.skills-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; margin-top: 8px; }
+.skill-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; font-size: 12px; min-width: 0; }
+.skill-card.skill-approved { border-color: var(--live-text, #2e9e5b); }
+.skill-card.skill-rejected { border-color: var(--error-text); }
+.skill-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.skill-name { font-weight: 700; font-size: 14px; }
+.skill-badge, .skill-fit { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--badge-bg); color: var(--badge-text); }
+.skill-approved .skill-badge { background: var(--live-bg); color: var(--live-text); }
+.skill-rejected .skill-badge { color: var(--error-text); }
+.skill-desc, .skill-meta, .skill-note { color: var(--text-muted); overflow-wrap: anywhere; }
+.skill-check.ok { color: var(--live-text, #2e9e5b); }
+.skill-check.bad, .skill-risk.sev-high { color: var(--error-text); }
+.skill-risk { padding-left: 12px; overflow-wrap: anywhere; }
+.skill-risk.sev-medium { color: #d08a1e; }
+.skill-controls, .skill-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.skill-seat { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.skill-on { font-weight: 700; margin-left: auto; }
+.skill-actions a.btn { text-decoration: none; }
+

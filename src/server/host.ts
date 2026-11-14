@@ -10,6 +10,7 @@ import { saveGoalDigest } from '../knowledge/digest.ts';
 import { saveProjectMap } from '../knowledge/map.ts';
 import { createAskLane, LESSONS_TO } from './ask-lane.ts';
 import { createMeetingLane } from '../meeting/lane.ts';
+import { createSkillsLane } from '../skills/lane.ts';
 import { runDirectCommand } from './direct-command.ts';
 import { isIsolated } from '../isolation/trusted.ts';
 import { notify, type NotifyKind } from '../notify/notify.ts';
@@ -112,6 +113,15 @@ export function createHost(d: HostDeps): HostApi & {
     if (action === 'conclude') return meetingLane.resume(p.note, true);
     return meetingLane.close();
   }
+  // Skill cho agent (2026-11-14): thư viện + cổng bảo mật 2 người kiểm (Boss, rồi Claude kiểm chéo).
+  const skillsLane = createSkillsLane({
+    cfg: d.cfg, store: d.store, runner: d.runner, logDir: d.logDir,
+    isolated: isIsolated(d.cfg),
+    hostBusy: () => isBusy || isStopping,
+    gate: (agent) => monitor.gate(agent),
+  });
+  const skillsTimer = setInterval(() => { void skillsLane.tick(); }, 15_000);
+  skillsTimer.unref?.();
   const meetingDocs = {
     add: (name: string, bytes: Buffer) => meetingLane.addDoc(name, bytes),
     remove: (id: number) => meetingLane.removeDoc(id),
@@ -119,7 +129,7 @@ export function createHost(d: HostDeps): HostApi & {
   };
 
   function busy(): boolean {
-    if (isBusy || isStopping || (!isIsolated(d.cfg) && (askLane.running() || meetingLane.running()))) {
+    if (isBusy || isStopping || (!isIsolated(d.cfg) && (askLane.running() || meetingLane.running() || skillsLane.running()))) {
       return true;
     }
     const lockPath = join(d.dataDir, 'btm.lock');
@@ -898,6 +908,7 @@ export function createHost(d: HostDeps): HostApi & {
     delegateAnswers,
     meeting,
     meetingDocs,
+    skills: skillsLane,
     stop,
     command,
     busy,

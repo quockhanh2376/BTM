@@ -2120,3 +2120,19 @@ describe('Thu gọn cả thẻ Accounts (2026-11-14)', () => {
     expect(html).toMatch(/\.acc-card-toggle \{[^}]*font-size: 20px/);
   });
 });
+
+describe('Skills trong Settings (2026-11-14)', () => {
+  const html = readWeb();
+  it('có ô dán + link GitHub + danh sách; tóm tắt cổng bảo mật (Core + từng người kiểm); chỉ skill đã duyệt mới bật được', () => {
+    for (const id of ['skills-paste', 'skills-paste-btn', 'skills-url', 'skills-url-btn', 'skills-candidates', 'skills-list', 'skills-reviewers']) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain('<script src="/app/skills.js"></script>');
+    expect(html).toContain("oncb.disabled = s.status !== 'approved';");
+    const src = html.slice(html.indexOf('var SKILL_STATUS'), html.indexOf('// end skills'));
+    expect(src).not.toContain('innerHTML');
+    const lib = new Function(html.slice(html.indexOf('function skillChecks'), html.indexOf('function btmSkills')) + 'return { skillChecks };')() as any;
+    expect(lib.skillChecks({ scan: [], reviews: [] })).toEqual([{ who: 'core', ok: true, worst: 'none', count: 0 }]);
+    const c = lib.skillChecks({ scan: [{ severity: 'low' }, { severity: 'high' }], reviews: [{ agent: 'mb', verdict: 'safe', summary: 'ok', risks: [] }, { agent: 'elon', verdict: 'unsafe', summary: 'bad', risks: [{}] }] });
+    expect(c[0]).toEqual({ who: 'core', ok: false, worst: 'high', count: 2 });
+    expect(c.slice(1)).toEqual([{ who: 'mb', ok: true, summary: 'ok', count: 0 }, { who: 'elon', ok: false, summary: 'bad', count: 1 }]);
+  });
+});
