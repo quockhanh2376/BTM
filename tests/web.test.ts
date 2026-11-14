@@ -2108,3 +2108,15 @@ describe('Settings trên dashboard (2026-11-14)', () => {
     expect(html).toContain('<script src="/app/settings.js"></script>');
   });
 });
+
+describe('Thu gọn cả thẻ Accounts (2026-11-14)', () => {
+  const html = readWeb();
+  it('mũi tên to thu gọn cả thẻ chỉ còn hàng tiêu đề; mở mà 3 phút không đụng tới thì tự thu; bấm nút trên thanh công cụ thì mở lại', () => {
+    expect(html).toContain('id="acc-card-toggle"');
+    expect(html).toContain('.accounts-section.acc-card-collapsed > :not(.acc-header) { display: none !important; }');
+    expect(html).toContain("card.classList.toggle('acc-card-collapsed', !open);");
+    expect(html).toContain('timer = open ? setTimeout(function () { setOpen(false); }, ACC_SLEEP_COLLAPSE_MS) : null;');
+    expect(html).toContain('if (!open && ev.target !== btn) setOpen(true);');
+    expect(html).toMatch(/\.acc-card-toggle \{[^}]*font-size: 20px/);
+  });
+});
