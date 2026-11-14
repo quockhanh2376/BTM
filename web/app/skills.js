@@ -179,8 +179,9 @@ function btmSkills(d) {
     clearCands();
   }
   function addImportButton(collect) {
-    var imp = el('button', 'btn btn-sm btn-primary', tx('skills.import'));
+    var imp = el('button', 'btn btn-sm btn-primary skills-import-btn', tx('skills.import', { n: 0 }));
     imp.type = 'button';
+    imp.disabled = true;
     imp.addEventListener('click', async function () {
       var picked = Array.prototype.slice.call(cands.querySelectorAll('input:checked'));
       if (picked.length) finishImport(await act(collect(picked)));
@@ -249,6 +250,14 @@ function btmSkills(d) {
     }
   }
   if (findBtn && findInput && cands) {
+    // Anh Zon 2026-11-14: tick xong phải bấm nút xanh thì skill mới vào BTM (Save settings không thêm skill).
+    cands.addEventListener('change', function () {
+      var imp = cands.querySelector('.skills-import-btn');
+      if (!imp) return;
+      var n = cands.querySelectorAll('input:checked').length;
+      imp.textContent = tx('skills.import', { n: n });
+      imp.disabled = n === 0;
+    });
     findBtn.addEventListener('click', find);
     findInput.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); find(); } });
   }
