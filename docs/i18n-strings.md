@@ -262,6 +262,7 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | seat.lastRun / seat.onTask / seat.runs / seat.run1 | Lượt gần nhất / Trên ticket / {n} lượt / 1 lượt | Last run: / On ticket: / {n} runs / 1 run |
 | seat.live | Đang chạy | Live |
 | q.attach / q.imageAlt / q.removeImage | Ảnh / Ảnh cho câu hỏi {id} / Bỏ ảnh | Image / Image for question {id} / Remove image |
+| q.seeImage | Xem ảnh đính kèm. | See attached image. |
 | acc.addShort | Thêm tài khoản | Add Account |
 | agents.title / agents.view / agents.card / agents.refresh | Agents ({n}) / Xem: / Thẻ / Làm mới | Agents ({n}) / View: / Card / Refresh |
 | inbox.expand / inbox.collapse / inbox.new / goals.add / log.full / log.less | Mở rộng / Thu gọn / Ghi chú mới / Thêm goal / Xem toàn bộ log / Thu gọn | Expand / Collapse / New note / Add Goal / View full logs / Show less |

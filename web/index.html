@@ -3045,6 +3045,7 @@
           'q.attach': 'Image',
           'q.imageAlt': 'Image for question {id}',
           'q.removeImage': 'Remove image',
+          'q.seeImage': 'See attached image.',
           'q.answerFor': 'Answer question {id}',
           'q.answered': 'Answered – press Resume to continue',
           'diff.open': 'Diff',
@@ -3604,19 +3605,22 @@
           var text = document.createElement('div');
           text.textContent = q.text;
           item.appendChild(text);
+          // Ô trả lời kiểu khung Command: chữ + ảnh nằm chung trong một khung.
+          var compose = document.createElement('div');
+          compose.className = 'cmd-composer q-compose';
           var area = document.createElement('textarea');
-          area.className = 'form-textarea';
+          area.className = 'form-textarea cmd-composer-text';
           area.rows = 2;
           area.maxLength = 2000;
           area.placeholder = tx('q.placeholder');
           area.setAttribute('aria-label', tx('q.answerFor', { id: q.id }));
           area.value = qDrafts[q.id] || '';
           area.addEventListener('input', function () { qDrafts[q.id] = area.value; });
-          item.appendChild(area);
+          compose.appendChild(area);
 
-          // Ảnh kèm câu trả lời: dán (Ctrl+V) vào ô hoặc bấm 📎; xem trước + nút bỏ ảnh.
+          // Ảnh kèm câu trả lời (không bắt buộc): dán (Ctrl+V) vào ô hoặc bấm 📎; xem trước + nút bỏ ảnh.
           var bar = document.createElement('div');
-          bar.className = 'q-attach-bar';
+          bar.className = 'cmd-composer-bar q-attach-bar';
           var fileId = 'q-image-' + q.id;
           var fileInput = document.createElement('input');
           fileInput.type = 'file';
@@ -3659,9 +3663,10 @@
             }
           });
           bar.appendChild(fileInput);
-          bar.appendChild(attach);
           bar.appendChild(preview);
-          item.appendChild(bar);
+          bar.appendChild(attach);
+          compose.appendChild(bar);
+          item.appendChild(compose);
           showPreview();
 
           var btn = document.createElement('button');
@@ -3669,8 +3674,10 @@
           btn.className = 'btn btn-primary btn-sm';
           btn.textContent = tx('q.answer');
           btn.addEventListener('click', async function () {
-            if (!area.value.trim()) return;
-            var payload = { text: area.value.trim() };
+            // Chỉ có ảnh, chưa gõ chữ: vẫn gửi được, kèm câu mặc định (server cần chữ).
+            var answerText = area.value.trim() || (qImages[q.id] ? tx('q.seeImage') : '');
+            if (!answerText) { area.focus(); return; }
+            var payload = { text: answerText };
             if (qImages[q.id]) payload.image = { base64: qImages[q.id].base64 };
             btn.disabled = true;
             try {
