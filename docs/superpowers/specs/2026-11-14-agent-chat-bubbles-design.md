@@ -77,3 +77,13 @@ Bản hiện tại: thoại chỉ cho vui, câu soạn sẵn, không gọi AI.
 Sau này: khi anh Zon **bàn về project hay goal** (ví dụ trước khi chốt goal mới), các agent **phản biện nhau thật**: PM nêu cách chia việc, Dev nêu rủi ro kỹ thuật, QC nêu cách kiểm, Audit nêu rủi ro bảo mật; mỗi người đọc ý người trước rồi đồng ý hoặc phản bác, anh chốt.
 
 Khác bản hiện tại ở chỗ: câu nói do AI sinh (tốn lượt/energy), cần backend (một phiên "thảo luận" riêng, không đụng vòng chuyển việc), có giới hạn số vòng và lưu lại kết luận cho PM dùng khi lập ticket. Cần thiết kế riêng (brainstorm) trước khi làm.
+
+### Các chế độ meeting (anh Zon 2026-11-14) – mục tiêu **v2.0.0**
+
+| Chế độ | Khi nào | Lưu lại |
+|---|---|---|
+| **Trò chuyện vui** (bản hiện tại, v1.x) | lúc team làm project | **Không lưu** nhật ký, chỉ hiện bong bóng |
+| **Thảo luận / phản biện** (v2.0.0) | anh Zon mở cuộc bàn về project hoặc goal | **Lưu file** biên bản cuộc thảo luận, **kết quả** và **quyết định** anh chốt; PM đọc quyết định khi lập ticket |
+
+Biên bản v2.0.0 dự kiến nằm ngoài git (kho attachments theo plan lưu trữ) hoặc trong `team/meetings/` nếu anh muốn đi theo code; quyết định khi brainstorm.
+
