@@ -1,0 +1,98 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import type { Config, Seat } from '../config.ts';
+import { effectiveSeats, type Store } from '../store/db.ts';
+import type { Runner } from '../runner/run.ts';
+import { askPrompt } from '../core/prompts.ts';
+import { knowledgeFor } from '../knowledge/digest.ts';
+import { usableAccounts } from '../agents/accounts.ts';
+
+// Bước 3 (anh Zon 2026-11-14): câu hỏi / bàn kế hoạch chạy SONG SONG với phiên đang chạy.
+// - Chỉ đọc, KHÔNG nhập workspace về checkout (noImport) → không đụng code chưa commit của lượt đang chạy.
+// - Không dùng agent đang có lượt chạy (cùng worker/workspace); người được hỏi bận thì người rảnh trả lời thay.
+// - Không cách ly (máy dev): chỉ chạy khi host rảnh, vì agent chạy thẳng trong checkout.
+
+export interface AskAnswer {
+  id: number;
+  at: string;
+  seat: Seat;
+  asked: Seat;
+  agent: string;
+  question: string;
+  answer: string;
+}
+
+export const answersKey = (project: string) => `ask_answers:${project}`;
+const ORDER: Seat[] = ['pm', 'qc', 'audit', 'dev'];
+const MAX_KEEP = 20;
+
+export function readAnswers(store: Store, project: string): AskAnswer[] {
+  try { return JSON.parse(store.getSetting(answersKey(project)) || '[]') as AskAnswer[]; } catch { return []; }
+}
+
+function cleanAnswer(out: { lastMessage?: string; output?: string }): string {
+  const raw = (out.lastMessage || '').trim() || String(out.output || '').trim().split(/\r?\n/).slice(-15).join('\n');
+  return raw.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').trim().slice(0, 2000);
+}
+
+export function createAskLane(d: {
+  cfg: Config;
+  store: Store;
+  runner: Runner;
+  logDir: string;
+  isolated: boolean;
+  hostBusy: () => boolean;
+  onDone?: () => void;
+}) {
+  let running = false;
+
+  async function tick(): Promise<void> {
+    if (running) return;
+    const project = d.store.getActiveProject();
+    if (!project) return;
+    if (!d.isolated && d.hostBusy()) return;
+    const item = d.store.nextQueuedAsk();
+    if (!item) return;
+    const asked = String(item.to).slice(4) as Seat;
+    const seats = effectiveSeats(d.cfg, d.store) as Record<string, string>;
+    const busy = new Set(d.store.openTurnAgents());
+    const seat = [asked, ...ORDER.filter((s) => s !== asked)].find((s) => seats[s] && !busy.has(seats[s]!));
+    if (!seat) return; // ai cũng bận: chờ lần tick sau
+    const agent = seats[seat]!;
+
+    running = true;
+    d.store.setQueueStatus(item.id, 'running');
+    const sid = d.store.createSession(['Ask'], project);
+    d.store.setSessionStatus(sid, 'running');
+    const turnId = d.store.startTurn(sid, seat, agent, `ASK-${item.id}`);
+    let ok = false;
+    try {
+      mkdirSync(d.logDir, { recursive: true });
+      const logFile = join(d.logDir, `turn-${turnId}.log`);
+      d.store.setTurnLog(turnId, logFile);
+      const onBehalf = seat !== asked ? `\n(${asked.toUpperCase()} đang bận, bạn trả lời thay.)` : '';
+      const prompt = askPrompt(seat, item.text, knowledgeFor(d.store, d.cfg, project, item.text)) + onBehalf;
+      const out = await d.runner(seat === 'audit' ? 'audit' : 'qc', agent, prompt, project, logFile, {
+        account: usableAccounts(d.cfg, d.store, agent)[0]?.key,
+        noImport: true,
+      });
+      ok = !out.timedOut && out.exitCode === 0;
+      d.store.endTurn(turnId, ok ? 'ok' : (out.timedOut ? 'timeout' : 'error'), ok ? undefined : (out.timedOut ? 'timeout' : `exit_${out.exitCode}`));
+      if (ok) {
+        const list = readAnswers(d.store, project);
+        list.unshift({ id: item.id, at: new Date().toISOString(), seat, asked, agent, question: item.text.slice(0, 300), answer: cleanAnswer(out) });
+        d.store.setSetting(answersKey(project), JSON.stringify(list.slice(0, MAX_KEEP)));
+      }
+    } catch (err) {
+      d.store.endTurn(turnId, 'error', err instanceof Error ? err.message : String(err));
+    } finally {
+      d.store.setSessionStatus(sid, ok ? 'done' : 'error');
+      d.store.setQueueStatus(item.id, 'done');
+      running = false;
+      d.onDone?.();
+      void tick();
+    }
+  }
+
+  return { tick, running: () => running };
+}

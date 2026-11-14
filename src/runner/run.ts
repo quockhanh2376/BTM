@@ -409,7 +409,7 @@ export type Runner = (
   prompt: string,
   cwd: string,
   logFile: string,
-  options?: { signal?: AbortSignal; images?: string[]; account?: string }
+  options?: { signal?: AbortSignal; images?: string[]; account?: string; noImport?: boolean }
 ) => Promise<TurnOutput>;
 
 // Plan 6 Task 7 (không cách ly): file trạng thái agent ghi không được vào commit.
@@ -456,7 +456,7 @@ export function makeRunner(
     prompt: string,
     cwd: string,
     logFile: string,
-    options?: { signal?: AbortSignal; images?: string[]; account?: string }
+    options?: { signal?: AbortSignal; images?: string[]; account?: string; noImport?: boolean }
   ): Promise<TurnOutput> => {
     const agent = cfg.agents[agentId];
     if (!agent) {
@@ -526,7 +526,7 @@ export function makeRunner(
     } catch (err) {
       // Anh bấm Stop: vẫn kéo code worker đã sửa về checkout trước khi báo huỷ, để guard commit WIP (không thì lượt
       // sau sync lại workspace và mất hết việc của lượt này).
-      if (isolated && err instanceof Error && err.name === 'AbortError') {
+      if (isolated && !options?.noImport && err instanceof Error && err.name === 'AbortError') {
         killAll(cfg, w);
         try { isolation.importTurn(cfg, w, cwd); } catch {}
       }
@@ -539,9 +539,13 @@ export function makeRunner(
     if (result.noProgress) result = { ...result, output: `${result.output}\n[btm] no_progress` };
     if (isolated) {
       try {
-        const imp = isolation.importTurn(cfg, w, cwd);
-        if (!imp.ok) result = { ...result, exitCode: result.exitCode || 1, output: `${result.output}
+        // noImport (lượt hỏi chỉ đọc chạy song song, 2026-11-14): KHÔNG nhập gì về checkout – nhập sẽ ghi đè
+        // code chưa commit của lượt đang chạy. Chỉ đọc câu trả lời.
+        if (!options?.noImport) {
+          const imp = isolation.importTurn(cfg, w, cwd);
+          if (!imp.ok) result = { ...result, exitCode: result.exitCode || 1, output: `${result.output}
 [btm] ${imp.reason}` };
+        }
         lastMessage = isolation.readOut(cfg, w);
       } finally {
         // import/readOut chạy lệnh dưới worker: dọn mọi tiến trình chúng có thể để lại.

@@ -284,3 +284,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | cmd.pmGuard / cmd.pmGuardNote | Em lập thành GOAL MỚI nhé? / Tin gửi PM sẽ tạo goal; hỏi chuyện cũ thì hỏi Audit/QC | Should I plan this as a NEW goal? / … |
 | cmd.auto / auto.* | Tự động / Anh Zon, đây là câu hỏi hay goal mới? / Câu hỏi / Goal mới / Project mới cần repo riêng / Em lập thành GOAL MỚI nhé? / Đã hỏi {name} / {name} đang soạn 2–3 job kế tiếp | Auto / … |
 | goal.summary / goal.summaryTip | Tóm tắt / Lịch sử nén của goal, team trả lời câu hỏi dựa trên đây | Summary / … |
+| ans.title / ans.onBehalf | Team trả lời / trả lời thay {seat} | Team answers / answering for {seat} |
