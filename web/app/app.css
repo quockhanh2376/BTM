@@ -2606,3 +2606,4 @@
 .room-purge-btn { color: var(--error-text); }
 .chat-log .meet-vote-result { align-self: stretch; max-width: none; }
 .chat-log .vote-bar { min-width: 80px; }
+.chat-log .vote-agree { margin-top: 4px; font-style: italic; color: var(--text-muted); }

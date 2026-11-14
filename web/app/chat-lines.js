@@ -23,6 +23,9 @@ var CHAT_LINES = {
     question: ['Anh Zon, quick question on {ticket}: {text}', 'Anh Zon, I need your call on {ticket}: {text}', 'Anh Zon, can you help? {text}', 'Question for you, anh Zon: {text}', 'Anh Zon, {ticket}: {text}'],
     answered: ['Answered, {to}. Carry on!', 'Done, {to}. Check my answer.', '{to}, I replied. Go ahead!', 'There you go, {to}.', 'Answered. Keep going, {to}!'],
     answeredAck: ['Thanks anh!', 'Thanks anh Zon, continuing!', 'Got it, thanks anh!', 'Perfect, thanks anh!', 'Thank you anh, back to work!'],
+    // Anh Zon chốt biểu quyết → cả team đồng ý (vui là chính). {option} = phương án anh chọn.
+    voteAgree: ['Yes anh, {option} it is!', 'Got it, going with {option}!', 'Agreed, {option}!', '{option} – on it, anh!', 'Yes boss, {option}!', 'Team is on board: {option}!'],
+    voteAgreeOverride: ['Yes anh, your call – {option}!', 'Understood, {option} it is!', 'You have the final say: {option}!', 'Fair enough, {option}!', 'Yes anh, switching to {option}!', 'Noted, we follow you: {option}!'],
     error: ['Oops, my turn hit a snag.', 'Hmm, that turn did not go well.', 'Ugh, something broke. Retrying later.', 'My turn stopped early.', 'Not my best turn...'],
     ownerAck: ['Got it, anh Zon!', 'On it, anh!', 'Sure thing, anh Zon!', 'Ok anh, looking now!', 'Roger that, anh Zon!'],
     checkAskTeam: ['Team, how is it going?', 'Hey team, any progress?', 'How are we doing, team?', 'Status check, team?', 'Team, where are we?'],
@@ -72,6 +75,9 @@ var CHAT_LINES = {
     question: ['Anh Zon ơi, em hỏi chút về {ticket}: {text}', 'Anh Zon ơi, {ticket} cần anh quyết: {text}', 'Anh Zon giúp em với: {text}', 'Anh Zon ơi, em có câu hỏi: {text}', 'Anh Zon, {ticket}: {text}'],
     answered: ['Anh trả lời rồi đó {to}, làm tiếp nhé!', 'Xong rồi {to}, em xem câu trả lời nha.', '{to} ơi, anh trả lời rồi.', 'Đây {to}, làm tiếp đi em.', 'Anh trả lời rồi, cố lên {to}!'],
     answeredAck: ['Dạ cảm ơn anh!', 'Cảm ơn anh Zon, em làm tiếp!', 'Dạ em rõ rồi, cảm ơn anh!', 'Ok anh, em làm tiếp ngay!', 'Cảm ơn anh, em vào việc!'],
+    // Anh Zon chốt biểu quyết → cả team "dạ" (vui là chính). {option} = phương án anh chọn.
+    voteAgree: ['Dạ anh, chốt {option} ạ!', 'Dạ, team theo {option}!', 'Dạ rõ, {option} nha anh!', 'Dạ anh, {option} luôn!', 'Dạ, em làm theo {option} ạ!', 'Đồng ý anh, {option}!'],
+    voteAgreeOverride: ['Dạ anh, anh chốt {option} thì team theo {option}!', 'Dạ, quyết định cuối là của anh – {option} ạ!', 'Dạ rõ, đổi sang {option} nha anh!', 'Dạ anh, {option} ạ, em ghi nhận!', 'Dạ, anh có lý, {option}!', 'Dạ, team theo anh: {option}!'],
     error: ['Ui, lượt này của em bị lỗi rồi.', 'Hmm, lượt vừa rồi không ổn lắm.', 'Có gì đó hỏng rồi, em thử lại sau.', 'Lượt của em dừng sớm mất rồi.', 'Lượt này em chưa ổn...'],
     ownerAck: ['Dạ em nhận rồi anh Zon!', 'Ok anh, em làm ngay!', 'Dạ anh Zon!', 'Ok anh, em xem liền!', 'Em rõ rồi anh!'],
     checkAskTeam: ['Cả nhà làm tới đâu rồi?', 'Team ơi, tiến độ sao rồi?', 'Mọi người ổn không, tới đâu rồi?', 'Team, cập nhật chút nào!', 'Tới đâu rồi cả nhà?'],
