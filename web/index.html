@@ -1503,6 +1503,7 @@
     .chat-bubble.style-4 { --cb: #DB2777; background: color-mix(in srgb, #DB2777 10%, var(--card-bg)); border-style: dashed; }
     .chat-bubble.style-5 { --cb: #0891B2; background: color-mix(in srgb, #0891B2 10%, var(--card-bg)); border-radius: 6px 22px 22px 22px; }
     .chat-bubble.style-owner { --cb: #F59E0B; background: color-mix(in srgb, #F59E0B 14%, var(--card-bg)); }
+    .chat-bubble.chat-thought { font-style: italic; font-weight: 500; opacity: .88; border-style: dotted; }
     .chat-bubble.chat-wait { display: inline-flex; gap: 5px; padding: 10px 14px; opacity: .85; }
     .chat-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cb, var(--accent)); animation: chat-blink 1.2s infinite ease-in-out; }
     .chat-dot:nth-child(2) { animation-delay: .2s; }
@@ -5716,6 +5717,7 @@
           projectChit: ['{goal} is really taking shape!', '{runner} is focused on {ticket}, looks close.', 'Once {goal} is done, demo time for anh Zon!', '{ticket} has more details than it looks.', 'My bet: {ticket} passes this round!', 'This project is fun, cannot wait for release!'],
           projectChitAck: ['Totally!', 'Hope so, go {runner}!', 'Yes, almost there!', 'Same thought here!', 'Cannot wait!', 'Our team rocks!'],
           projectChit3: ['One more ticket and the goal is done!', 'I will review {ticket} carefully later.', 'Bubble tea after release, everyone?', 'Let us keep the tests green!', 'Nice teamwork today!', 'Quiet focus mode, love it.'],
+          thoughtLead: ['Working on it: ', 'Update: ', 'Right now: ', 'Hmm, ', 'Almost there: '],
           resumeWords: ['go ahead', 'continue', 'resume', 'keep going', 'go on', 'carry on'],
           chitOwner: ['Anh Zon, hope your day is going great!', 'Anh Zon, remember to grab some water!', 'Anh Zon, the team is in good shape today!', 'Anh Zon, thanks for the clear tickets!', 'Anh Zon, we got this!', 'Anh Zon, have you had coffee yet?']
         },
@@ -5744,6 +5746,7 @@
           projectChit: ['{goal} lên hình rõ rồi đó cả nhà!', '{runner} làm {ticket} chăm ghê, chắc sắp xong rồi.', 'Xong {goal} là demo cho anh Zon liền nha!', '{ticket} nhìn vậy mà nhiều chi tiết lắm.', 'Mình đoán {ticket} pass ngay vòng này!', 'Project này vui ghê, mong tới lúc release!'],
           projectChitAck: ['Chuẩn luôn!', 'Hy vọng vậy, {runner} cố lên!', 'Đúng rồi, gần về đích rồi!', 'Mình cũng nghĩ vậy!', 'Hóng ghê!', 'Team mình đỉnh mà!'],
           projectChit3: ['Thêm một ticket nữa là xong goal rồi!', 'Lát mình soi kỹ {ticket} giúp nha!', 'Release xong làm ly trà sữa nha cả nhà!', 'Giữ test xanh nha mọi người!', 'Hôm nay team phối hợp mượt ghê!', 'Chế độ tập trung, thích ghê.'],
+          thoughtLead: ['Mình đang… ', 'Update nè: ', 'Đang làm: ', 'Hmm, ', 'Sắp xong: '],
           resumeWords: ['tiếp e', 'tiếp em', 'tiếp tục', 'làm tiếp', 'chạy tiếp', 'tiếp đi'],
           chitOwner: ['Anh Zon ơi, chúc anh một ngày thật vui!', 'Anh Zon nhớ uống nước nha!', 'Anh Zon ơi, team hôm nay sung lắm!', 'Cảm ơn anh Zon giao việc rõ ràng nha!', 'Anh Zon yên tâm, tụi em lo được!', 'Anh Zon uống cà phê chưa ạ?']
         }
@@ -5764,6 +5767,12 @@
       function isResumeWord(text) {
         var t = String(text || '').toLowerCase().replace(/[\s.!,]+$/g, '').replace(/\s+/g, ' ').trim();
         return CHAT_LINES.en.resumeWords.concat(CHAT_LINES.vi.resumeWords).indexOf(t) >= 0;
+      }
+      // 💭 Dòng Last log của agent đang chạy → câu "nghĩ thành tiếng". Bỏ dòng trống, dòng [btm], dòng toàn đường dẫn/mã.
+      function chatThoughtLine(line) {
+        var t = String(line || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/[`*_#>]+/g, '').replace(/\s+/g, ' ').trim();
+        if (t.length < 4 || /^\[btm\]/i.test(t) || /^[\w\/\\.:=-]+$/.test(t) || !/[A-Za-z\u00C0-\u1EF9]{3}/.test(t)) return '';
+        return t.length > 80 ? t.slice(0, 79) + '\u2026' : t;
       }
       function chatStyleOf(agentId) {
         var h = 0;
@@ -5868,7 +5877,7 @@
         delete chatWaiting[target];
       }
       // Hiện một bong bóng (text) hoặc bong bóng chờ (waiting) trên avatar.
-      function chatShow(target, text, waiting, allowRunning) {
+      function chatShow(target, text, waiting, allowRunning, thought) {
         if (chatMode === 'off') return;
         var seat = target === 'owner' ? null : chatSeat(chatSnap, target);
         if (seat && seat.status === 'running' && !allowRunning && !waiting) return;
@@ -5878,7 +5887,7 @@
         var old = document.querySelector('.chat-bubble[data-target="' + target + '"]');
         if (old && old.parentNode) old.parentNode.removeChild(old);
         var el = document.createElement('div');
-        el.className = 'chat-bubble style-' + (target === 'owner' ? 'owner' : chatStyleOf(seat ? seat.agent : target)) + (waiting ? ' chat-wait' : '');
+        el.className = 'chat-bubble style-' + (target === 'owner' ? 'owner' : chatStyleOf(seat ? seat.agent : target)) + (waiting ? ' chat-wait' : '') + (thought ? ' chat-thought' : '');
         el.setAttribute('data-target', target);
         el.setAttribute('role', 'status');
         if (waiting) {
@@ -6046,10 +6055,27 @@
         document.querySelectorAll('.chat-bubble').forEach(function (el) { if (el.parentNode) el.parentNode.removeChild(el); });
         chatWaiting = {};
       }
+      var chatThoughtSeen = {};
+      var chatThoughtAt = {};
+      // Agent đang chạy "nghĩ thành tiếng" khi Last log đổi: tối đa 1 lần mỗi 60–90 s, không vào hàng đợi thoại.
+      function chatThoughts(state) {
+        var now = chatNow();
+        ((state && state.seats) || []).forEach(function (s) {
+          if (s.status !== 'running' || !s.agent) return;
+          var line = chatThoughtLine(s.lastLine || s.agentStatus);
+          if (!line || chatThoughtSeen[s.seat] === line) return;
+          if (now - (chatThoughtAt[s.seat] || 0) < 60000 + Math.random() * 30000) return;
+          chatThoughtSeen[s.seat] = line;
+          chatThoughtAt[s.seat] = now;
+          var lead = Math.random() < 0.4 ? pickChatLine('thoughtLead', {}, chatMode) : '';
+          chatShow(s.seat, '💭 ' + lead + line, false, true, true);
+        });
+      }
       function chatOnSnapshot(state) {
         var events = chatEvents(chatSnap, state);
         chatSnap = state;
         chatPlay(events, state);
+        if (chatMode !== 'off') chatThoughts(state);
         Object.keys(chatWaiting).forEach(function (t) { var a = chatAnchor(t); if (a) chatPlace(chatWaiting[t], a); else chatClearWaiting(t); });
       }
       (function () {

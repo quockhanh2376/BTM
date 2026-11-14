@@ -125,6 +125,7 @@ describe('HTTP Server & SSE', () => {
       const res = await fetch(`${baseUrl}/`);
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toContain('text/html');
+      expect(res.headers.get('cache-control')).toBe('no-store');
       expect(res.headers.get('content-type')).toContain('charset=utf-8');
       expect(res.headers.get('content-security-policy')).toBe(
         "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:"

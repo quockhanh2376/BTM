@@ -1754,6 +1754,18 @@ describe('Chat bubbles (2026-11-14)', () => {
     expect(html).toContain('seenAgent[s.agent] = true;');
   });
 
+  it('💭 agent đang chạy nói dòng Last log (lọc dòng rác, cắt 80, tối đa 1 lần / 60–90 s)', () => {
+    const f = new Function(html.slice(html.indexOf('function chatThoughtLine'), html.indexOf('function chatStyleOf')) + 'return chatThoughtLine;')() as (s: string) => string;
+    expect(f('Running npm test… 49/49 pass')).toBe('Running npm test… 49/49 pass');
+    expect(f('**Đang sửa** ChoiGame.bat')).toBe('Đang sửa ChoiGame.bat');
+    expect(f('[btm] idle_timeout')).toBe('');
+    expect(f('/srv/btm-work/btm-jenny/gametest-btm/x.js')).toBe('');
+    expect(f('   ')).toBe('');
+    expect(f('a'.repeat(5) + ' ' + 'x'.repeat(200)).length).toBe(80);
+    expect(html).toContain("chatShow(s.seat, '💭 ' + lead + line, false, true, true);");
+    expect(html).toContain('if (now - (chatThoughtAt[s.seat] || 0) < 60000 + Math.random() * 30000) return;');
+  });
+
   it('bong bóng hiện lâu hơn 5 s (anh Zon)', () => {
     expect(html).toContain('var CHAT_SHOW_MS = 7000;');
     expect(html).toContain("el.classList.add('chat-fade'); }, CHAT_SHOW_MS)");

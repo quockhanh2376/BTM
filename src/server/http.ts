@@ -154,6 +154,8 @@ export function createServer(o: {
         const html = readFileSync(o.webFile, 'utf-8');
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
+          // Deploy xong anh mở lại là có bản mới, không dùng trang cũ trong cache.
+          'Cache-Control': 'no-store',
           'Content-Security-Policy':
             // blob:/data: ảnh: thu nhỏ avatar và xem trước ảnh đính kèm cần tải ảnh cục bộ.
             "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:",
