@@ -309,7 +309,7 @@
           'mb.on': 'on',
           'mb.off': 'off',
           'mb.saved': 'Saved',
-          'mb.badge': 'Backup · all seats',
+          'mb.badge': 'Backup',
           'acc.idTitle': 'Worker ID (used in logs)',
           'acc.slug': 'Name (a-z0-9)',
           'acc.agyPlaceholder': 'Paste {"email": "…", "refresh_token": "…"} or choose a JSON file',

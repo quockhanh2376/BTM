@@ -2419,3 +2419,9 @@
 .acc-id { font-size: 11px; color: var(--text-muted); opacity: .75; margin-left: 4px; }
 .acc-boss-badge { font-size: 10px; font-weight: 700; padding: 1px 8px; margin-left: 6px; border-radius: 999px; background: color-mix(in srgb, #F59E0B 22%, var(--card-bg)); color: var(--text); }
 
+/* Hàng thẻ Agents (anh Zon 2026-11-14): màn rộng thì mọi thẻ đang hiện (4–5) chia đều một hàng, tự thu hẹp */
+@media (min-width: 1200px) {
+  .seats-grid { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+}
+.seat-swap-row[hidden], .seat-stop-btn[hidden] { display: none !important; }
+
