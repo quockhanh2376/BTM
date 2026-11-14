@@ -99,13 +99,15 @@
           var target = q && q.style.display !== 'none' ? q : document.getElementById('goals-board');
           if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
+        document.documentElement.lang = LANG;
         document.querySelectorAll('.lang-switch button').forEach(function (b) {
-          b.setAttribute('aria-pressed', b.getAttribute('data-lang') === LANG ? 'true' : 'false');
+          var lang = b.getAttribute('data-lang');
+          b.setAttribute('aria-pressed', lang === LANG ? 'true' : 'false');
           b.addEventListener('click', function () {
-            if (b.getAttribute('data-lang') === 'vi') {
-              // Phần dư (Plan 9): bản tiếng Việt làm sau, giữ tiếng Anh.
-              showFeedback(topFeedback, tx('head.viSoon'), false);
-            }
+            if (lang === LANG || !STRINGS[lang]) return;
+            // Nhiều chữ được tx() một lần lúc tải trang (STATUS_MAP…) nên đổi ngôn ngữ phải tải lại trang.
+            try { window.localStorage.setItem('btm.lang', lang); } catch (e) { return; }
+            location.reload();
           });
         });
       })();
