@@ -2085,3 +2085,16 @@ describe('Họp tranh luận trên dashboard (2026-11-14)', () => {
     expect(html.slice(html.indexOf('function meetItems'), html.indexOf('// end meeting'))).not.toContain('innerHTML');
   });
 });
+
+describe('Họp: tài liệu upload + xuất biên bản trên dashboard (2026-11-14, bước 2)', () => {
+  const html = readWeb();
+  it('có nút đính kèm tài liệu (chỉ khi chọn Meeting), danh sách chờ, nút xuất md / html', () => {
+    for (const id of ['meet-docs-wrap', 'meet-doc-input', 'meet-docs-list']) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain('accept=".pdf,.docx,.xlsx,.txt,.md,.csv"');
+    expect(html).toContain("if (docsWrap) docsWrap.hidden = to !== 'meeting';");
+    expect(html).toContain("postJson('/api/meeting/doc', { action: 'add', name: f.name, base64: await readBase64(f) })");
+    expect(html).toContain("a.href = '/api/meetings/' + m.id + '/export.' + f[0];");
+    const lib = new Function(html.slice(html.indexOf('function meetItems'), html.indexOf('function btmMeeting')) + 'return { meetItems };')() as any;
+    expect(lib.meetItems({ id: 1, topic: 't', status: 'done', createdAt: 'x', docs: [{ name: 'a.pdf', note: '3 pages' }] })[0].docs).toEqual([{ name: 'a.pdf', note: '3 pages' }]);
+  });
+});

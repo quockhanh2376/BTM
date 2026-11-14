@@ -203,3 +203,67 @@ describe('Họp tranh luận – làn họp (2026-11-14)', () => {
     expect(latestMeeting(t.store, t.repo)!.status).toBe('paused');
   });
 });
+
+describe('Họp tranh luận – tài liệu upload + xuất biên bản (2026-11-14, bước 2)', () => {
+  it('upload → khu chờ → vào cuộc họp: prompt có tài liệu, dẫn chứng material được kiểm trên toàn văn, khu chờ được dọn', async () => {
+    const { renderMeetingHtml } = await import('../src/meeting/core.ts');
+    const repo = tmpRepo({ 'team/project.yaml': 'key: GT\n', 'src/app.js': 'x' });
+    const store = openStore(':memory:');
+    store.setActiveProject(repo);
+    const base = loadConfig('btm.config.yaml');
+    const ids = Object.keys(base.agents).filter((k) => (base.agents as any)[k].provider !== 'zai');
+    const dataDir = mkdtempSync(join(tmpdir(), 'btm-meetdoc-'));
+    const cfg = { ...base, host: { ...base.host, data_dir: dataDir }, seats: { pm: ids[0]!, dev: ids[0]!, qc: ids[0]!, audit: ids[0]! } } as Config;
+    const prompts: string[] = [];
+    const runner = vi.fn(async (_s: string, _a: string, prompt: string) => {
+      prompts.push(prompt);
+      const body = prompt.includes('chủ trì kết luận')
+        ? '{"agreed":["ok"],"disputed":[],"recommendation":"Giảm chi phí server","questions":[]}'
+        : JSON.stringify({ points: [
+          { text: 'Chi phí tăng mạnh', evidence: { type: 'material', ref: 'ChiPhi.txt', quote: 'chi phí server tăng 40%' } },
+          { text: 'Bịa số', evidence: { type: 'material', ref: 'ChiPhi.txt', quote: 'doanh thu giảm 90 phần trăm' } },
+        ] });
+      return { exitCode: 0, timedOut: false, output: '', lastMessage: body };
+    });
+    const lane = createMeetingLane({ cfg, store, runner: runner as any, logDir: join(dataDir, 'logs'), isolated: true, hostBusy: () => false, fetchFn: (async () => ({ ok: false, text: async () => '' })) as any, pdf: async () => 'Trang PDF có nội dung đầy đủ chữ\f' });
+
+    expect(await lane.addDoc('virus.exe', Buffer.from('MZ'))).toMatchObject({ ok: false, status: 400 });
+    const a = await lane.addDoc('ChiPhi.txt', Buffer.from('Báo cáo quý 3: chi phí server tăng 40% so với quý 2.'));
+    expect(a).toMatchObject({ ok: true, doc: { id: 1, name: 'ChiPhi.txt' } });
+    await lane.addDoc('Scan.pdf', Buffer.from('%PDF-1.7 x'));
+    await lane.addDoc('Bo.md', Buffer.from('bỏ file này'));
+    expect(lane.removeDoc(3).map((x) => x.name)).toEqual(['ChiPhi.txt', 'Scan.pdf']);
+
+    await lane.start('Bàn về chi phí server', true);
+    for (let i = 0; i < 60 && readMeetings(store, repo).some((m) => m.status === 'running'); i++) await new Promise((r) => setTimeout(r, 15));
+    const m = latestMeeting(store, repo)!;
+    expect(m.status).toBe('done');
+    expect(m.docs).toEqual([{ name: 'ChiPhi.txt', note: '1 lines' }, { name: 'Scan.pdf', note: '1 pages' }]);
+    expect(prompts[0]).toContain('## FILE: ChiPhi.txt');
+    expect(prompts[0]).toContain('chi phí server tăng 40%');
+    expect(prompts[0]).toContain('[trang 1]');
+    expect(m.turns[0]!.points.map((p) => p.verified)).toEqual([true, false]);
+    expect(lane.listDocs()).toEqual([]);
+
+    // Xuất: md có file đính kèm; html escape mọi chữ của agent.
+    const evil: typeof m = { ...m, topic: '<script>alert(1)</script> & "x"' };
+    const html = renderMeetingHtml(evil);
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;x&quot;');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('<h2>Vòng 1 – Phân tích</h2>');
+    expect(html).toContain('class="ev ok"');
+    expect(html).toContain('class="ev warn"');
+    expect(renderMeetingMd(m)).toContain('File đính kèm: ChiPhi.txt (1 lines); Scan.pdf (1 pages)');
+  });
+
+  it('tối đa 10 tài liệu cho một cuộc họp', async () => {
+    const repo = tmpRepo({ 'team/project.yaml': 'key: GT\n' });
+    const store = openStore(':memory:');
+    store.setActiveProject(repo);
+    const base = loadConfig('btm.config.yaml');
+    const cfg = { ...base, host: { ...base.host, data_dir: mkdtempSync(join(tmpdir(), 'btm-meetdoc-')) } } as Config;
+    const lane = createMeetingLane({ cfg, store, runner: (async () => ({ exitCode: 0, timedOut: false, output: '', lastMessage: '' })) as any, logDir: join(cfg.host.data_dir, 'logs'), isolated: true, hostBusy: () => false });
+    for (let i = 0; i < 10; i++) expect((await lane.addDoc(`f${i}.txt`, Buffer.from(`nội dung ${i}`))).ok).toBe(true);
+    expect(await lane.addDoc('f10.txt', Buffer.from('thừa'))).toMatchObject({ ok: false, status: 400 });
+  });
+});

@@ -4,7 +4,7 @@
 // Mục của cuộc họp cho khung chat (thuần, test được): đầu cuộc họp, từng lượt + ghi chú của anh theo giờ, kết luận.
 function meetItems(m) {
   if (!m || !m.id) return [];
-  var out = [{ kind: 'meet-head', id: 'M' + m.id, status: m.status, at: m.createdAt, text: m.topic, source: m.source || '', note: m.materialNote || '', quick: !!m.quick }];
+  var out = [{ kind: 'meet-head', id: 'M' + m.id, status: m.status, at: m.createdAt, text: m.topic, source: m.source || '', note: m.materialNote || '', quick: !!m.quick, docs: m.docs || [] }];
   var mid = [];
   (m.turns || []).forEach(function (t) {
     mid.push({ kind: 'meet-turn', id: 'M' + m.id + '-' + t.round + '-' + t.agent, status: t.skipped ? 'skip' : 'ok', at: t.at, round: t.round, agent: t.agent, seats: t.seats || [], points: t.points || [], skipped: t.skipped || '' });
@@ -38,6 +38,7 @@ function btmMeeting(d) {
       var topic = el('div', 'meet-topic', it.text);
       li.appendChild(topic);
       if (it.source) li.appendChild(el('div', 'meet-source', tx('meet.material', { source: it.source, note: it.note })));
+      if (it.docs && it.docs.length) li.appendChild(el('div', 'meet-source', tx('meet.docs', { list: it.docs.map(function (x) { return x.name + ' (' + x.note + ')'; }).join('; ') })));
       return;
     }
     if (it.kind === 'meet-note') {
@@ -96,6 +97,7 @@ function btmMeeting(d) {
     lastKey = key;
     while (bar.firstChild) bar.removeChild(bar.firstChild);
     bar.hidden = !m;
+    loadDocs(); // mở cuộc họp xong thì khu chờ tài liệu được dọn
     if (!m) return;
     var total = m.speakers.length * (m.quick ? 1 : 2) + 1;
     bar.appendChild(el('span', 'meet-bar-status', tx('meet.bar', { id: m.id, status: tx(MEET_STATUS[m.status] || 'meet.status.closed'), done: (m.turns || []).length + (m.conclusion ? 1 : 0), total: total })));
@@ -113,6 +115,13 @@ function btmMeeting(d) {
       btn('meet.concludeNow', 'btn-secondary', function () { act('conclude', { note: note.value }); });
     }
     if (m.status === 'running' || m.status === 'paused') btn('meet.close', 'btn-secondary', function () { act('close'); });
+    // Xuất biên bản (anh Zon 2026-11-14): Markdown, hoặc HTML (mở bằng trình duyệt → in ra PDF; Word cũng mở được).
+    [['md', 'meet.exportMd'], ['html', 'meet.exportHtml']].forEach(function (f) {
+      var a = el('a', 'btn btn-sm btn-secondary', tx(f[1]));
+      a.href = '/api/meetings/' + m.id + '/export.' + f[0];
+      a.setAttribute('download', 'meeting-M' + m.id + '.' + f[0]);
+      bar.appendChild(a);
+    });
     if (m.status === 'done' && m.conclusion && m.conclusion.recommendation) {
       btn('meet.makeGoal', 'btn-primary', function () {
         // Điền sẵn Command gửi PM; anh sửa rồi mới gửi.
@@ -123,6 +132,59 @@ function btmMeeting(d) {
       });
     }
   }
+
+  // Tài liệu cho cuộc họp sắp mở (bước 2): upload từng file, Core rút chữ; danh sách chờ có nút bỏ.
+  var docList = document.getElementById('meet-docs-list');
+  var docInput = document.getElementById('meet-doc-input');
+  var DOC_MAX = 20 * 1024 * 1024;
+  function renderDocs(docs) {
+    if (!docList) return;
+    while (docList.firstChild) docList.removeChild(docList.firstChild);
+    docList.hidden = !docs || !docs.length;
+    (docs || []).forEach(function (doc) {
+      var chip = el('span', 'meet-doc-chip', doc.name + ' · ' + doc.note);
+      var x = el('button', 'meet-doc-remove', '✕');
+      x.type = 'button';
+      x.setAttribute('aria-label', tx('meet.docRemove', { name: doc.name }));
+      x.title = tx('meet.docRemove', { name: doc.name });
+      x.addEventListener('click', async function () {
+        try { var r = await postJson('/api/meeting/doc', { action: 'remove', id: doc.id }); renderDocs(r.docs); } catch (err) { showFeedback(feedbackEl, err.message, true); }
+      });
+      chip.appendChild(x);
+      docList.appendChild(chip);
+    });
+  }
+  async function loadDocs() {
+    if (!docList) return;
+    try { var r = await fetch('/api/meeting/docs'); renderDocs(r.ok ? (await r.json()).docs : []); } catch (e) { renderDocs([]); }
+  }
+  function readBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { var s = String(fr.result || ''); resolve(s.slice(s.indexOf(',') + 1)); };
+      fr.onerror = function () { reject(new Error(tx('meet.docReadError'))); };
+      fr.readAsDataURL(file);
+    });
+  }
+  if (docInput) {
+    docInput.addEventListener('change', async function () {
+      var files = Array.prototype.slice.call(docInput.files || []);
+      docInput.value = '';
+      for (var i = 0; i < files.length; i++) {
+        var f = files[i];
+        try {
+          if (f.size > DOC_MAX) throw new Error(tx('meet.docTooBig'));
+          showFeedback(feedbackEl, tx('meet.docUploading', { name: f.name }), false);
+          var r = await postJson('/api/meeting/doc', { action: 'add', name: f.name, base64: await readBase64(f) });
+          renderDocs(r.docs);
+          showFeedback(feedbackEl, tx('meet.docAdded', { name: f.name, note: r.doc.note }), false);
+        } catch (err) {
+          showFeedback(feedbackEl, f.name + ': ' + err.message, true);
+        }
+      }
+    });
+  }
+  loadDocs();
 
   // Zoom chữ trong Meeting room (anh Zon 2026-11-14): A− / A+, nhớ theo trình duyệt.
   (function () {

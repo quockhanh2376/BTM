@@ -112,6 +112,11 @@ export function createHost(d: HostDeps): HostApi & {
     if (action === 'conclude') return meetingLane.resume(p.note, true);
     return meetingLane.close();
   }
+  const meetingDocs = {
+    add: (name: string, bytes: Buffer) => meetingLane.addDoc(name, bytes),
+    remove: (id: number) => meetingLane.removeDoc(id),
+    list: () => meetingLane.listDocs(),
+  };
 
   function busy(): boolean {
     if (isBusy || isStopping || (!isIsolated(d.cfg) && (askLane.running() || meetingLane.running()))) {
@@ -892,6 +897,7 @@ export function createHost(d: HostDeps): HostApi & {
     resume,
     delegateAnswers,
     meeting,
+    meetingDocs,
     stop,
     command,
     busy,

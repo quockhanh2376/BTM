@@ -1601,6 +1601,29 @@ describe('HTTP Server & SSE', () => {
       expect((await post({ action: 'start', topic: 'Nên dùng X?' })).status).toBe(501);
     });
 
+    it('họp: xuất biên bản md / html (tải về, CSP chặn script), danh sách, tài liệu chờ; upload khi host không hỗ trợ → 501', async () => {
+      const proj = tmpRepo({ 'team/project.yaml': 'key: XM\n' });
+      store.setActiveProject(proj);
+      const m = { id: 2, topic: 'Chủ đề <b>x</b>', quick: true, status: 'done', createdAt: '2026-11-14T01:00:00Z', speakers: [], ownerNotes: [],
+        turns: [{ round: 1, agent: 'elon', seats: ['pm'], at: '2026-11-14T01:01:00Z', points: [{ text: 'ý', evidence: { type: 'general', ref: 'nhớ' }, verified: null }] }] };
+      store.setSetting(`meetings:${proj}`, JSON.stringify([m]));
+      const md = await fetch(`${baseUrl}/api/meetings/2/export.md`);
+      expect(md.status).toBe(200);
+      expect(md.headers.get('content-disposition')).toContain('meeting-M2.md');
+      expect(await md.text()).toContain('# Họp M2');
+      const html = await fetch(`${baseUrl}/api/meetings/2/export.html`);
+      expect(html.headers.get('content-security-policy')).toContain("default-src 'none'");
+      const body = await html.text();
+      expect(body).toContain('Chủ đề &lt;b&gt;x&lt;/b&gt;');
+      expect((await fetch(`${baseUrl}/api/meetings/9/export.md`)).status).toBe(404);
+      expect((await fetch(`${baseUrl}/api/meetings/2/export.pdf`)).status).toBe(404);
+      expect(await (await fetch(`${baseUrl}/api/meetings`)).json()).toMatchObject({ meetings: [{ id: 2, status: 'done' }] });
+      expect(await (await fetch(`${baseUrl}/api/meeting/docs`)).json()).toEqual({ docs: [] });
+      const post = (b: unknown) => fetch(`${baseUrl}/api/meeting/doc`, { method: 'POST', headers: { 'x-btm': '1', 'content-type': 'application/json' }, body: JSON.stringify(b) });
+      expect((await post({ action: 'add', name: 'a.txt' })).status).toBe(400);
+      expect((await post({ action: 'add', name: 'a.txt', base64: 'eA==' })).status).toBe(501);
+    });
+
     it('GET/POST /api/lessons: lưu rồi đọc lại; scope sai → 400', async () => {
       const keep = cfg.host.data_dir;
       cfg.host.data_dir = mkdtempSync(join(tmpdir(), 'btm-http-lessons-'));

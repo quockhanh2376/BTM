@@ -1,6 +1,6 @@
 // Làn họp (anh Zon 2026-11-14): chạy từng lượt của cuộc họp, lần lượt, chỉ đọc, song song với phiên goal.
 // Spec: docs/superpowers/specs/2026-11-14-debate-meeting-design.md
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { effectiveSeats, type Store } from '../store/db.ts';
@@ -11,12 +11,25 @@ import { mbStatus } from '../mb/vault.ts';
 import { readProjectKey } from '../ticket/goal.ts';
 import { buildProjectMap } from '../knowledge/map.ts';
 import { fetchGithubMaterial } from './github.ts';
+import { extractDoc, joinDocs, materialForPrompt, DOCS_MAX, type DocText, type PdfToText } from './docs.ts';
 import {
   conclusionPrompt, materialFile, meetingFile, meetingPrompt, nextStep, parseConclusion, parsePoints, renderMeetingMd, speakersOf,
   verifyEvidence, MEETING_KEEP, TOPIC_MAX, type Meeting, type MeetingTurn, type Speaker,
 } from './core.ts';
 
 export const meetingsKey = (project: string) => `meetings:${project}`;
+export const stagedDocsKey = (project: string) => `meeting_docs:${project}`;
+/** Tài liệu đang chờ (đã rút chữ) cho cuộc họp sắp mở. */
+export interface StagedDoc { id: number; name: string; note: string; chars: number }
+
+export function readStagedDocs(store: Pick<Store, 'getSetting'>, project: string): StagedDoc[] {
+  try {
+    const v = JSON.parse(store.getSetting(stagedDocsKey(project)) || '[]');
+    return Array.isArray(v) ? (v as StagedDoc[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 export function readMeetings(store: Pick<Store, 'getSetting'>, project: string): Meeting[] {
   try {
@@ -42,6 +55,8 @@ export interface MeetingLaneDeps {
   hostBusy: () => boolean;
   gate?: (agent: string) => { ok: true } | { ok: false; reason: string };
   fetchFn?: typeof fetch;
+  /** Test thay pdftotext bằng hàm giả. */
+  pdf?: PdfToText;
   onChange?: () => void;
 }
 
@@ -71,6 +86,61 @@ export function createMeetingLane(d: MeetingLaneDeps) {
   function material(project: string, m: Meeting): string {
     try { return readFileSync(materialFile(dataDir, readProjectKey(project), m.id), 'utf8'); } catch { return ''; }
   }
+  const stagedFile = (project: string, id: number) => join(dataDir, 'knowledge', readProjectKey(project), 'meetings', 'staging', `${id}.txt`);
+
+  /** Anh upload một file: Core rút chữ ngay, giữ ở khu chờ tới khi mở cuộc họp. */
+  async function addDoc(name: string, buf: Buffer): Promise<{ ok: true; doc: StagedDoc } | { ok: false; status: number; error: string }> {
+    const project = d.store.getActiveProject();
+    if (!project) return { ok: false, status: 400, error: 'No active project' };
+    const staged = readStagedDocs(d.store, project);
+    if (staged.length >= DOCS_MAX) return { ok: false, status: 400, error: `At most ${DOCS_MAX} documents per meeting` };
+    let doc: DocText;
+    try { doc = await extractDoc(name, buf, d.pdf); } catch (err) { return { ok: false, status: 400, error: err instanceof Error ? err.message : 'Could not read this file' }; }
+    const id = staged.reduce((mx, s) => Math.max(mx, s.id), 0) + 1;
+    try {
+      const f = stagedFile(project, id);
+      mkdirSync(dirname(f), { recursive: true, mode: 0o700 });
+      writeFileSync(f, doc.text, { mode: 0o600 });
+    } catch {
+      return { ok: false, status: 500, error: 'Could not store this file' };
+    }
+    const meta: StagedDoc = { id, name: doc.name, note: doc.note, chars: doc.text.length };
+    d.store.setSetting(stagedDocsKey(project), JSON.stringify([...staged, meta]));
+    return { ok: true, doc: meta };
+  }
+  function removeDoc(id: number): StagedDoc[] {
+    const project = d.store.getActiveProject();
+    if (!project) return [];
+    const left = readStagedDocs(d.store, project).filter((s) => s.id !== id);
+    d.store.setSetting(stagedDocsKey(project), JSON.stringify(left));
+    try { rmSync(stagedFile(project, id), { force: true }); } catch { /* đã xoá */ }
+    return left;
+  }
+  function listDocs(): StagedDoc[] {
+    const project = d.store.getActiveProject();
+    return project ? readStagedDocs(d.store, project) : [];
+  }
+  /** Chuyển tài liệu đang chờ vào cuộc họp: gộp toàn văn vào file tài liệu, dọn khu chờ. */
+  function takeStagedDocs(project: string, id: number): Array<{ name: string; note: string }> {
+    const staged = readStagedDocs(d.store, project);
+    if (!staged.length) return [];
+    const docs: DocText[] = [];
+    for (const s of staged) {
+      try { docs.push({ name: s.name, note: s.note, text: readFileSync(stagedFile(project, s.id), 'utf8') }); } catch { /* mất file: bỏ qua */ }
+      try { rmSync(stagedFile(project, s.id), { force: true }); } catch { /* bỏ qua */ }
+    }
+    d.store.setSetting(stagedDocsKey(project), '[]');
+    if (!docs.length) return [];
+    try {
+      const f = materialFile(dataDir, readProjectKey(project), id);
+      mkdirSync(dirname(f), { recursive: true, mode: 0o700 });
+      writeFileSync(f, joinDocs(docs), { mode: 0o600 });
+    } catch {
+      return [];
+    }
+    return docs.map((x) => ({ name: x.name, note: x.note }));
+  }
+
   const active = (project: string) => readMeetings(d.store, project).find((m) => m.status === 'running' || m.status === 'paused') ?? null;
 
   /** BTM khởi động lại giữa cuộc họp: cuộc đang chạy chuyển sang tạm dừng, anh bấm Resume. */
@@ -90,7 +160,8 @@ export function createMeetingLane(d: MeetingLaneDeps) {
     const speakers = speakersOf(d.cfg, effectiveSeats(d.cfg, d.store, project) as Record<string, string>, st.set && st.enabled);
     if (!speakers.length) return { ok: false, status: 400, error: 'No agents on any seat' };
     const id = readMeetings(d.store, project).reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
-    const m: Meeting = { id, topic, quick, status: 'running', createdAt: new Date().toISOString(), speakers, turns: [], ownerNotes: [] };
+    const docs = takeStagedDocs(project, id);
+    const m: Meeting = { id, topic, quick, status: 'running', createdAt: new Date().toISOString(), speakers, turns: [], ownerNotes: [], ...(docs.length ? { docs } : {}) };
     save(project, m);
     void (async () => {
       // Link repo GitHub công khai trong vấn đề → Core tải tài liệu (agent không có mạng).
@@ -102,8 +173,10 @@ export function createMeetingLane(d: MeetingLaneDeps) {
             try {
               const f = materialFile(dataDir, readProjectKey(project), id);
               mkdirSync(dirname(f), { recursive: true, mode: 0o700 });
-              writeFileSync(f, got.text, { mode: 0o600 });
-            } catch { /* không lưu được: họp không có tài liệu */ }
+              // Tài liệu GitHub đứng trước file anh upload (nếu có).
+              const have = material(project, cur);
+              writeFileSync(f, have ? `## FILE: GitHub ${got.source}\n${got.text}\n\n${have}` : got.text, { mode: 0o600 });
+            } catch { /* không lưu được: họp không có tài liệu GitHub */ }
           }
           save(project, { ...cur, source: got.source, materialNote: got.note });
         }
@@ -224,7 +297,7 @@ export function createMeetingLane(d: MeetingLaneDeps) {
       if (gate && !gate.ok) { skip(gate.reason); return void tick(); }
       inFlight = true;
       try {
-        const prompt = meetingPrompt(m, speaker, round, { material: material(project, m), knowledge: buildProjectMap(d.store, project, 2500), name: nameOf(speaker.agent) });
+        const prompt = meetingPrompt(m, speaker, round, { material: materialForPrompt(material(project, m), m.topic), knowledge: buildProjectMap(d.store, project, 2500), name: nameOf(speaker.agent) });
         const res = await runAgent(project, m, speaker, prompt, `R${round}`);
         if (res.aborted) return; // Stop / Close: không ghi lượt, Resume sẽ chạy lại người này
         const points = res.text ? parsePoints(res.text) : null;
@@ -274,5 +347,5 @@ export function createMeetingLane(d: MeetingLaneDeps) {
   }
 
   recover();
-  return { start, stop, resume, close, tick, running: () => inFlight };
+  return { start, stop, resume, close, tick, addDoc, removeDoc, listDocs, running: () => inFlight };
 }
