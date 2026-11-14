@@ -19,6 +19,31 @@ function meetItems(m) {
   return out;
 }
 
+// Avatar nhỏ đầu mỗi tin trong Meeting room (anh Zon 2026-11-14): ảnh agent nếu đã đặt, không thì chữ cái đầu;
+// anh Zon (agent rỗng / 'owner') dùng chữ "Z" như ô người dùng trên đầu trang. avatars = snapshot.settings.avatars.
+function chatAvatarEl(agent, label, avatars) {
+  var owner = !agent || agent === 'owner';
+  var ver = !owner && avatars && avatars[agent];
+  var e;
+  if (ver) {
+    e = document.createElement('img');
+    e.src = '/api/avatar/' + encodeURIComponent(agent) + '?v=' + encodeURIComponent(ver);
+    e.alt = '';
+  } else {
+    e = document.createElement('span');
+    e.textContent = String(owner ? 'Z' : (label || agent || '?')).charAt(0).toUpperCase();
+  }
+  e.className = 'msg-avatar' + (owner ? ' msg-avatar-owner' : '');
+  e.setAttribute('aria-hidden', 'true');
+  return e;
+}
+// Gắn avatar vào đầu dòng tiêu đề tin (giữ chữ của tiêu đề như cũ).
+function withAvatar(head, agent, label, avatars) {
+  head.insertBefore(chatAvatarEl(agent, label, avatars), head.firstChild);
+  head.classList.add('msg-head-av');
+  return head;
+}
+
 // Nhãn dẫn chứng: true = Core kiểm thấy, false = không thấy, null = kiến thức chung.
 function meetEvidenceMark(v) {
   return v === true ? '✓' : '⚠';
@@ -31,7 +56,8 @@ function btmMeeting(d) {
   var el = function (tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
   // Vẽ một mục của cuộc họp vào <li>.
-  function renderMeetItem(li, it) {
+  function renderMeetItem(li, it, state) {
+    var avatars = (state && state.settings && state.settings.avatars) || {};
     if (it.kind === 'meet-head') {
       li.className = 'msg-divider meet-head';
       li.textContent = tx('meet.head', { id: it.id, status: tx(MEET_STATUS[it.status] || 'meet.status.closed') }) + (it.quick ? ' · ' + tx('meet.quick') : '');
@@ -43,13 +69,13 @@ function btmMeeting(d) {
     }
     if (it.kind === 'meet-note') {
       li.className = 'msg msg-owner';
-      li.appendChild(el('div', 'msg-head', tx('hist.owner') + ' · ' + formatHHmm(it.at)));
+      li.appendChild(withAvatar(el('div', 'msg-head', tx('hist.owner') + ' · ' + formatHHmm(it.at)), 'owner', 'Zon', avatars));
       li.appendChild(el('div', 'msg-body', it.text));
       return;
     }
     if (it.kind === 'meet-turn') {
       li.className = 'msg msg-team meet-turn' + (it.skipped ? ' meet-skipped' : '');
-      li.appendChild(el('div', 'msg-head', agentLabel(it.agent) + ' · ' + it.seats.join('+').toUpperCase() + ' · ' + tx(it.round === 1 ? 'meet.round1' : 'meet.round2') + ' · ' + formatHHmm(it.at)));
+      li.appendChild(withAvatar(el('div', 'msg-head', agentLabel(it.agent) + ' · ' + it.seats.join('+').toUpperCase() + ' · ' + tx(it.round === 1 ? 'meet.round1' : 'meet.round2') + ' · ' + formatHHmm(it.at)), it.agent, agentLabel(it.agent), avatars));
       if (it.skipped) { li.appendChild(el('div', 'msg-body', tx('meet.skipped', { reason: it.skipped }))); return; }
       it.points.forEach(function (p, i) {
         var row = el('div', 'meet-point');
@@ -65,7 +91,8 @@ function btmMeeting(d) {
     }
     // meet-end
     li.className = 'msg msg-team meet-end';
-    li.appendChild(el('div', 'msg-head', tx('meet.conclusion') + (it.by ? ' · ' + agentLabel(it.by) : '') + (it.at ? ' · ' + formatHHmm(it.at) : '')));
+    var endHead = el('div', 'msg-head', tx('meet.conclusion') + (it.by ? ' · ' + agentLabel(it.by) : '') + (it.at ? ' · ' + formatHHmm(it.at) : ''));
+    li.appendChild(it.by ? withAvatar(endHead, it.by, agentLabel(it.by), avatars) : endHead);
     if (it.skipped) { li.appendChild(el('div', 'msg-body', tx('meet.skipped', { reason: it.skipped }))); return; }
     var c = it.c || {};
     var block = function (key, list) {
