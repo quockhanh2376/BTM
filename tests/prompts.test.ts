@@ -90,6 +90,14 @@ describe('Task 5 Prompts: pmTicketPrompt, devTicketPrompt, qcTicketPrompt', () =
     // anh Zon 2026-11-12: Dev chỉ đọc ticket của mình, không dò repo
     expect(prompt).toContain('chỉ đọc ticket GTM-0012 của mình, không đọc ticket khác trong team/tickets/');
     expect(prompt).toContain('không dò repo');
+    // 2026-11-14: bớt bước thừa (mỗi bước agy ~90 s): không ghi .btm-status sau mỗi bước, test tối đa 2 lần
+    expect(prompt).not.toContain('Sau mỗi bước ghi');
+    expect(prompt).toContain('không ghi sau mỗi bước');
+    expect(prompt).toContain('Chạy npm test tối đa 2 lần');
+  });
+
+  it('pmTicketPrompt ưu tiên ticket size S', () => {
+    expect(pmTicketPrompt({ n: 1, title: 'x' }, 'GTM', 'GTM-0001')).toContain('ưu tiên S (1-3 file');
   });
 
   it('qcTicketPrompt chứa team/tickets/GTM-0012.md, đúng chuỗi reportHeader và JSON mẫu có ticket, goal, number', () => {
