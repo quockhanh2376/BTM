@@ -2858,8 +2858,9 @@ Yêu cầu đóng note nhưng commit lỗi
         (seat, agent, prompt, cwd) => {
           if (seat === 'pm') pmCalled = true;
           if (seat === 'dev') {
-            if (prompt.includes('GTM-0001')) devCalledForT001 = true;
-            if (prompt.includes('GTM-0002')) devCalledForT002 = true;
+            // Ticket được giao (prompt còn có bản đồ project nhắc ticket cũ cùng file – 2026-11-14).
+            if (prompt.includes('thực hiện ticket GTM-0001')) devCalledForT001 = true;
+            if (prompt.includes('thực hiện ticket GTM-0002')) devCalledForT002 = true;
             writeFileSync(join(cwd, 'src', 'app.ts'), 'dev done');
             writeDevReport(cwd, { id: 'GTM-0002', goal: 'G1', number: 2, of: 2 }, agent);
           }
