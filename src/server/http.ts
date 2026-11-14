@@ -2,28 +2,27 @@ import { createSystemReader } from './system.ts';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { AGENT_NAME_RE, AVATAR_MAX_BYTES, agentAvatarKey, agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
 import type { Socket } from 'node:net';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, lstatSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join, relative, isAbsolute, dirname } from 'node:path';
 import { z } from 'zod';
 import { EffortSchema, ModelSchema, type Config, type Seat } from '../config.ts';
 import { agentEffortKey, agentModelKey } from '../agents/model.ts';
 import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
-import { ticketDiff } from './diff.ts';
 import { commitAll } from '../git.ts';
-import { inboxPath, answerImagePath, detectImage, readInboxFile, removeInboxFromMain } from './inbox.ts';
+import { inboxPath, detectImage, readInboxFile, removeInboxFromMain } from './inbox.ts';
 import { protectedShaKey } from '../core/guard.ts';
 import { activeAccountKeys } from '../agents/accounts.ts';
 import { handleAccountsGet, handleAccountsPost, IMPORT_MAX_BYTES } from './accounts-api.ts';
+import { handleGoalsGet, handleGoalsPost } from './routes/goals.ts';
+import { handleTicketsGet, handleTicketsPost } from './routes/tickets.ts';
+import { handleQuestionsPost } from './routes/questions.ts';
 import type { AdminExec } from '../isolation/account-admin.ts';
 import type { SpawnFn } from '../agents/login-flow.ts';
 import type { createMonitor } from '../energy/monitor.ts';
-import { approveGoal, type ApproveGoalResult } from '../ticket/goal.ts';
+import type { ApproveGoalResult } from '../ticket/goal.ts';
 import type { ReleaseInfo } from '../release/publish.ts';
 import { readFolders, type ExecAsync } from './folders.ts';
-import { archiveGoalAction, restoreGoalAction, purgeGoalAction } from './goal-trash.ts';
-import { retryTicket } from './ticket-retry.ts';
-import { buildGoalDigest, saveGoalDigest } from '../knowledge/digest.ts';
 
 export interface HostApi {
   start(
@@ -200,30 +199,7 @@ export function createServer(o: {
         return;
       }
 
-      // Thùng rác goal: danh sách goal đã vào thùng rác.
-      if (method === 'GET' && pathname === '/api/goals/trash') {
-        const project = o.store.getActiveProject();
-        const rows = project ? o.store.listArchivedGoals(project) : [];
-        sendJson(res, 200, rows.map((g) => ({
-          n: g.n, title: g.title, state: g.state, archivedAt: g.archived_at,
-          tickets: project ? o.store.listTickets(project, `G${g.n}`).length : 0,
-        })));
-        return;
-      }
-
-      // Kho kiến thức: nhật ký nén của một goal (chữ thường, để anh xem; giống bản đưa vào câu hỏi).
-      const kbMatch = method === 'GET' ? pathname.match(/^\/api\/goals\/(\d{1,6})\/knowledge$/) : null;
-      if (kbMatch) {
-        const project = o.store.getActiveProject();
-        const text = project ? buildGoalDigest(o.store, o.cfg, project, parseInt(kbMatch[1]!, 10)) : null;
-        if (!text) {
-          sendJson(res, 404, { error: 'Unknown goal' });
-          return;
-        }
-        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
-        res.end(text);
-        return;
-      }
+      if (await handleGoalsGet(method, pathname, undefined, o, res, sendJson)) return;
 
       // State snapshot route
       if (method === 'GET' && pathname === '/api/state') {
@@ -299,50 +275,7 @@ export function createServer(o: {
         return;
       }
 
-      // Ticket history route
-      const ticketHistoryMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/history$/);
-      if (method === 'GET' && ticketHistoryMatch) {
-        const ticketId = ticketHistoryMatch[1];
-        const activeProject = o.store.getActiveProject();
-        if (!activeProject) {
-          sendJson(res, 404, { error: 'No active project' });
-          return;
-        }
-        const history = o.store.ticketHistory(activeProject, ticketId);
-        sendJson(res, 200, history);
-        return;
-      }
-
-      // Plan 6 Task 3: diff ticket + ghi chú dòng
-      const ticketDiffMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/(diff|notes)$/);
-      if (method === 'GET' && ticketDiffMatch) {
-        const activeProject = o.store.getActiveProject();
-        if (!activeProject) {
-          sendJson(res, 404, { error: 'No active project' });
-          return;
-        }
-        const ticketId = ticketDiffMatch[1]!;
-        if (ticketDiffMatch[2] === 'notes') {
-          sendJson(res, 200, o.store.listLineNotes(activeProject, ticketId));
-          return;
-        }
-        const row = o.store.listTickets(activeProject).find((t) => t.id === ticketId);
-        const goal = row ? o.store.getGoal(activeProject, parseInt(row.goal.replace(/^G/, ''), 10)) : null;
-        if (!row || !goal) {
-          sendJson(res, 404, { error: 'Unknown ticket' });
-          return;
-        }
-        if (!row.base_sha) {
-          sendJson(res, 400, { error: 'Ticket has no base yet' });
-          return;
-        }
-        try {
-          sendJson(res, 200, ticketDiff(activeProject, row.base_sha, goal.branch, ticketId));
-        } catch {
-          sendJson(res, 500, { error: 'Diff failed' });
-        }
-        return;
-      }
+      if (await handleTicketsGet(method, pathname, undefined, o, res, sendJson)) return;
 
       // SSE event stream route
       if (method === 'GET' && pathname === '/api/events') {
@@ -478,63 +411,7 @@ export function createServer(o: {
           return;
         }
 
-        if (pathname === '/api/goal/approve') {
-          const GoalApproveSchema = z.object({
-            goal: z.string().regex(/^G?(\d+)$/i, { message: 'Invalid goal format, expected G<n>' }),
-          });
-          const parsed = GoalApproveSchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
-            return;
-          }
-          if (o.host.busy?.()) {
-            sendJson(res, 409, { ok: false, code: 'busy', error: 'Session running', message: 'Session running' });
-            return;
-          }
-          const match = parsed.data.goal.match(/^G?(\d+)$/i);
-          const goalNumber = parseInt(match![1], 10);
-          let resGoal: ApproveGoalResult;
-          if (o.host.approveGoal) {
-            resGoal = await o.host.approveGoal(goalNumber);
-          } else {
-            const activeProject = o.store.getActiveProject();
-            if (!activeProject) {
-              sendJson(res, 409, { ok: false, code: 'not_ready', error: 'No active project', message: 'No active project' });
-              return;
-            }
-            resGoal = approveGoal(o.store, activeProject, o.cfg, goalNumber);
-          }
-          if (resGoal.ok) {
-            sendJson(res, 200, resGoal);
-          } else {
-            sendJson(res, 409, { ok: false, code: resGoal.code, message: resGoal.message, error: resGoal.message });
-          }
-          return;
-        }
-
-        // Decision 0006: Push lại main + tag lên GitHub khi lần push sau Approve bị lỗi.
-        if (pathname === '/api/goal/push') {
-          const parsed = z.object({ goal: z.string().regex(/^G?(\d+)$/i) }).strict().safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid goal format, expected G<n>' });
-            return;
-          }
-          if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-          if (!o.host.retryRelease) {
-            sendJson(res, 501, { error: 'Not implemented' });
-            return;
-          }
-          const info = await o.host.retryRelease(parseInt(parsed.data.goal.replace(/^G/i, ''), 10));
-          if (!info) {
-            sendJson(res, 409, { error: 'No GitHub release configured for this project' });
-            return;
-          }
-          sendJson(res, info.ok ? 200 : 502, info);
-          return;
-        }
+        if (await handleGoalsPost(method, pathname, body, o, res, sendJson)) return;
 
         if (pathname === '/api/resume') {
           const ResumeSchema = z.object({}).passthrough();
@@ -556,43 +433,7 @@ export function createServer(o: {
           return;
         }
 
-        // Thùng rác goal: vào thùng rác / khôi phục / xoá hẳn (có sao lưu). Không cho khi có phiên chạy.
-        const trashMatch = pathname.match(/^\/api\/goals\/(\d{1,6})\/(archive|restore|purge)$/);
-        if (trashMatch) {
-          if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-          const project = o.store.getActiveProject();
-          if (!project) {
-            sendJson(res, 400, { error: 'No active project' });
-            return;
-          }
-          const n = parseInt(trashMatch[1]!, 10);
-          let result;
-          try {
-            if (trashMatch[2] === 'archive') saveGoalDigest(o.store, o.cfg, project, n); // lưu nhật ký trước khi ẩn
-            result = trashMatch[2] === 'archive' ? archiveGoalAction(o.store, project, n)
-              : trashMatch[2] === 'restore' ? restoreGoalAction(o.store, project, n)
-              : purgeGoalAction(o.store, o.cfg, project, n);
-          } catch (err: any) {
-            sendJson(res, 500, { error: err?.message || 'Trash action failed' });
-            return;
-          }
-          sendJson(res, result.ok ? 200 : result.status, result);
-          return;
-        }
-
-        // "Để Finn trả lời": PM trả lời câu hỏi đang mở (một lượt chỉ đọc), trả lời hết thì tự Resume.
-        if (pathname === '/api/questions/delegate') {
-          if (!o.host.delegateAnswers) {
-            sendJson(res, 501, { error: 'Not implemented' });
-            return;
-          }
-          const result = await o.host.delegateAnswers();
-          sendJson(res, result.ok ? 200 : (result.status || 400), result);
-          return;
-        }
+        if (await handleQuestionsPost(method, pathname, body, o, res, sendJson)) return;
 
         if (pathname === '/api/stop') {
           const StopSchema = z.object({ seat: z.enum(['pm', 'dev', 'qc', 'audit']).optional() }).passthrough();
@@ -812,130 +653,7 @@ export function createServer(o: {
 
         if (handleAccountsPost(pathname, body, accountsCtx, res, sendJson)) return;
 
-        // Nút "Làm lại ticket": failed/blocked → returned (đủ vòng sửa mới), gỡ ticket bị chặn dây chuyền.
-        const retryMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/retry$/);
-        if (retryMatch) {
-          if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-          const project = o.store.getActiveProject();
-          if (!project) {
-            sendJson(res, 400, { error: 'No active project' });
-            return;
-          }
-          const result = retryTicket(o.store, project, retryMatch[1]!);
-          sendJson(res, result.ok ? 200 : result.status, result);
-          return;
-        }
-
-        // Plan 6 Task 3: ghi chú dòng + trả ticket về Dev
-        const ticketPostMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/(notes|return)$/);
-        if (ticketPostMatch) {
-          if (ticketPostMatch[2] === 'return' && o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-          const activeProject = o.store.getActiveProject();
-          if (!activeProject) {
-            sendJson(res, 400, { error: 'No active project' });
-            return;
-          }
-          const ticketId = ticketPostMatch[1]!;
-          const row = o.store.listTickets(activeProject).find((t) => t.id === ticketId);
-          const goalN = row ? parseInt(row.goal.replace(/^G/, ''), 10) : NaN;
-          const goal = row ? o.store.getGoal(activeProject, goalN) : null;
-          if (!row || !goal) {
-            sendJson(res, 404, { error: 'Unknown ticket' });
-            return;
-          }
-          if (ticketPostMatch[2] === 'notes') {
-            const parsed = z.object({
-              path: z.string().min(1).max(500),
-              line: z.number().int().min(1).max(10_000_000),
-              text: z.string().trim().min(1).max(1000),
-            }).strict().safeParse(body);
-            if (!parsed.success) {
-              sendJson(res, 400, { error: 'Invalid note' });
-              return;
-            }
-            const id = o.store.addLineNote(activeProject, ticketId, parsed.data.path, parsed.data.line, parsed.data.text);
-            sendJson(res, 200, { ok: true, id });
-            return;
-          }
-          if (goal.state === 'approved' || goal.state === 'merged') {
-            sendJson(res, 409, { error: 'Goal already merged' });
-            return;
-          }
-          if (!['passed', 'returned', 'failed'].includes(row.state)) {
-            sendJson(res, 409, { error: `Ticket is ${row.state}` });
-            return;
-          }
-          const waiting = o.store.getLatestSession('needs_owner', activeProject) ?? o.store.getLatestSession('awaiting_approval', activeProject);
-          if (waiting) {
-            sendJson(res, 409, { error: 'Another session is waiting – resume or finish it first' });
-            return;
-          }
-          if (o.store.listLineNotes(activeProject, ticketId, true).length === 0) {
-            sendJson(res, 400, { error: 'Add a note first' });
-            return;
-          }
-          // Anh trả về: cấp lại đủ vòng sửa.
-          o.store.setTicketState(activeProject, ticketId, 'returned', 'owner', 'owner_line_notes', 0, row.base_sha);
-          o.store.setGoalState(activeProject, goalN, 'in_progress', 'owner', `ticket ${ticketId} returned`);
-          // Phiên mới cho goal ở needs_owner: anh bấm Resume là Dev làm lại với ghi chú.
-          const sid = o.store.createSession([String(goalN)], activeProject);
-          o.store.setSessionStatus(sid, 'needs_owner');
-          sendJson(res, 200, { ok: true, sessionId: sid });
-          return;
-        }
-
-        // Plan 6 Task 4: anh trả lời câu hỏi chặn ticket
-        const answerMatch = pathname.match(/^\/api\/questions\/(\d{1,9})\/answer$/);
-        if (answerMatch) {
-          const parsed = z.object({
-            text: z.string().trim().min(1).max(2000),
-            image: z.object({ base64: z.string().min(1).regex(/^[A-Za-z0-9+/]*={0,2}$/) }).strict().optional(),
-          }).strict().safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid answer' });
-            return;
-          }
-          const q = o.store.getQuestion(parseInt(answerMatch[1]!, 10));
-          const activeProject = o.store.getActiveProject();
-          if (!q || q.project !== activeProject) {
-            sendJson(res, 404, { error: 'Unknown question' });
-            return;
-          }
-          if (q.state !== 'open') {
-            sendJson(res, 409, { error: 'Already answered' });
-            return;
-          }
-          // Ảnh kèm câu trả lời: cùng luật với ảnh Team note (≤ 5 MB, png/jpg/webp theo nội dung file).
-          let imageName: string | null = null;
-          if (parsed.data.image) {
-            const imgBuf = Buffer.from(parsed.data.image.base64, 'base64');
-            if (imgBuf.length > 5 * 1024 * 1024) {
-              sendJson(res, 413, { error: 'Image exceeds 5 MB limit' });
-              return;
-            }
-            const detected = detectImage(imgBuf);
-            if (!detected) {
-              sendJson(res, 415, { error: 'Unsupported image format' });
-              return;
-            }
-            imageName = `Q-${q.id}.${detected.ext}`;
-            try {
-              writeFileSync(answerImagePath(activeProject, imageName), imgBuf);
-            } catch (err: any) {
-              sendJson(res, 400, { error: err?.message || 'Cannot save image' });
-              return;
-            }
-          }
-          o.store.answerQuestion(q.id, parsed.data.text, imageName);
-          sendJson(res, 200, { ok: true });
-          return;
-        }
+        if (await handleTicketsPost(method, pathname, body, o, res, sendJson)) return;
 
         if (pathname === '/api/agent') {
           const AgentBodySchema = z.object({
@@ -1080,3 +798,7 @@ export function createServer(o: {
 
   return server;
 }
+
+/** Cho các file route (src/server/routes/*): tuỳ chọn của createServer và hàm trả JSON. */
+export type ServerOpts = Parameters<typeof createServer>[0];
+export type SendJson = typeof sendJson;
