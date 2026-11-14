@@ -4,7 +4,7 @@ import { renderMeetingDocx } from '../../meeting/docx.ts';
 import type { ServerResponse } from 'node:http';
 import type { ServerOpts, SendJson } from '../http.ts';
 import { z } from 'zod';
-import { readMeetings, readStagedDocs } from '../../meeting/lane.ts';
+import { readMeetings, readStagedDocs, roomClearedKey } from '../../meeting/lane.ts';
 import { renderMeetingHtml, renderMeetingMd } from '../../meeting/core.ts';
 import { agentNameKey } from '../../agents/names.ts';
 
@@ -55,6 +55,23 @@ export async function handleMeetingGet(method: string | undefined, pathname: str
 }
 
 export async function handleMeetingPost(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
+  // Dọn Meeting room (anh Zon 2026-11-14): ẩn mọi tin trước lúc này; "show" bỏ mốc để hiện lại.
+  if (pathname === '/api/meeting-room') {
+    const parsed = z.object({ action: z.enum(['clear', 'show']) }).safeParse(body);
+    if (!parsed.success) {
+      sendJson(res, 400, { error: 'Invalid request' });
+      return true;
+    }
+    const project = o.store.getActiveProject();
+    if (!project) {
+      sendJson(res, 400, { error: 'No active project' });
+      return true;
+    }
+    const at = parsed.data.action === 'clear' ? new Date().toISOString() : '';
+    o.store.setSetting(roomClearedKey(project), at);
+    sendJson(res, 200, { ok: true, roomClearedAt: at });
+    return true;
+  }
   // Tài liệu cho cuộc họp sắp mở (2026-11-14): upload từng file (base64), Core rút chữ; hoặc bỏ một file.
   if (pathname === '/api/meeting/doc') {
     const parsed = z.union([

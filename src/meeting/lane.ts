@@ -19,6 +19,8 @@ import {
 } from './core.ts';
 
 export const meetingsKey = (project: string) => `meetings:${project}`;
+/** Anh Zon 2026-11-14: "dọn phòng họp" – mốc thời gian; tin cũ hơn mốc bị ẩn khỏi Meeting room (dữ liệu vẫn giữ). */
+export const roomClearedKey = (project: string) => `room_cleared_at:${project}`;
 export const stagedDocsKey = (project: string) => `meeting_docs:${project}`;
 /** Tài liệu đang chờ (đã rút chữ) cho cuộc họp sắp mở. */
 export interface StagedDoc { id: number; name: string; note: string; chars: number }

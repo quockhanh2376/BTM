@@ -1634,6 +1634,16 @@ describe('HTTP Server & SSE', () => {
       expect((await post({ action: 'paste', text: 'x'.repeat(60) })).status).toBe(501);
     });
 
+    it('POST /api/meeting-room: dọn phòng đặt mốc, show bỏ mốc; snapshot có roomClearedAt; sai → 400', async () => {
+      store.setActiveProject(tmpRepo({ 'team/project.yaml': 'key: XR\n' }));
+      const post = (b: unknown) => fetch(`${baseUrl}/api/meeting-room`, { method: 'POST', headers: { 'x-btm': '1', 'content-type': 'application/json' }, body: JSON.stringify(b) });
+      const r = await (await post({ action: 'clear' })).json();
+      expect(r.roomClearedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect((await (await fetch(`${baseUrl}/api/state`)).json()).settings.roomClearedAt).toBe(r.roomClearedAt);
+      expect(await (await post({ action: 'show' })).json()).toEqual({ ok: true, roomClearedAt: '' });
+      expect((await post({ action: 'burn' })).status).toBe(400);
+    });
+
     it('GET/POST /api/standards: mặc định, lưu chuẩn + mặc định dashboard, dữ liệu sai → 400', async () => {
       const got = await (await fetch(`${baseUrl}/api/standards`)).json();
       expect(got.standards).toMatchObject({ utf8: true, theme: true, bilingual: true, timezone: { on: true, value: 'Asia/Ho_Chi_Minh' } });
