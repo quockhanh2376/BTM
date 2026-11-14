@@ -1861,20 +1861,36 @@ describe('Chat Auto: phân loại tin nhắn (2026-11-14)', () => {
   });
 });
 
+describe('Câu dạ khi nhận câu hỏi (2026-11-14)', () => {
+  const html = readWeb();
+  const ack = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return ackLine;')() as (id: number, t: string) => string;
+  it('tiếng Việt → dạ tiếng Việt; cố định theo id; có bong bóng khi gửi', () => {
+    expect(ack(7, 'G1 đã làm đến đâu rồi Marry?')).toMatch(/^Dạ/);
+    expect(ack(7, 'G1 đã làm đến đâu rồi Marry?')).toBe(ack(7, 'G1 đã làm đến đâu rồi Marry?'));
+    expect(ack(7, 'How far is G1?')).not.toMatch(/Dạ/);
+    expect(html).toContain("chatRun([{ target: seat, text: ackLine(r && r.id, text), delay: 1200, allowRunning: true }]);");
+  });
+});
+
 describe('Khung chat History (2026-11-14)', () => {
   const html = readWeb();
   it('theo thời gian (cũ trên, mới dưới); câu trả lời ngay sau câu hỏi, kể cả lệnh thường; mốc goal ở cuối', () => {
-    const build = new Function(html.slice(html.indexOf('function buildHistory'), html.indexOf('var HIST_ICON')) + 'return buildHistory;')() as (s: any) => any[];
+    const build = new Function(
+      html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) +
+      html.slice(html.indexOf('function buildHistory'), html.indexOf('var HIST_ICON')) + 'return buildHistory;'
+    )() as (s: any) => any[];
     const items = build({
       session: { goals: ['1'], status: 'running' },
       goals: [{ n: 1, title: 'Game' }],
       queue: [{ id: 5, to: 'audit', text: 'G1 lỗi gì?', status: 'done', created_at: 't5' }, { id: 4, to: 'ask-pm', text: '[plan] Kế tiếp làm gì?', status: 'queued', created_at: 't4' }, { id: 1, to: 'dev', text: 'tiếp tục', status: 'done', created_at: 't1' }],
       answers: [{ id: 5, seat: 'audit', asked: 'audit', agent: 'bruno', at: 't6', answer: 'DoS null byte, đã sửa' }],
     });
-    expect(items.map((i) => `${i.kind}:${i.id ?? ''}`)).toEqual(['ask:1', 'ask:4', 'ask:5', 'reply:5', 'goal:']);
-    expect(items[1]).toMatchObject({ plan: true, text: 'Kế tiếp làm gì?' });
-    expect(items[3]).toMatchObject({ kind: 'reply', agent: 'bruno', text: 'DoS null byte, đã sửa' });
-    expect(items[4]).toEqual({ kind: 'goal', text: 'G1 · Game', status: 'running' });
+    // mỗi câu hỏi: "dạ" ngay (ack) rồi mới tới câu trả lời chi tiết
+    expect(items.map((i) => `${i.kind}${i.ack ? '-ack' : ''}:${i.id ?? ''}`)).toEqual(['ask:1', 'reply-ack:1', 'ask:4', 'reply-ack:4', 'ask:5', 'reply-ack:5', 'reply:5', 'goal:']);
+    expect(items[2]).toMatchObject({ plan: true, text: 'Kế tiếp làm gì?' });
+    expect(items[5].text).toMatch(/^Dạ/);
+    expect(items[6]).toMatchObject({ kind: 'reply', agent: 'bruno', text: 'DoS null byte, đã sửa' });
+    expect(items[7]).toEqual({ kind: 'goal', text: 'G1 · Game', status: 'running' });
     expect(html).toContain('.chat-log .msg-owner { align-self: flex-start;');
     expect(html).toContain('.chat-log .msg-team { align-self: flex-end;');
   });

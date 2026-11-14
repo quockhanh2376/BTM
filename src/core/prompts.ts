@@ -41,7 +41,7 @@ export function directPrompt(to: Seat, text: string, allow: string[] = []): stri
     return [
       `Bạn là PM (chỉ đọc). Anh Zon hỏi: ${cleanText}`,
       `Đọc team/goals/, team/tickets/, team/reports/ và lịch sử git để trả lời. Chỉ đọc, không sửa file, cấm git commit và push.`,
-      `Trả lời ngắn gọn bằng tiếng Việt, dựa trên bằng chứng (ghi ticket/file nếu có); điều không chắc thì nói rõ là chưa kiểm được.`,
+      `Trả lời chi tiết bằng tiếng Việt: câu đầu là kết quả chính, sau đó là chi tiết có bằng chứng (ticket/file, số liệu); điều không chắc thì nói rõ là chưa kiểm được.`,
     ].join('\n');
   }
   return cleanText;
@@ -62,7 +62,7 @@ export function askPrompt(seat: Seat, text: string, knowledge = ''): string {
     `Đọc team/goals/, team/tickets/, team/reports/, README/CHANGELOG và lịch sử git để trả lời. Chỉ đọc, không sửa hay tạo file, không chạy lệnh làm thay đổi repo, cấm git commit và push.`,
     plan
       ? `Đề xuất 2–3 job kế tiếp, mỗi job một dòng: mục tiêu, lý do, ước số ticket (S/M). Không tự tạo goal; anh Zon sẽ chọn.`
-      : `Trả lời ngắn gọn bằng tiếng Việt, dẫn ticket/file làm bằng chứng; điều chưa kiểm được thì nói rõ. Không bao giờ nói anh Zon đã kiểm.`,
+      : `Trả lời chi tiết, rõ ràng bằng tiếng Việt: câu đầu là kết quả chính, sau đó là chi tiết (ticket, file, số liệu, thời gian theo giờ VN) làm bằng chứng; điều chưa kiểm được thì nói rõ. Không bao giờ nói anh Zon đã kiểm.`,
   ].join('\n');
 }
 

@@ -2394,4 +2394,4 @@
 .chat-log .msg-team .msg-head { color: var(--accent); text-align: right; }
 .chat-log .msg-body { font-size: 13px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat-log .msg-divider { list-style: none; align-self: center; font-size: 11px; color: var(--text-muted); padding: 2px 10px; border-radius: 999px; background: var(--badge-bg); }
-
+.chat-log .msg-ack { font-style: italic; opacity: .85; padding: 6px 12px; }

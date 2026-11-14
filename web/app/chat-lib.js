@@ -32,6 +32,7 @@ var CHAT_LINES = {
     intentProject: ['new project', 'new app', 'another project', 'new repo', 'separate project'],
     intentAsk: ['what', 'how', 'why', 'when', 'where', 'which', 'who', 'status', 'progress'],
     intentGoal: ['add', 'make', 'build', 'create', 'fix', 'implement', 'change', 'write', 'update', 'remove'],
+    askAck: ['Sure, let me check and get back to you.', 'On it, one moment please.', 'Got it, checking now.', 'Let me look into it, back shortly.', 'Sure thing, give me a moment.'],
     resumeWords: ['go ahead', 'continue', 'resume', 'keep going', 'go on', 'carry on'],
     chitOwner: ['Anh Zon, hope your day is going great!', 'Anh Zon, remember to grab some water!', 'Anh Zon, the team is in good shape today!', 'Anh Zon, thanks for the clear tickets!', 'Anh Zon, we got this!', 'Anh Zon, have you had coffee yet?']
   },
@@ -65,6 +66,7 @@ var CHAT_LINES = {
     intentProject: ['project mới', 'dự án mới', 'app mới', 'repo mới', 'ứng dụng mới'],
     intentAsk: ['gì', 'sao', 'nào', 'bao giờ', 'khi nào', 'ở đâu', 'tới đâu', 'đến đâu', 'bao nhiêu', 'có phải'],
     intentGoal: ['làm', 'thêm', 'tạo', 'sửa', 'đổi', 'viết', 'xây', 'bỏ', 'cập nhật', 'nâng cấp'],
+    askAck: ['Dạ anh, chờ em xem lại rồi báo anh nhé.', 'Dạ, chờ em xíu ạ.', 'Dạ anh, em kiểm tra rồi trả lời anh liền.', 'Dạ em nhận rồi, anh đợi em chút nha.', 'Dạ, để em xem lại và báo anh ngay.'],
     resumeWords: ['tiếp e', 'tiếp em', 'tiếp tục', 'làm tiếp', 'chạy tiếp', 'tiếp đi'],
     chitOwner: ['Anh Zon ơi, chúc anh một ngày thật vui!', 'Anh Zon nhớ uống nước nha!', 'Anh Zon ơi, team hôm nay sung lắm!', 'Cảm ơn anh Zon giao việc rõ ràng nha!', 'Anh Zon yên tâm, tụi em lo được!', 'Anh Zon uống cà phê chưa ạ?']
   }
@@ -104,6 +106,13 @@ function classifyMessage(text, names) {
 }
 
 // Anh Zon gõ đúng "go ahead" / "tiếp e"… (cả câu, không thêm gì) trong Command = bấm Resume.
+// Câu "dạ" khi nhận câu hỏi (anh Zon 2026-11-14): cố định theo id (không nhảy khi vẽ lại); câu hỏi tiếng Việt → dạ tiếng Việt.
+function ackLine(id, text) {
+  var lang = Array.prototype.some.call(String(text || ''), function (ch) { var c = ch.charCodeAt(0); return c >= 0xC0 && c <= 0x1EF9; }) ? 'vi' : 'en';
+  var pool = CHAT_LINES[lang].askAck;
+  return pool[Math.abs(Number(id) || 0) % pool.length];
+}
+
 function isResumeWord(text) {
   var t = String(text || '').toLowerCase().replace(/[\s.!,]+$/g, '').replace(/\s+/g, ' ').trim();
   return CHAT_LINES.en.resumeWords.concat(CHAT_LINES.vi.resumeWords).indexOf(t) >= 0;
