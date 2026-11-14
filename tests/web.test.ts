@@ -2000,3 +2000,14 @@ describe('Gộp Session goals vào khung hàng đợi (2026-11-12)', () => {
     expect(html).toContain("text = 'G' + text + (found && found.title ? ' · ' + found.title : '');");
   });
 });
+
+describe('Thẻ thứ 5 Boss-Backup (2026-11-14)', () => {
+  const html = readWeb();
+  it('có thẻ seat-card-backup (id backup-*), nhãn "Backup", màn rộng chia đều một hàng', () => {
+    expect(html).toContain('id="seat-card-backup"');
+    expect(html).toContain('id="backup-last-line"');
+    expect(html).toContain("'mb.badge': 'Backup',");
+    expect(html).toContain('grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);');
+    expect(html).toContain('renderBossCard(state, isBusy);');
+  });
+});

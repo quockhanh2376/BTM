@@ -531,6 +531,70 @@
           </div>
         </div>
       </div>
+      <!-- Thẻ thứ 5: Boss (decision 0003) – dự phòng mọi ghế; không có ô đổi agent, không có Stop riêng. -->
+      <div class="seat-card seat-card-boss" id="seat-card-backup" style="display: none;">
+        <div class="seat-header">
+          <div>
+            <div class="seat-title-wrap">
+              <div class="seat-title" id="backup-title">Boss-Backup</div>
+              <svg id="backup-spinner" class="spinner-icon" style="display: none;" role="img" aria-label="Running" data-i18n-aria="seat.running" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" opacity="0.2" fill="none"></circle>
+                <path d="M12 3a9 9 0 0 1 9 9"></path>
+              </svg>
+            </div>
+            <div class="seat-tool" id="backup-tool">—</div>
+          </div>
+          <span class="seat-status-badge status-idle" id="backup-status-badge"><span data-i18n="seat.idle">Idle</span></span>
+        </div>
+        <div class="seat-grid2">
+          <div class="seat-info-row">
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 11h6M9 15h4"/></svg><span data-i18n="seat.task">Task</span></span><span id="backup-task">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="seat.started">Started</span></span><span id="backup-since">—</span></div>
+            <div class="seat-info-item"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg><span data-i18n="seat.turns">Turns</span></span><span id="backup-turns">0</span></div>
+          </div>
+          <div class="seat-side">
+            <div class="seat-swap-row">
+              <label for="backup-agent-select" class="seat-swap-label seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span data-i18n="seat.agent">Agent</span></label>
+              <select id="backup-agent-select" class="seat-swap-select" aria-label="Agent" data-i18n-aria="seat.agent"></select>
+            </div>
+            <div class="seat-lastrun-block">
+              <span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-3 2 2 3-4"/></svg><span data-i18n="seat.lastRun">Last run</span></span>
+              <span id="backup-lastrun" class="seat-run">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="seat-info-item seat-ontask-row"><span class="seat-lbl"><svg class="seat-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg><span data-i18n="seat.onTask">On ticket</span></span><span id="backup-ontask">—</span></div>
+        <div class="last-line-container">
+          <div class="last-line-head">
+            <span class="last-line-label" data-i18n="seat.lastLog">Last log</span>
+            <span class="seat-elapsed" id="backup-elapsed" hidden></span>
+          </div>
+          <pre class="last-line-text" id="backup-last-line">—</pre>
+        </div>
+        <div class="seat-footer" id="backup-footer">
+          <div id="backup-login-indicator" class="seat-login-indicator">
+            <span class="login-dot dot-unknown"></span>
+            <span class="login-text" data-i18n="login.none">Login: —</span>
+          </div>
+          <div id="backup-energy-box" class="seat-energy-box">
+            <span class="energy-unknown" data-i18n="energy.none">Energy: —</span>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">5h</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="5h: 100% left">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">100% left</span>
+            </div>
+            <div class="energy-bar-row">
+              <span class="energy-bar-label">Week</span>
+              <div class="energy-meter-track" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Week: 100% left">
+                <div class="energy-meter-fill meter-green" style="width: 100%;"></div>
+              </div>
+              <span class="energy-bar-text">100% left</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Hộp thư team -->

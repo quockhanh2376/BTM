@@ -141,6 +141,7 @@
       function formatSeatLabel(seat) {
         if (!seat) return '';
         var key = String(seat).toLowerCase();
+        if (key === 'backup') return tx('mb.badge');
         return Object.prototype.hasOwnProperty.call(SEAT_MAP, key) ? SEAT_MAP[key] : String(seat);
       }
       var formatSeat = formatSeatLabel;
@@ -2225,6 +2226,35 @@
         if (b) b.addEventListener('click', function () { var r = document.getElementById('refresh-energy-btn'); if (r) r.click(); });
       })();
 
+      // Thẻ thứ 5 (anh Zon 2026-11-14): Boss luôn có thẻ riêng. Đang ngồi ghế nào thì thẻ hiện lượt của ghế đó.
+      function bossCardData(state) {
+        var acc = ((state && state.accounts) || []).filter(function (a) { return a.provider === 'zai'; })[0];
+        if (!acc) return null;
+        var sitting = ((state && state.seats) || []).filter(function (s) { return s.agent === acc.agent; });
+        var live = sitting.filter(function (s) { return s.status === 'running'; })[0] || sitting[0];
+        var base = live ? Object.assign({}, live) : { status: 'idle', taskId: null, since: null, turns: 0, lastLine: '' };
+        base.agent = acc.agent;
+        base.tool = acc.tool;
+        base.model = acc.model;
+        base.login = acc.login;
+        base.energy = acc.energy;
+        base.candidates = [acc.agent];
+        base.also = sitting.map(function (s) { return s.seat; });
+        return base;
+      }
+      function renderBossCard(state, isBusy) {
+        var card = document.getElementById('seat-card-backup');
+        if (!card) return;
+        var data = bossCardData(state);
+        setDisplay(card, Boolean(data), 'flex');
+        if (!data) return;
+        renderSeat('backup', data, state.holder && data.also.indexOf(state.holder) >= 0, isBusy);
+        var stop = card.querySelector('.seat-stop-btn');
+        if (stop) stop.hidden = true; // Stop theo ghế: dùng nút Stop trên thẻ ghế Boss đang ngồi
+        var sel = document.getElementById('backup-agent-select');
+        var row = sel && sel.closest('.seat-swap-row');
+        if (row) row.hidden = true;
+      }
       function renderSeat(seatKey, cardData, isCurrentHolder, isBusy) {
         var cardEl = document.getElementById('seat-card-' + seatKey);
         if (!cardEl) return;
@@ -3062,6 +3092,7 @@
         } else {
           setDisplay(document.getElementById('seat-card-audit'), false);
         }
+        renderBossCard(state, isBusy);
 
         // Goals & Pipeline & Tickets
         renderGoals(state.goals, state.seats);
