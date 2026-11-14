@@ -1739,6 +1739,7 @@ describe('Chat bubbles (2026-11-14)', () => {
     const fn = html.slice(html.indexOf('var SR = window.SpeechRecognition'), html.indexOf('// Ctrl+Enter (Cmd+Enter'));
     expect(fn).toContain('cmdTextArea.value = ');
     expect(fn).not.toContain('cmdSendBtn.click()');
+    expect(fn).toContain("ev.error === 'audio-capture' ? 'mic.none'");
     expect(fn).not.toContain('innerHTML');
   });
 
