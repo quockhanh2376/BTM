@@ -3060,6 +3060,86 @@ Yêu cầu đóng note nhưng commit lỗi
       store.close();
     });
 
+    // Boss kiểm bảo mật lần 2 sau Audit (anh Zon 2026-11-14).
+    function withBoss(repo: string, opts: { enabled?: boolean; keySet?: boolean } = {}) {
+      const base = loadConfig('btm.config.yaml');
+      const made = makeDeps(repo, {
+        seats: { ...base.seats, audit: 'kai' },
+        agents: {
+          ...base.agents,
+          kai: { tool: 'antigravity-cli', command: 'agy', can_sit: ['audit'] },
+          mb: { tool: 'claude-code', command: 'claude', provider: 'zai', can_sit: ['pm', 'dev', 'qc', 'audit'] } as any,
+        },
+      });
+      if (opts.keySet !== false) made.store.setSetting('mb_key', JSON.stringify({ iv: 'aQ==', tag: 'dA==', data: 'ZA==', last4: 'abcd' }));
+      made.store.setSetting('mb_enabled', opts.enabled === false ? '0' : '1');
+      return made;
+    }
+    const passGoal = (auditAnswers: Array<() => unknown>) => [
+      (_s: Seat, _a: string, _p: string, cwd: string) => { writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }); },
+      (_s: Seat, agent: string, _p: string, cwd: string) => {
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const a = 1;\n');
+        writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+      },
+      () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+      ...auditAnswers,
+    ];
+    const auditPass = () => ({ lastMessage: JSON.stringify({ verdict: 'pass', findings: [] }) });
+
+    it('Boss audit lần 2: Audit đạt → Boss (chỉ đọc, ghế audit) kiểm tiếp; cả hai đạt → audit_passed, có G1-audit-boss.md', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = withBoss(repo);
+      const { runner, calls } = createFakeRunner(passGoal([auditPass, auditPass]) as any);
+      deps.runner = runner;
+      const outcome = await runSession(deps, ['Security Goal'], { approved: true });
+      expect(outcome.status).toBe('done');
+      expect(calls.map((c) => `${c.seat}:${c.agentId}`).slice(3)).toEqual(['audit:kai', 'audit:mb']);
+      expect(calls[4].prompt).toContain('Bạn là Audit (mb)');
+      expect(store.getGoal(repo, 1)?.state).toBe('audit_passed');
+      const boss = readFileSync(join(repo, 'team', 'reports', 'G1-audit-boss.md'), 'utf8');
+      expect(boss).toContain('mb-Boss audit');
+      expect(boss).toContain('Verdict: pass');
+      expect(git(repo, 'log', '--oneline', '-n', '4')).toContain('G1: boss audit pass');
+      store.close();
+    });
+
+    it('Boss audit lần 2 fail (không có finding) → dừng chờ anh như audit thường, goal không audit_passed', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = withBoss(repo);
+      const { runner, calls } = createFakeRunner(passGoal([auditPass, () => ({ lastMessage: JSON.stringify({ verdict: 'fail', findings: [] }) })]) as any);
+      deps.runner = runner;
+      const outcome = await runSession(deps, ['Security Goal'], { approved: true });
+      expect(calls[4].agentId).toBe('mb');
+      expect(outcome.status).toBe('needs_owner');
+      expect(outcome.notes).toContain('audit_fail_no_findings');
+      expect(store.getGoal(repo, 1)?.state).not.toBe('audit_passed');
+      store.close();
+    });
+
+    it('Boss bị chặn (hết quota) → bỏ lần 2, ghi lý do vào G1-audit.md, goal vẫn audit_passed; Boss tắt / chưa có key → không gọi Boss', async () => {
+      const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+      const { deps, store } = withBoss(repo);
+      deps.gate = (agent: string) => (agent === 'mb' ? { ok: false, reason: 'energy:5h 2% left' } : { ok: true });
+      const { runner, calls } = createFakeRunner(passGoal([auditPass]) as any);
+      deps.runner = runner;
+      const outcome = await runSession(deps, ['Security Goal'], { approved: true });
+      expect(outcome.status).toBe('done');
+      expect(calls.some((c) => c.agentId === 'mb')).toBe(false);
+      expect(readFileSync(join(repo, 'team', 'reports', 'G1-audit.md'), 'utf8')).toContain('Boss audit: skipped – energy:5h 2% left');
+      expect(store.getGoal(repo, 1)?.state).toBe('audit_passed');
+      store.close();
+
+      for (const opts of [{ enabled: false }, { keySet: false }]) {
+        const r2 = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
+        const w = withBoss(r2, opts);
+        const f = createFakeRunner(passGoal([auditPass]) as any);
+        w.deps.runner = f.runner;
+        expect((await runSession(w.deps, ['Security Goal'], { approved: true })).status).toBe('done');
+        expect(f.calls.some((c) => c.agentId === 'mb')).toBe(false);
+        w.store.close();
+      }
+    }, 90_000); // 3 phiên nối tiếp
+
     it('auditor_is_coder: auditor coded a ticket in the goal → needs_owner, lý do auditor_is_coder', async () => {
       const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
       // Jacky is coder and also set as auditor
