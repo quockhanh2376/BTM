@@ -1981,7 +1981,18 @@ describe('Khu Agents theo mẫu (2026-11-14)', () => {
   });
 
   it('không khí team (2026-11-14): Vui vẻ nói nhiều hơn Bình thường; bàn kế hoạch [plan] đang chờ/chạy → tự Vui vẻ', () => {
-    const lib = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return { chatMoodCfg, chatDiscussing };')() as any;
+    const lib = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return { chatMoodCfg, chatDiscussing, livelyTalkPlan, CHAT_LINES };')() as any;
+    expect(lib.chatMoodCfg('lively').chit).toEqual([0.5, 1]);
+    for (const l of ['en', 'vi']) {
+      const n = ['livelyChit', 'livelyAck', 'livelyThird'].map((k) => lib.CHAT_LINES[l][k].length);
+      expect(n[0] + n[1] + n[2]).toBeGreaterThanOrEqual(50);
+    }
+    const seen = new Set<number>();
+    for (let i = 0; i < 200; i++) seen.add(lib.livelyTalkPlan(['pm', 'dev', 'qc', 'audit']).length);
+    expect([...seen].sort()).toEqual([1, 2, 3]);
+    expect(lib.livelyTalkPlan(['pm'])).toEqual(['pm']);
+    expect(lib.livelyTalkPlan([])).toEqual([]);
+    expect(html).toContain('setInterval(chatTick, 10000);');
     const lively = lib.chatMoodCfg('lively');
     const normal = lib.chatMoodCfg('normal');
     expect(lively.chit[1]).toBeLessThan(normal.chit[0]);
