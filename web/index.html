@@ -1071,6 +1071,13 @@
     .diff-add { background-color: rgba(46, 160, 67, 0.15); }
     .diff-del { background-color: rgba(248, 81, 73, 0.15); }
 
+    .question-item .q-text { margin-top: 4px; }
+    .q-compose { position: relative; }
+    .q-compose .cmd-composer-text { padding-right: 36px; }
+    .q-clear { position: absolute; top: 6px; right: 8px; width: 26px; height: 26px; border: none; border-radius: 8px; background: transparent; color: var(--text-muted); font-size: 14px; cursor: pointer; }
+    .q-clear:hover { background: var(--badge-bg); color: var(--text); }
+    .q-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .question-item .q-hint { margin: 6px 0 2px; font-style: italic; }
     .cmd-composer-bar.q-attach-bar { justify-content: flex-start; flex-wrap: wrap; }
     .q-attach-preview { display: inline-flex; align-items: center; gap: 6px; }
     .q-attach-preview img { max-height: 64px; max-width: 160px; border-radius: 4px; border: 1px solid var(--border); }
@@ -3216,6 +3223,8 @@
           'q.imageAlt': 'Image for question {id}',
           'q.removeImage': 'Remove image',
           'q.seeImage': 'See attached image.',
+          'q.clear': 'Clear answer',
+          'q.multiHint': 'One answer for all {n} questions, or write "1. … 2. …" to answer each one.',
           'q.answerFor': 'Answer question {id}',
           'q.answered': 'Answered – press Resume to continue',
           'diff.open': 'Diff',
@@ -3801,6 +3810,38 @@
         r.readAsDataURL(file);
       }
 
+      // Anh Zon 2026-11-14: nhiều câu hỏi của cùng ticket → một ô trả lời. Gõ "1. … 2. …" đủ số câu thì tách riêng
+      // từng câu; không thì cùng một câu trả lời cho mọi câu hỏi.
+      function splitAnswers(text, n) {
+        var t = String(text || '').trim();
+        if (n <= 1) return [t];
+        var parts = {};
+        var re = /(?:^|\n)\s*(\d{1,2})\s*[.):]\s*/g;
+        var marks = [];
+        var m;
+        while ((m = re.exec(t))) marks.push({ n: parseInt(m[1], 10), start: m.index, body: re.lastIndex });
+        marks.forEach(function (k, i) {
+          var end = i + 1 < marks.length ? marks[i + 1].start : t.length;
+          if (k.n >= 1 && k.n <= n && !parts[k.n]) parts[k.n] = t.slice(k.body, end).trim();
+        });
+        var out = [];
+        for (var i = 1; i <= n; i++) {
+          if (!parts[i]) return Array.apply(null, Array(n)).map(function () { return t; });
+          out.push(parts[i]);
+        }
+        return out;
+      }
+      function groupQuestions(questions) {
+        var groups = [];
+        var byTicket = {};
+        questions.forEach(function (q) {
+          var k = q.ticket + '|' + q.seat;
+          if (!byTicket[k]) { byTicket[k] = []; groups.push(byTicket[k]); }
+          byTicket[k].push(q);
+        });
+        return groups;
+      }
+
       function renderQuestions(questions) {
         var section = document.getElementById('questions-section');
         var list = document.getElementById('questions-list');
@@ -3813,16 +3854,26 @@
           return;
         }
         section.style.display = 'block';
-        questions.forEach(function (q) {
+        groupQuestions(questions).forEach(function (qs) {
+          var q = { id: qs.map(function (x) { return x.id; }).join('-'), ticket: qs[0].ticket, seat: qs[0].seat, agent: qs[0].agent };
           var item = document.createElement('div');
           item.className = 'question-item';
           var head = document.createElement('div');
           head.className = 'account-detail';
           head.textContent = tx('q.from', { ticket: q.ticket, seat: SEAT_LABELS[q.seat] || q.seat, agent: q.agent || '—' });
           item.appendChild(head);
-          var text = document.createElement('div');
-          text.textContent = q.text;
-          item.appendChild(text);
+          qs.forEach(function (x, i) {
+            var text = document.createElement('div');
+            text.className = 'q-text';
+            text.textContent = (qs.length > 1 ? (i + 1) + '. ' : '') + x.text;
+            item.appendChild(text);
+          });
+          if (qs.length > 1) {
+            var hint = document.createElement('div');
+            hint.className = 'account-detail q-hint';
+            hint.textContent = tx('q.multiHint', { n: qs.length });
+            item.appendChild(hint);
+          }
           // Ô trả lời kiểu khung Command: chữ + ảnh nằm chung trong một khung.
           var compose = document.createElement('div');
           compose.className = 'cmd-composer q-compose';
@@ -3892,6 +3943,22 @@
           bar.appendChild(preview);
           bar.appendChild(btn);
           compose.appendChild(bar);
+          // Nút ✕ góc phải trên: xoá chữ + ảnh đang soạn để anh trả lời lại (anh Zon 2026-11-14).
+          var clearBtn = document.createElement('button');
+          clearBtn.type = 'button';
+          clearBtn.className = 'q-clear';
+          clearBtn.textContent = '✕';
+          clearBtn.title = tx('q.clear');
+          clearBtn.setAttribute('aria-label', tx('q.clear'));
+          clearBtn.addEventListener('click', function () {
+            area.value = '';
+            delete qDrafts[q.id];
+            delete qImages[q.id];
+            fileInput.value = '';
+            showPreview();
+            area.focus();
+          });
+          compose.appendChild(clearBtn);
           item.appendChild(compose);
           showPreview();
           area.addEventListener('keydown', function (e) {
@@ -3902,11 +3969,15 @@
             // Chỉ có ảnh, chưa gõ chữ: vẫn gửi được, kèm câu mặc định (server cần chữ).
             var answerText = area.value.trim() || (qImages[q.id] ? tx('q.seeImage') : '');
             if (!answerText) { area.focus(); return; }
-            var payload = { text: answerText };
-            if (qImages[q.id]) payload.image = { base64: qImages[q.id].base64 };
+            var answers = splitAnswers(answerText, qs.length);
             btn.disabled = true;
             try {
-              var res = await postJson('/api/questions/' + q.id + '/answer', payload);
+              var res = null;
+              for (var i = 0; i < qs.length && !(res && res.error); i++) {
+                var payload = { text: answers[i] || answerText };
+                if (qImages[q.id]) payload.image = { base64: qImages[q.id].base64 };
+                res = await postJson('/api/questions/' + qs[i].id + '/answer', payload);
+              }
               if (res && res.error) showFeedback(topFeedback, res.error, true);
               else {
                 delete qDrafts[q.id];

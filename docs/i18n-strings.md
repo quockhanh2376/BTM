@@ -275,3 +275,5 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | cmd.nothingToResume | Không có gì để tiếp tục: phiên không ở trạng thái dừng. | Nothing to resume: the session is not paused. |
 | mic.start / mic.stop / mic.lang / mic.listening / mic.blocked / mic.error | Nói để nhập / Dừng nói / Ngôn ngữ giọng nói / Đang nghe… nói đi, bấm mic lần nữa để dừng. / Mic bị chặn, cho phép trên thanh địa chỉ. / Nhập giọng nói dừng: {err} | Voice input / Stop voice input / Voice language / Listening… / Microphone is blocked… / Voice input stopped: {err} |
 | mic.service / mic.none | Trình duyệt chặn dịch vụ nhận diện, dùng Chrome hoặc Edge / Không thấy mic, qua RDP bật "Record from this computer" rồi kết nối lại | The browser blocks its speech service… / No microphone found… |
+| q.multiHint | Một câu trả lời chung cho cả {n} câu, hoặc ghi "1. … 2. …" để trả lời riêng. | One answer for all {n} questions, or write "1. … 2. …" to answer each one. |
+| q.clear | Xoá câu trả lời | Clear answer |
