@@ -1822,6 +1822,17 @@ describe('Không còn confirm() của trình duyệt (2026-11-14)', () => {
   });
 });
 
+describe('Thời gian goal (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('định dạng thời lượng và dòng ⏱ trên thẻ goal', () => {
+    const f = new Function(html.slice(html.indexOf('function formatDuration'), html.indexOf('function renderGoals')) + 'return formatDuration;')() as (ms: number) => string;
+    expect(f(3_725_000)).toBe('1h 02m');
+    expect(f(37 * 60000)).toBe('37m');
+    expect(f(20_000)).toBe('<1m');
+    expect(html).toContain("tl.className = 'goal-time';");
+  });
+});
+
 describe('Stop: agent hỏi lại thân thiện (2026-11-14)', () => {
   const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
   it('dùng <dialog> thay confirm(), mặc định là tiếp tục, chữ bằng textContent', () => {

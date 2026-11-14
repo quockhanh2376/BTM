@@ -764,3 +764,17 @@ describe('thẻ ghế: Last run / On ticket', () => {
   });
 });
 
+
+import { goalTime } from '../src/server/snapshot.ts';
+describe('Thời gian goal (2026-11-14)', () => {
+  it('cộng thời gian lượt theo ghế, tổng = tới lúc merge, lượt đang chạy tính tới now', () => {
+    const t = goalTime('2026-11-13T07:00:00Z', '2026-11-13T10:00:00Z', [
+      { seat: 'dev', started_at: '2026-11-13T07:10:00Z', ended_at: '2026-11-13T08:10:00Z' },
+      { seat: 'qc', started_at: '2026-11-13T08:10:00Z', ended_at: '2026-11-13T08:20:00Z' },
+      { seat: 'dev', started_at: '2026-11-13T09:00:00Z', ended_at: null },
+    ], Date.parse('2026-11-13T09:30:00Z'));
+    expect(t.wallMs).toBe(3 * 3600_000);
+    expect(t.bySeat).toEqual({ dev: 90 * 60_000, qc: 10 * 60_000 });
+    expect(t.agentMs).toBe(100 * 60_000);
+  });
+});
