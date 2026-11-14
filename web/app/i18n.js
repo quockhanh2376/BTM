@@ -217,6 +217,7 @@
           'history.running': 'running',
           'history.log': 'Log',
           'history.logHide': 'Hide log',
+          'history.logEmpty': '(Empty log – this turn wrote no output)',
           'status.running': 'Running',
           'status.awaiting_approval': 'Awaiting approval',
           'status.done': 'Done',

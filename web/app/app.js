@@ -1245,7 +1245,8 @@
                 pre.textContent = tx('history.loading');
                 try {
                   var lr = await fetch('/api/turns/' + encodeURIComponent(h.id) + '/log');
-                  pre.textContent = lr.ok ? await lr.text() : tx('history.cannotLoad');
+                  var logText = lr.ok ? await lr.text() : null;
+                  pre.textContent = logText === null ? tx('history.cannotLoad') : logText.trim() ? logText : tx('history.logEmpty');
                 } catch (e) {
                   pre.textContent = tx('history.cannotLoad');
                 }
