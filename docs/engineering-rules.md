@@ -38,7 +38,7 @@
 
 | Nợ | Trạng thái 2026-11-14 | Còn lại |
 |---|---|---|
-| `web/index.html` 7.400 dòng | ✅ tách: `index.html` 611 + `web/app/{app.css, i18n.js, chat-lib.js, app.js}` (#97, #98) | `app.js` ~2.600 dòng sau khi tách `goals.js`, `folders.js`, `chat-bubbles.js`, `accounts.js` (hàm `btmX(d)` nhận helper qua `d`): còn questions, diff, seats, notes |
+| `web/index.html` 7.400 dòng | ✅ tách: `index.html` 611 + `web/app/{app.css, i18n.js, chat-lib.js, app.js}` (#97, #98) | ✅ 2026-11-14: `app.js` 2.706 → 1.840 sau khi tách thêm `questions.js` (254), `diff.js` (148), `seats.js` (297), `inbox.js` (247, gồm ảnh kèm note) theo mẫu `btmX(d)` nhận helper qua `d`. Còn trong `app.js`: avatar ghế (`renderSeatAvatar`, `shrinkAvatar` – test cắt chuỗi `askOwner` → `renderSeatAvatar`), ô Command (gửi, Auto, mic), System/Trash/Lessons, Search, Boss key |
 | Lệnh trực tiếp nhiều nhánh trong `host.ts` | ✅ `src/server/direct-command.ts`, một bước chạy chung (#100); `host.ts` 1.218 → 884 | – |
 | `src/server/http.ts` route dài | ✅ `src/server/routes/{goals,tickets,questions}.ts` (#101); 1.082 → ~800 | tách nốt nhóm notes/inbox, seats/agent, session/command |
 | `src/core/session.ts` 2.450 dòng | ✅ `session-helpers.ts` (#102) + `processGoal` chia theo lượt: `src/core/goal/{ctx,pm-planning,tickets,audit}.ts` dùng `GoalCtx` (#106); `session.ts` còn ~710 | ✅ `goal/tickets.ts` 775 → 91: `ticket-run.ts` (trạng thái ticket + 2 khối lặp gộp lại), `dev-turn.ts`, `qc-turn.ts` (#118) |
