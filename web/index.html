@@ -3074,6 +3074,12 @@
           'energy.unavailable': 'Energy: unavailable',
           'energy.low': 'Low',
           'goals.title': 'Goals',
+          'ticket.retry': 'Retry',
+          'ticket.retryFor': 'Retry {ticket}',
+          'ticket.askRetry': '{ticket} is {state}. Want me to try it again?',
+          'ticket.askRetryNote': 'It goes back to Dev with a fresh set of fix rounds; tickets blocked only because of it are reopened too. Press Resume to start.',
+          'ticket.retryOk': 'Yes, retry',
+          'ticket.retried': 'Reopened {list}. Press Resume to continue.',
           'trash.label': 'Trash ({n})',
           'trash.empty': 'Trash is empty',
           'trash.moveTip': 'Move G{n} to Trash',
@@ -4855,6 +4861,24 @@
                 });
               })(t.id);
               tdTags.appendChild(diffBtn);
+              // Ticket failed/blocked: nút Làm lại (Dev hỏi lại trước), có phiên sẵn để Resume.
+              if (t.state === 'failed' || t.state === 'blocked') {
+                var retryBtn = document.createElement('button');
+                retryBtn.type = 'button';
+                retryBtn.className = 'btn btn-secondary btn-sm btn-accent-outline';
+                retryBtn.textContent = tx('ticket.retry');
+                retryBtn.setAttribute('aria-label', tx('ticket.retryFor', { ticket: t.id }));
+                (function (ticketId, state) {
+                  retryBtn.addEventListener('click', async function (ev) {
+                    ev.stopPropagation();
+                    var yes = await askAsSeat('dev', { text: tx('ticket.askRetry', { ticket: ticketId, state: state }), note: tx('ticket.askRetryNote'), ok: tx('ticket.retryOk'), cancel: tx('ask.notYet') });
+                    if (!yes) return;
+                    var r = await postJson('/api/tickets/' + encodeURIComponent(ticketId) + '/retry', {});
+                    showFeedback(topFeedback, r && r.error ? r.error : tx('ticket.retried', { list: (r.reopened || [ticketId]).join(', ') }), Boolean(r && r.error));
+                  });
+                })(t.id, t.state);
+                tdTags.appendChild(retryBtn);
+              }
 
               if (t.type || t.size) {
                 var meta = document.createElement('span');

@@ -279,3 +279,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | q.clear | Xoá câu trả lời | Clear answer |
 | q.delegate / q.delegateTip / q.delegateSent / q.teamGuard / q.teamGuardOk / q.teamGuardCancel | Để {name} trả lời / … / {name} đang trả lời… / Đang có câu hỏi; tin cho Team sẽ tạo goal MỚI… / Tạo goal mới / Huỷ | Let {name} answer / … |
 | trash.* | Thùng rác ({n}) / Thùng rác trống / Chuyển G{n} vào thùng rác? / Khôi phục / Xoá vĩnh viễn / … | Trash ({n}) / Trash is empty / Move G{n} to Trash? / Restore / Delete permanently / … |
+| ticket.retry / ticket.askRetry / ticket.retryOk / ticket.retried | Làm lại / {ticket} đang {state}, làm lại nhé? / Ừ, làm lại / Đã mở lại {list}, bấm Resume | Retry / … |
