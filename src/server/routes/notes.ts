@@ -186,8 +186,10 @@ export async function handleNotesPost(method: string | undefined, pathname: stri
       ? o.store.listNotes(activeProject, 1_000_000)
       : parsed.data.ids!.map((id) => o.store.getNote(id)).filter((n) => n?.project === activeProject);
     // Ghi chú đang mở của phiên còn chờ/Resume được: phiên đó vẫn đọc note + ảnh → không xoá.
+    // Chỉ phiên MỚI NHẤT của project mới Resume được; phiên cũ hơn (anh Zon 2026-11-15: N-4 kẹt vì phiên 14 out_of_turns từ lâu) không giữ note.
+    const latest = o.store.getLatestSession(undefined, activeProject)?.id;
     const inUse = (n: (typeof picked)[number]) => {
-      if (n?.status !== 'open' || !n.session_id) return false;
+      if (n?.status !== 'open' || !n.session_id || n.session_id !== latest) return false;
       const st = o.store.getSession(n.session_id)?.status;
       return st === 'running' || st === 'needs_owner' || st === 'stopped' || st === 'out_of_turns';
     };

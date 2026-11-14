@@ -4,7 +4,6 @@ import { appendFileSync, createWriteStream, mkdirSync, readFileSync, existsSync,
 import { dirname, join, resolve } from 'node:path';
 import type { Config, Seat, Tool } from '../config.ts';
 import { buildArgv } from './argv.ts';
-import { canRunOnSeat } from '../agents/accounts.ts';
 import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerKillAll, workerReset, wrapForWorker } from '../isolation/worker.ts';
 import { agyActiveSince, importTurn, isIsolated, readWorkerOut, STATUS_FILE, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
@@ -469,11 +468,8 @@ export function makeRunner(
 
     // Plan 7: chạy dưới user của tài khoản được chọn (khoá tài khoản; mặc định = agent id).
     const w = options?.account ?? agentId;
-    // Công cụ của lượt = công cụ của TÀI KHOẢN (Finn có thể có tài khoản Antigravity). Model/effort của Worker chỉ áp dụng khi
-    // tài khoản dùng đúng công cụ chính của Worker; công cụ khác thì dùng mặc định của công cụ đó.
+    // Công cụ của lượt = công cụ của TÀI KHOẢN (Finn có thể có tài khoản Antigravity). Model/effort chọn theo thẻ + công cụ.
     const tool: Tool = toolOf?.(w) ?? agent.tool;
-    if (!canRunOnSeat(tool, seat, agent.tool)) throw new Error(`agy_cannot_sit_read_only:${agentId}`);
-    const ownTool = tool === agent.tool;
 
     // Kế hoạch 8: agy đo tiến độ bằng bước mới thay cho giờ cố định: còn ra bước thì chạy tới max_minutes,
     // im idle_minutes thì cắt. Chỉ khi cách ly (đọc được thư mục agy qua worker).
@@ -501,8 +497,8 @@ export function makeRunner(
       allow,
       outFile,
       images: options?.images,
-      model: ownTool ? agentModel(cfg, settings, agentId) : undefined,
-      effort: ownTool ? agentEffort(cfg, settings, agentId) : undefined,
+      model: agentModel(cfg, settings, agentId, tool),
+      effort: agentEffort(cfg, settings, agentId, tool),
     });
     // Boss (decision 0003): agent chỉ cầm mã tạm của lượt; cổng trung gian 127.0.0.1 thay bằng key Z.ai thật.
     // shortcut: mã tạm nằm trong argv (ps thấy được khi lượt khác chạy song song) – chỉ dùng được qua cổng nội bộ trong lượt này.

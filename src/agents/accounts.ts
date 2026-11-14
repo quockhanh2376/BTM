@@ -2,6 +2,7 @@ import type { Config, Seat, Tool } from '../config.ts';
 import type { Store } from '../store/db.ts';
 import { READ_ONLY_SEATS } from '../runner/argv.ts';
 import { usageLimitedKey } from './usage-limit.ts';
+import { effectiveSeats } from '../store/seats.ts';
 
 // Plan 7: Worker (agent) có nhiều tài khoản, mỗi tài khoản = 1 user Linux <worker_prefix><khoá>.
 // Khoá tài khoản default = agent id, nên mọi dữ liệu cũ (energy, login, usage_limited_until:<agent>) vẫn dùng được.
@@ -42,11 +43,15 @@ export function toolOfAccountKey(cfg: Config, store: Store, key: string): Tool |
   return null;
 }
 
-/**
- * Ghế chỉ đọc (QC, Audit) không dùng được Antigravity (agy không có chế độ chỉ đọc). Chỉ chặn tài khoản Antigravity THÊM cho
- * Worker không phải agy: Worker agy gốc đã bị config.ts cấm ngồi QC/Audit (cấu hình sai bị từ chối lúc nạp).
- */
-export const canRunOnSeat = (tool: Tool, seat: Seat, workerTool: Tool) => !(tool === 'antigravity-cli' && workerTool !== 'antigravity-cli' && READ_ONLY_SEATS.has(seat));
+/** Một email chỉ ở một tài khoản trên toàn BTM (anh Zon 2026-11-15): tài khoản KHÁC đang giữ email này, null nếu không có. */
+export function emailOwner(cfg: Config, store: Store, email: string | null | undefined, exceptKey?: string): { agent: string; slug: string } | null {
+  const want = email?.trim().toLowerCase();
+  if (!want) return null;
+  for (const a of store.listAccounts()) {
+    if (cfg.agents[a.agent] && a.email?.trim().toLowerCase() === want && accountKey(a.agent, a.slug) !== exceptKey) return { agent: a.agent, slug: a.slug };
+  }
+  return null;
+}
 
 export function agentOfAccount(cfg: Config, store: Store, key: string): string | null {
   if (cfg.agents[key]) return key;
@@ -70,15 +75,15 @@ export function isUsable(store: Store, key: string, now: Date): boolean {
 }
 
 /** Tài khoản dùng được theo thứ tự: đang bật, không bị giới hạn (hoặc đã qua giờ reset), đăng nhập không phải relogin. */
-/** readOnly: lượt chỉ đọc (QC / Audit / hỏi đáp / họp) → bỏ tài khoản Antigravity. */
-export function usableAccounts(cfg: Config, store: Store, agent: string, now = new Date(), opts: { readOnly?: boolean } = {}): Array<{ key: string; slug: string }> {
+/** avoidTool: bỏ tài khoản chạy công cụ này (xem seatOpts). */
+export function usableAccounts(cfg: Config, store: Store, agent: string, now = new Date(), opts: SeatOpts = {}): Array<{ key: string; slug: string }> {
   const workerTool = cfg.agents[agent]?.tool;
-  const active = accountsOf(store, agent).filter((a) => a.active && !(opts.readOnly && workerTool && !canRunOnSeat(a.tool ?? workerTool, 'qc', workerTool)));
+  const active = accountsOf(store, agent).filter((a) => a.active && !(opts.avoidTool && (a.tool ?? workerTool) === opts.avoidTool));
   const candidates = cfg.rules.auto_switch_accounts === false ? active.slice(0, 1) : active;
   return candidates.map((a) => ({ key: accountKey(agent, a.slug), slug: a.slug })).filter((a) => isUsable(store, a.key, now));
 }
 
-export function pickAccount(cfg: Config, store: Store, agent: string, now = new Date(), opts: { readOnly?: boolean } = {}): { key: string; slug: string } | null {
+export function pickAccount(cfg: Config, store: Store, agent: string, now = new Date(), opts: SeatOpts = {}): { key: string; slug: string } | null {
   return usableAccounts(cfg, store, agent, now, opts)[0] ?? null;
 }
 
@@ -93,6 +98,19 @@ export function soonestReset(store: Store, agent: string, now = new Date()): str
 }
 
 export const accountLastKey = (agent: string) => `account_last:${agent}`;
+
+export type SeatOpts = { avoidTool?: Tool };
+/**
+ * Anh Zon 2026-11-15 (tăng chất lượng code): bài do Antigravity code thì Antigravity không kiểm. Ghế Dev đang chạy tài khoản
+ * Antigravity (tài khoản lượt gần nhất, chưa chạy thì tài khoản sẽ dùng) → QC/Audit bỏ tài khoản Antigravity.
+ */
+export function seatOpts(cfg: Config, store: Store, seat: Seat, project?: string | null): SeatOpts {
+  if (!READ_ONLY_SEATS.has(seat)) return {};
+  const dev = effectiveSeats(cfg, store, project).dev;
+  if (!dev || !cfg.agents[dev]) return {};
+  const key = store.getSetting(accountLastKey(dev)) || pickAccount(cfg, store, dev)?.key;
+  return key && toolOfAccountKey(cfg, store, key) === 'antigravity-cli' ? { avoidTool: 'antigravity-cli' } : {};
+}
 export function slugOfKey(agent: string, key: string): string {
   return key === agent ? 'default' : key.slice(agent.length + 1);
 }

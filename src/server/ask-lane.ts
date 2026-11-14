@@ -100,7 +100,7 @@ export function createAskLane(d: {
       const skills = skillsFor(d.store, d.cfg.host.data_dir, project, seat, turnId);
       const prompt = askPrompt(seat, item.text, knowledgeFor(d.store, d.cfg, project, item.text)) + onBehalf + (skills ? `\n\n${skills}` : '');
       const out = await d.runner(seat === 'audit' ? 'audit' : 'qc', agent, prompt, project, logFile, {
-        account: usableAccounts(d.cfg, d.store, agent, new Date(), { readOnly: true })[0]?.key,
+        account: usableAccounts(d.cfg, d.store, agent)[0]?.key,
         noImport: true,
       });
       ok = !out.timedOut && out.exitCode === 0;
@@ -143,7 +143,7 @@ export function createAskLane(d: {
       const key = readProjectKey(project);
       const own = lessonsFile(d.cfg.host.data_dir, key);
       const out = await d.runner('qc', agent, lessonsPrompt(n, digest, readLessons(own).slice(-3000)), project, logFile, {
-        account: usableAccounts(d.cfg, d.store, agent, new Date(), { readOnly: true })[0]?.key,
+        account: usableAccounts(d.cfg, d.store, agent)[0]?.key,
         noImport: true,
       });
       const lessons = !out.timedOut && out.exitCode === 0 ? parseLessons(`${out.output || ''}\n${out.lastMessage || ''}`) : null;

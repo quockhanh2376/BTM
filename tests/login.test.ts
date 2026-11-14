@@ -347,13 +347,14 @@ describe('checkLogin', () => {
 
   describe('codex-cli', () => {
     it('chạy lệnh codex login status đúng tham số', async () => {
-      let executedArgv: string[] = [];
+      const calls: string[][] = [];
+      const idToken = `x.${Buffer.from(JSON.stringify({ email: 'jenny@btm.local' })).toString('base64url')}.y`;
       const health = await checkLogin('jenny', 'codex-cli', {
         run: async (argv) => {
-          executedArgv = argv;
+          calls.push(argv);
           return makeProc({
             exitCode: 0,
-            output: 'Logged in using ChatGPT\nAccount: jenny@btm.local',
+            output: argv[0] === 'sh' ? JSON.stringify({ tokens: { id_token: idToken } }) : 'Logged in using ChatGPT\nAccount: jenny@btm.local',
           });
         },
         env: {},
@@ -361,7 +362,10 @@ describe('checkLogin', () => {
         now,
       });
 
-      expect(executedArgv).toEqual(['codex', 'login', 'status']);
+      expect(calls[0]).toEqual(['codex', 'login', 'status']);
+      // Đăng nhập ổn → đọc email trong id_token của auth.json (một email chỉ ở một tài khoản)
+      expect(calls[1]![0]).toBe('sh');
+      expect(health.email).toBe('jenny@btm.local');
       expect(health.state).toBe('ok');
       expect(health.detail).toBe('Ok');
     });

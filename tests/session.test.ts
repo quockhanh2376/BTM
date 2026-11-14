@@ -3005,8 +3005,8 @@ Yêu cầu đóng note nhưng commit lỗi
         agents: {
           ...base.agents,
           kai: {
-            tool: 'antigravity-cli',
-            command: 'agy',
+            tool: 'codex-cli',
+            command: 'codex',
             can_sit: ['audit'],
           },
         },
@@ -3067,7 +3067,7 @@ Yêu cầu đóng note nhưng commit lỗi
         seats: { ...base.seats, audit: 'kai' },
         agents: {
           ...base.agents,
-          kai: { tool: 'antigravity-cli', command: 'agy', can_sit: ['audit'] },
+          kai: { tool: 'codex-cli', command: 'codex', can_sit: ['audit'] },
           mb: { tool: 'claude-code', command: 'claude', provider: 'zai', can_sit: ['pm', 'dev', 'qc', 'audit'] } as any,
         },
       });

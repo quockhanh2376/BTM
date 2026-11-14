@@ -8,6 +8,8 @@ export interface LoginHealth {
   state: LoginState;
   detail: string;
   expiresAt?: string;
+  /** Email của tài khoản khi CLI cho biết (Claude: auth status; Codex: id_token) – để không trùng email giữa các tài khoản. */
+  email?: string;
 }
 
 export interface CheckLoginDeps {
@@ -88,6 +90,18 @@ function formatDayMonth(dateStr: string, dateObj: Date): string {
   return `${day}/${month}`;
 }
 
+/** Email trong id_token (JWT) của file auth.json Codex; không đọc được → undefined. */
+export function codexEmail(authJson: string): string | undefined {
+  try {
+    const i = authJson.indexOf('{');
+    const payload = JSON.parse(authJson.slice(i)).tokens.id_token.split('.')[1];
+    const email = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')).email;
+    return typeof email === 'string' && email.length <= 256 ? email : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Kiểm tra trạng thái đăng nhập của một agent theo công cụ CLI tương ứng:
  * - checkForbiddenEnv: phát hiện API key đè môi trường -> state: 'api_key'
@@ -159,6 +173,7 @@ export async function checkLogin(
       }
 
       if (data.loggedIn === true) {
+        const email = typeof data.email === 'string' && data.email.length <= 256 ? data.email : undefined;
         if (typeof data.loginExpiresAt === 'string') {
           const isIsoFormat = /^\d{4}-\d{2}-\d{2}/.test(data.loginExpiresAt);
           const exp = new Date(data.loginExpiresAt);
@@ -174,6 +189,7 @@ export async function checkLogin(
                 state: 'expiring',
                 detail: `Expires ${formattedDate}`,
                 expiresAt: exp.toISOString(),
+                email,
               };
             }
 
@@ -182,6 +198,7 @@ export async function checkLogin(
               state: 'ok',
               detail: 'Ok',
               expiresAt: exp.toISOString(),
+              email,
             };
           }
         }
@@ -190,6 +207,7 @@ export async function checkLogin(
           agent,
           state: 'ok',
           detail: 'Ok',
+          email,
         };
       }
 
@@ -230,10 +248,15 @@ export async function checkLogin(
       }
 
       if (res.exitCode === 0 && res.output && res.output.includes('Logged in using ChatGPT')) {
+        let email: string | undefined;
+        try {
+          email = codexEmail((await runWithTimeout(deps.run, ['sh', '-c', 'cat "${CODEX_HOME:-$HOME/.codex}/auth.json"'])).output);
+        } catch {}
         return {
           agent,
           state: 'ok',
           detail: 'Ok',
+          email,
         };
       }
 

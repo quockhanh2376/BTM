@@ -193,15 +193,6 @@ export const ConfigSchema = BaseConfigSchema.superRefine((cfg, ctx) => {
       ctx.addIssue({ code: 'custom', message: `Agent '${id}': provider zai needs tool claude-code`, path: ['agents', id, 'provider'] });
     }
   }
-  // Plan 8 Task 1: agy không có chế độ chỉ đọc → không được ngồi ghế QC/Audit.
-  for (const [id, agent] of Object.entries(cfg.agents)) {
-    if (agent.tool !== 'antigravity-cli') continue;
-    for (const seat of agent.can_sit) {
-      if (seat === 'qc' || seat === 'audit') {
-        ctx.addIssue({ code: 'custom', message: `Agent '${id}': agy has no read-only mode; it cannot sit in ${seat}`, path: ['agents', id, 'can_sit'] });
-      }
-    }
-  }
   // Cách ly: agent id thành tên user Linux <worker_prefix><id>.
   if (cfg.host.worker_prefix) {
     for (const id of Object.keys(cfg.agents)) {

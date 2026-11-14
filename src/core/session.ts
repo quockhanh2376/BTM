@@ -9,7 +9,7 @@ import { loadTickets, checkReady, type Ticket, type TicketState, TicketError } f
 import { readProjectKey } from '../ticket/goal.ts';
 import { runGate } from '../gate/gate.ts';
 import { detectUsageLimit, usageLimitedKey } from '../agents/usage-limit.ts';
-import { accountLastKey, isUsable, pickAccount, slugOfKey, soonestReset, usableAccounts } from '../agents/accounts.ts';
+import { accountLastKey, isUsable, pickAccount, seatOpts, slugOfKey, soonestReset, usableAccounts } from '../agents/accounts.ts';
 import { notify as sendNotify, type NotifyEvent } from '../notify/notify.ts';
 import { formatHHmm } from '../energy/monitor.ts';
 import { git, commitAll, headSha } from '../git.ts';
@@ -152,7 +152,7 @@ async function processGoal(
     const list = [...base, ...boss];
     return list.filter((a) => {
       if (!Object.hasOwn(d.cfg.agents, a) || !d.cfg.agents[a]!.can_sit.includes(seat)) return false;
-      return pickAccount(d.cfg, d.store, a, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) }) !== null;
+      return pickAccount(d.cfg, d.store, a, new Date(), seatOpts(d.cfg, d.store, seat, d.repo)) !== null;
     });
   }
 
@@ -169,7 +169,7 @@ async function processGoal(
         continue;
       }
       // Plan 7: thử lần lượt tài khoản dùng được của agent (giới hạn/đăng nhập), rồi gate energy theo tài khoản.
-      const accounts = usableAccounts(d.cfg, d.store, agent, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) });
+      const accounts = usableAccounts(d.cfg, d.store, agent, new Date(), seatOpts(d.cfg, d.store, seat, d.repo));
       if (accounts.length === 0) {
         const resets = soonestReset(d.store, agent);
         reasons.push(resets ? `usage_limited:${agent} resets ${formatHHmm(resets)}` : `usage_limited:${agent}`);

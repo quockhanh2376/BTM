@@ -765,6 +765,10 @@ export function openStore(file: string): Store {
       if (patch.active !== undefined) db.prepare('UPDATE accounts SET active = ? WHERE agent = ? AND slug = ?').run(patch.active ? 1 : 0, agent, slug);
     },
 
+    deleteAccount(agent, slug): void {
+      db.prepare('DELETE FROM accounts WHERE agent = ? AND slug = ?').run(agent, slug);
+    },
+
     moveAccount(agent, slug, dir): void {
       const list = (db.prepare('SELECT slug, ord FROM accounts WHERE agent = ? ORDER BY ord, slug').all(agent) as Array<{ slug: string; ord: number }>);
       const i = list.findIndex((r) => r.slug === slug);

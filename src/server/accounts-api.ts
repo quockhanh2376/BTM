@@ -2,7 +2,7 @@ import type { ServerResponse } from 'node:http';
 import { z } from 'zod';
 import type { Config, Tool } from '../config.ts';
 import type { AccountLabel, Store } from '../store/db.ts';
-import { accountKey, toolOfAccount, validateSlug } from '../agents/accounts.ts';
+import { accountKey, emailOwner, toolOfAccount, validateSlug } from '../agents/accounts.ts';
 import { addWorkerUser, agyFilesFromJson, emailFromTokens, exportTokens, importTokens, TOKEN_FILES, type AdminExec } from '../isolation/account-admin.ts';
 import { loginState, sendLoginCode, startLogin, type SpawnFn } from '../agents/login-flow.ts';
 import { isIsolated } from '../isolation/trusted.ts';
@@ -64,7 +64,7 @@ function agyShortToEntry(cfg: Config, store: Store, raw: { email: string; refres
     return { reason: (err as Error).message };
   }
   const same = store.listAccounts(agent).find((a) => a.email === raw.email);
-  if (!same && store.getAccount(agent, slugFromEmail(raw.email))) return { reason: 'name taken by another account' };
+  if (!same && !emailOwner(cfg, store, raw.email) && store.getAccount(agent, slugFromEmail(raw.email))) return { reason: 'name taken by another account' };
   return { entry: { agent, slug: same ? same.slug : slugFromEmail(raw.email), tool: 'antigravity-cli', email: raw.email, files } };
 }
 
@@ -80,6 +80,9 @@ function planImport(cfg: Config, store: Store, file: unknown, target?: string) {
   const fresh: Planned[] = [];
   const conflicts: Planned[] = [];
   const rejected: Array<{ entry: string; reason: string }> = [];
+  // Email đã có ở tài khoản khác (bất kỳ thẻ nào) hoặc lặp trong file → bỏ qua, không thêm lần hai (anh Zon 2026-11-15).
+  const skipped: Array<{ entry: string; at: string }> = [];
+  const seen = new Map<string, string>();
   items.forEach((item, i) => {
     let raw = item;
     const short = AgyShortSchema.safeParse(item);
@@ -107,9 +110,16 @@ function planImport(cfg: Config, store: Store, file: unknown, target?: string) {
     }
     const p: Planned = { key: accountKey(agent, slug), agent, slug, tool: tool as Tool, email: e.data.email ?? null, label: e.data.label ?? 'none', files: e.data.files };
     if ([...fresh, ...conflicts].some((x) => x.key === p.key)) return rejected.push({ entry: name, reason: 'duplicate in file' });
+    const mail = (p.email ?? emailFromTokens(p.tool, p.files))?.trim().toLowerCase();
+    if (mail) {
+      const owner = emailOwner(cfg, store, mail, p.key);
+      const at = owner ? `${owner.agent}/${owner.slug}` : seen.get(mail);
+      if (at) return skipped.push({ entry: p.email ?? name, at });
+      seen.set(mail, name);
+    }
     (store.getAccount(agent, slug) ? conflicts : fresh).push(p);
   });
-  return { fresh, conflicts, rejected } as const;
+  return { fresh, conflicts, rejected, skipped } as const;
 }
 
 export function handleAccountsGet(pathname: string, ctx: AccountsCtx, res: ServerResponse, send: Send): boolean {
@@ -180,6 +190,7 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
       new: plan.fresh.map((x) => `${x.agent}/${x.slug}`),
       conflicts: plan.conflicts.map((x) => `${x.agent}/${x.slug}`),
       rejected: plan.rejected,
+      skipped: plan.skipped,
     };
     if (p.data.dryRun) return send(res, 200, summary), true;
     const over = new Set(p.data.overwrite ?? []);
@@ -228,6 +239,8 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
         return send(res, 400, { error: (err as Error).message }), true;
       }
     }
+    const dup = files ? emailOwner(cfg, store, emailFromTokens(tool, files)) : null;
+    if (dup) return send(res, 409, { error: `Email already used by ${dup.agent}/${dup.slug}` }), true;
     try {
       addWorkerUser(cfg, key, ctx.exec);
       if (files) {
@@ -265,6 +278,41 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
     } catch (err) {
       send(res, 409, { error: (err as Error).message });
     }
+    return true;
+  }
+
+  // Chuyển tài khoản sang thẻ (Worker) khác: tạo user mới ở thẻ đích, chép token, xoá dòng cũ + làm rỗng token cũ.
+  // Tên user Linux không đổi (anh Zon 2026-11-15): thẻ đích có user riêng btm-<thẻ>-<slug>.
+  const moveM = pathname.match(/^\/api\/accounts\/([^/]+)\/move$/);
+  if (moveM && KEY_RE.test(moveM[1]!)) {
+    const p = z.object({ agent: z.string().max(40) }).safeParse(body);
+    if (!p.success) return send(res, 400, { error: 'Invalid body' }), true;
+    if (!isIsolated(cfg)) return send(res, 409, { error: 'isolation required' }), true;
+    if (ctx.busy()) return send(res, 409, { error: 'Session running' }), true;
+    const acc = findAccount(cfg, store, moveM[1]!);
+    if (!acc) return send(res, 404, { error: 'No such account' }), true;
+    const to = p.data.agent;
+    if (acc.slug === 'default') return send(res, 400, { error: 'The first account of a card cannot be moved' }), true;
+    if (to === acc.agent) return send(res, 400, { error: 'Already on this card' }), true;
+    const bad = validateSlug(cfg, to, acc.slug);
+    if (bad) return send(res, 400, { error: bad }), true;
+    if (store.getAccount(to, acc.slug)) return send(res, 409, { error: 'Account exists' }), true;
+    const row = store.getAccount(acc.agent, acc.slug)!;
+    const tool = toolOfAccount(cfg, store, acc.agent, acc.slug);
+    const newKey = accountKey(to, acc.slug);
+    try {
+      const files = exportTokens(cfg, moveM[1]!, tool, ctx.exec);
+      if (Object.keys(files).length === 0) return send(res, 409, { error: 'Account has no login to move' }), true;
+      addWorkerUser(cfg, newKey, ctx.exec);
+      importTokens(cfg, newKey, tool, files, ctx.exec);
+      store.addAccount(to, acc.slug, { email: row.email, label: row.label, active: row.active, tool: toolIfOther(cfg, to, tool) });
+      store.deleteAccount(acc.agent, acc.slug);
+      // Token cũ không còn dùng: ghi đè bằng {} để hai user không cùng giữ một đăng nhập.
+      try { importTokens(cfg, moveM[1]!, tool, Object.fromEntries(Object.keys(files).map((f) => [f, '{}'])), ctx.exec); } catch {}
+    } catch (err) {
+      return send(res, 500, { error: (err as Error).message }), true;
+    }
+    send(res, 200, { key: newKey });
     return true;
   }
 

@@ -585,7 +585,7 @@
         saveBtn.setAttribute('aria-label', tx('acc.saveFor', { agent: acc.agent }));
         saveBtn.addEventListener('click', async function () {
           try {
-            var res = await postJson('/api/agent', { agent: acc.agent, model: modelInput.value.trim(), effort: effortSel.value });
+            var res = await postJson('/api/agent', Object.assign({ agent: acc.agent, model: modelInput.value.trim(), effort: effortSel.value }, acc.modelTool ? { tool: acc.modelTool } : {}));
             if (res && res.error) {
               showFeedback(topFeedback, res.error, true);
             } else {
@@ -1418,7 +1418,8 @@
       var accountsUi = btmAccounts({
         renameAgent: renameAgent, agentLabel: agentLabel, clearChildren: clearChildren, showFeedback: showFeedback,
         getLoginDisplay: getLoginDisplay, copyLoginCommand: copyLoginCommand, getSshTarget: getSshTarget, getLoginCommand: getLoginCommand,
-        energyWarnChip: energyWarnChip, buildModelControls: buildModelControls, postJson: postJson, topFeedback: topFeedback, formatTime: formatTime
+        energyWarnChip: energyWarnChip, buildModelControls: buildModelControls, postJson: postJson, topFeedback: topFeedback, formatTime: formatTime,
+        askOwner: askOwner, SEAT_LABELS: SEAT_LABELS
       });
       var renderAccounts = accountsUi.renderAccounts;
       var rememberAccounts = accountsUi.rememberAccounts;
