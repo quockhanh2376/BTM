@@ -11,6 +11,7 @@ import { saveProjectMap, buildProjectMap } from '../../knowledge/map.ts';
 import { readMeetings, readStagedDocs } from '../../meeting/lane.ts';
 import { renderMeetingHtml, renderMeetingMd } from '../../meeting/core.ts';
 import { agentNameKey } from '../../agents/names.ts';
+import { readStandards, readUiDefaults, StandardsSchema, UiDefaultsSchema, STANDARDS_KEY, UI_DEFAULTS_KEY, TIMEZONES } from '../../standards.ts';
 import { readFileSync } from 'node:fs';
 
 export async function handleGoalsGet(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
@@ -36,6 +37,12 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
       n: g.n, title: g.title, state: g.state, archivedAt: g.archived_at,
       tickets: project ? o.store.listTickets(project, `G${g.n}`).length : 0,
     })));
+    return true;
+  }
+
+  // Settings (2026-11-14): chuẩn cho mọi project + mặc định dashboard.
+  if (method === 'GET' && pathname === '/api/standards') {
+    sendJson(res, 200, { standards: readStandards(o.store), ui: readUiDefaults(o.store), timezones: TIMEZONES });
     return true;
   }
 
@@ -104,6 +111,19 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
 }
 
 export async function handleGoalsPost(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
+  // Settings (2026-11-14): lưu chuẩn cho mọi project + mặc định dashboard (cả hai, hoặc một trong hai).
+  if (pathname === '/api/standards') {
+    const parsed = z.object({ standards: StandardsSchema.optional(), ui: UiDefaultsSchema.optional() }).safeParse(body);
+    if (!parsed.success || (!parsed.data.standards && !parsed.data.ui)) {
+      sendJson(res, 400, { error: 'Invalid settings' });
+      return true;
+    }
+    if (parsed.data.standards) o.store.setSetting(STANDARDS_KEY, JSON.stringify(parsed.data.standards));
+    if (parsed.data.ui) o.store.setSetting(UI_DEFAULTS_KEY, JSON.stringify(parsed.data.ui));
+    sendJson(res, 200, { ok: true, standards: readStandards(o.store), ui: readUiDefaults(o.store) });
+    return true;
+  }
+
   // Anh Zon sửa bài học (2026-11-14).
   if (pathname === '/api/lessons') {
     const parsed = z.object({ scope: z.enum(['project', 'shared']), text: z.string().max(LESSONS_EDIT_MAX) }).safeParse(body);
