@@ -2576,7 +2576,7 @@
         if (!input || !panel || !list) return; // panel: khung Results (luôn hiện)
         var timer = null;
         var seq = 0;
-        var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log', lesson: 'search.kind.lesson' };
+        var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log', lesson: 'search.kind.lesson', map: 'search.kind.map' };
         // Ô Results luôn hiện (anh Zon 2026-11-14); trống → dòng hướng dẫn.
         function hide() { seq++; clearChildren(list); count.textContent = ''; list.appendChild(line('empty-placeholder', tx('search.hint'))); }
         function line(cls, text) { var d = document.createElement('div'); d.className = cls; d.textContent = text; return d; }

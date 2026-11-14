@@ -77,6 +77,8 @@ export function pmTicketPrompt(
     docsTicket?: boolean;
     /** Bài học từ các goal trước (2026-11-14), đã giới hạn độ dài. */
     lessons?: string;
+    /** Bản đồ project (2026-11-14): module có sẵn + ticket đã sửa file nào. */
+    map?: string;
   }
 ): string {
   const cleanTitle = g.title.replace(/\r?\n/g, ' ').trim();
@@ -92,6 +94,10 @@ export function pmTicketPrompt(
     `acceptance và done_when chỉ mô tả kết quả sản phẩm kiểm tra được; KHÔNG ghi quy trình git vì Core tự lo.`,
     `Chỉ ghi file vào team/tickets/, không sửa file khác, cấm git commit và push.`,
   ];
+
+  if (opts?.map?.trim()) {
+    lines.push(`Bản đồ project hiện tại (Core dựng từ code). Dùng lại module/hàm có sẵn thay vì viết mới; scope ghi đúng file có thật; file đã được ticket cũ sửa thì acceptance nhắc chạy lại test liên quan:\n${opts.map.trim()}`);
+  }
 
   if (opts?.lessons?.trim()) {
     lines.push(`Bài học từ các goal trước (tham khảo, tránh lặp lỗi cũ):\n${opts.lessons.trim()}`);
@@ -142,7 +148,8 @@ export function devTicketPrompt(
   agentName: string,
   fixNotes: string[] = [],
   allow: string[] = [],
-  handoff = false
+  handoff = false,
+  map = ''
 ): string {
   const title = t.title.replace(/\r?\n/g, ' ').trim();
   const scope = t.scope.map((s) => s.replace(/\r?\n/g, ' ').trim()).join(', ');
@@ -169,6 +176,10 @@ export function devTicketPrompt(
 
   if (handoff) {
     lines.push(`Bàn giao: đọc git log nhánh phiên và team/reports/${t.id}-dev.md trước khi sửa`);
+  }
+
+  if (map.trim()) {
+    lines.splice(2, 0, `Bản đồ file trong phạm vi (Core dựng từ code): trước khi viết hàm mới, xem đã có sẵn chưa và dùng lại; file từng được ticket khác sửa thì chạy lại test liên quan để không làm hỏng chỗ cũ.\n${map.trim()}`);
   }
 
   return lines.join('\n');
@@ -200,7 +211,7 @@ export function pmAnswerPrompt(questions: Array<{ id: number; ticket: string; se
   ].join('\n');
 }
 
-export function qcTicketPrompt(t: Ticket, base: string, agentName: string, ownerAnswers: string[] = []): string {
+export function qcTicketPrompt(t: Ticket, base: string, agentName: string, ownerAnswers: string[] = [], regress: string[] = []): string {
   const title = t.title.replace(/\r?\n/g, ' ').trim();
   const scope = t.scope.map((s) => s.replace(/\r?\n/g, ' ').trim()).join(', ');
   const doneWhen = t.done_when.replace(/\r?\n/g, ' ').trim();
@@ -218,6 +229,9 @@ export function qcTicketPrompt(t: Ticket, base: string, agentName: string, owner
   if (t.note) {
     const noteId = t.note.replace(/^team\/inbox\//, '').replace(/\.md$/, '');
     lines.splice(3, 0, `Đọc team/inbox/${noteId}.md và ảnh đính kèm; làm/chấm theo ảnh.`);
+  }
+  if (regress.length > 0) {
+    lines.splice(3, 0, `Kiểm hồi quy: các ticket cũ ${regress.join(', ')} từng sửa cùng file – đọc acceptance của chúng (team/tickets/) và kiểm vẫn đạt; hỏng thì ghi vào bugs.`);
   }
   if (ownerAnswers.length > 0) {
     const ans = ownerAnswers.map((a) => a.replace(/\r?\n/g, ' ').trim()).join(' | ');

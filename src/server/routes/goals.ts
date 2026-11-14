@@ -7,6 +7,8 @@ import { approveGoal, type ApproveGoalResult } from '../../ticket/goal.ts';
 import { projectLessonsFile, readLessons, sharedLessonsFile, writeLessons, LESSONS_EDIT_MAX } from '../../knowledge/lessons.ts';
 import { archiveGoalAction, restoreGoalAction, purgeGoalAction } from '../goal-trash.ts';
 import { buildGoalDigest, saveGoalDigest } from '../../knowledge/digest.ts';
+import { saveProjectMap, buildProjectMap } from '../../knowledge/map.ts';
+import { readFileSync } from 'node:fs';
 
 export async function handleGoalsGet(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
   // Bài học (2026-11-14): file của project + file chung.
@@ -31,6 +33,21 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
       n: g.n, title: g.title, state: g.state, archivedAt: g.archived_at,
       tickets: project ? o.store.listTickets(project, `G${g.n}`).length : 0,
     })));
+    return true;
+  }
+
+  // Bản đồ project (2026-11-14): dựng lại từ code lúc mở, lưu bản mới nhất; chữ thường.
+  if (method === 'GET' && pathname === '/api/project/map') {
+    const project = o.store.getActiveProject();
+    const file = project ? saveProjectMap(o.store, o.cfg, project) : null;
+    let text = '';
+    try { text = file ? readFileSync(file, 'utf8') : (project ? buildProjectMap(o.store, project) : ''); } catch { text = ''; }
+    if (!text) {
+      sendJson(res, 404, { error: 'No project map' });
+      return true;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    res.end(text);
     return true;
   }
 

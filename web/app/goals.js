@@ -206,6 +206,15 @@
           kb.textContent = tx('goal.summary');
           kb.title = tx('goal.summaryTip');
           header.appendChild(kb);
+          // Bản đồ project (2026-11-14): module có sẵn + ticket đã sửa file nào.
+          var mapLink = document.createElement('a');
+          mapLink.className = 'goal-kb-link goal-map-link';
+          mapLink.href = '/api/project/map';
+          mapLink.target = '_blank';
+          mapLink.rel = 'noopener';
+          mapLink.textContent = tx('goal.map');
+          mapLink.title = tx('goal.mapTip');
+          header.appendChild(mapLink);
 
           // Nút Duyệt merge: chỉ hiện khi goal ở qc_done (không audit) hoặc audit_passed
           var canApprove = hasAuditSeat ? (g.state === 'audit_passed') : (g.state === 'qc_done' || g.state === 'audit_passed');
