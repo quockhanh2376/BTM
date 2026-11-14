@@ -1721,6 +1721,11 @@ describe('Chat bubbles (2026-11-14)', () => {
     expect(lib.chatStyleOf('jenny')).toBeGreaterThanOrEqual(0);
     expect(lib.chatStyleOf('jenny')).toBeLessThan(6);
   });
+  it('bong bóng hiện lâu hơn 5 s (anh Zon)', () => {
+    expect(html).toContain('var CHAT_SHOW_MS = 7000;');
+    expect(html).toContain("el.classList.add('chat-fade'); }, CHAT_SHOW_MS)");
+  });
+
   it('danh sách xổ xuống (Chat, View…) đọc được ở dark mode', () => {
     expect(html).toContain('select option { background-color: var(--card-bg); color: var(--text); }');
     expect(html).toContain('[data-theme="dark"] select { color-scheme: dark; }');
