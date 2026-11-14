@@ -140,7 +140,7 @@ function chatMoodCfg(mood, opt) {
   if (opt) {
     if (mood === 'lively' && opt.livelySec && opt.livelySec.length === 2) cfg.chit = [opt.livelySec[0] / 60, opt.livelySec[1] / 60];
     if (mood !== 'lively' && opt.normalMin && opt.normalMin.length === 2) cfg.chit = [opt.normalMin[0], opt.normalMin[1]];
-    if (opt.speakers >= 1 && opt.speakers <= 3) cfg.speakers = opt.speakers;
+    if (opt.speakers >= 1 && opt.speakers <= 5) cfg.speakers = opt.speakers;
   }
   return cfg;
 }
@@ -156,7 +156,7 @@ function capSpeakers(steps, max) {
 // Vui vẻ: 1–3 người (ngẫu nhiên, trong số người rảnh) cùng nói; người đầu gọi tên người thứ hai (hoặc anh Zon).
 function livelyTalkPlan(idle, rnd, max) {
   rnd = rnd || Math.random;
-  max = max >= 1 && max <= 3 ? max : 3;
+  max = max >= 1 && max <= 5 ? max : 3;
   var order = (idle || []).slice().sort(function () { return rnd() - 0.5; });
   var n = Math.min(order.length, 1 + Math.floor(rnd() * max));
   return order.slice(0, n);
