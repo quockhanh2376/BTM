@@ -11,6 +11,7 @@ import { zaiArgv } from '../src/runner/run.ts';
 import { listModels, ZAI_MODELS } from '../src/agents/models.ts';
 import { createServer, type HostApi } from '../src/server/http.ts';
 import { buildSnapshot } from '../src/server/snapshot.ts';
+import { readAnswers, saveAnswer } from '../src/server/ask-lane.ts';
 
 const KEY = 'zai-test-key-0123456789abcdefWXYZ';
 const listen = (s: Server) => new Promise<number>((r) => s.listen(0, '127.0.0.1', () => r((s.address() as any).port)));
@@ -109,6 +110,15 @@ describe('Boss – agent, model, API', () => {
     const a = zaiArgv(['claude', '-p', 'x'], 'btm-turn-abc');
     expect(a.slice(0, 3)).toEqual(['env', 'ANTHROPIC_BASE_URL=http://127.0.0.1:8099', 'ANTHROPIC_AUTH_TOKEN=btm-turn-abc']);
     expect(a.slice(-3)).toEqual(['claude', '-p', 'x']);
+  });
+
+  it('câu trả lời của Boss bỏ dòng chẩn đoán model lạ của Claude Code; argv khai báo context GLM', () => {
+    const store = openStore(':memory:');
+    saveAnswer(store, '/p', { id: 1, seat: 'qc', asked: 'qc', agent: 'mb', question: 'q' } as any, {
+      output: `Claude Code doesn't recognize the model "glm-5.3", so it assumes …\n[claude-code:unrecognized_model] {"model":"glm-5.3"}\nOK\nDạ, xong.`,
+    });
+    expect(readAnswers(store, '/p')[0]!.answer).toBe('OK\nDạ, xong.');
+    expect(zaiArgv(['claude'], 't')).toContain('CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000');
   });
 
   it('config: provider zai chỉ với claude-code; model GLM', async () => {

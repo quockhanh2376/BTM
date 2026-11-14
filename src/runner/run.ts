@@ -584,6 +584,8 @@ export function zaiArgv(argv: string[], token: string): string[] {
     'API_TIMEOUT_MS=3000000',
     'DISABLE_TELEMETRY=1',
     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1',
+    // Model GLM: Claude Code không biết cỡ context → khai báo như tài liệu Z.ai (hết cảnh báo "doesn't recognize the model").
+    'CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000',
     ...argv,
   ];
 }
