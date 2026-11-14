@@ -206,7 +206,6 @@
           kb.textContent = tx('goal.summary');
           kb.title = tx('goal.summaryTip');
           header.appendChild(kb);
-          header.appendChild(archiveBtn);
 
           // Nút Duyệt merge: chỉ hiện khi goal ở qc_done (không audit) hoặc audit_passed
           var canApprove = hasAuditSeat ? (g.state === 'audit_passed') : (g.state === 'qc_done' || g.state === 'audit_passed');
@@ -280,6 +279,8 @@
             header.appendChild(relWrap);
           }
 
+          // Nút X (vào thùng rác) luôn ở cuối hàng, bên phải link GitHub (anh Zon 2026-11-14).
+          header.appendChild(archiveBtn);
           card.appendChild(header);
 
           // Thời gian goal (anh Zon 2026-11-14): tổng · agent chạy (theo ghế) · chờ anh / tạm dừng.

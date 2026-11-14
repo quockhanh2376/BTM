@@ -473,8 +473,11 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(html).toMatch(/avatarEl\.classList\.toggle\('is-active', cardData\.status === 'running'\)/);
       expect(html).toMatch(/avatarEl\.classList\.toggle\('is-waiting', cardData\.status === 'waiting'\)/);
       expect(html).toContain("anchor.classList.add('is-talking')");
-      expect(html).toMatch(/\.seat-avatar\.is-active::before[^{]*\{[^}]*conic-gradient/);
-      expect(html).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.seat-avatar\.is-active::before, \.seat-avatar\.is-talking::before \{ animation: none; \}/);
+      // Vòng luôn có; đang làm/nói: đốm sáng chạy + nhịp tim; chạy cả khi Windows tắt hiệu ứng (không tắt theo reduced-motion).
+      expect(html).toMatch(/\.seat-card \.seat-avatar::before \{[^}]*content: ''/);
+      expect(html).toMatch(/\.seat-avatar\.is-active::before[^{]*\{[^}]*conic-gradient[^}]*animation: avatar-ring/);
+      expect(html).toMatch(/\.seat-avatar\.is-active[^{]*\{[^}]*animation: avatar-heartbeat/);
+      expect(html).not.toMatch(/prefers-reduced-motion[^{]*\{\s*\.seat-(card \.seat-)?avatar/);
     });
   });
 

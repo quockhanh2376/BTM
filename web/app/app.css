@@ -2440,30 +2440,33 @@
 .lessons-feedback { font-size: 12px; }
 .goals-trash-bar { display: flex; gap: 6px; }
 
-/* Vòng quanh avatar (anh Zon 2026-11-14): đang làm task / đang nói → vòng sáng xoay; chờ anh → vòng vàng đứng yên; rảnh → như cũ.
-   Windows tắt "Animation effects" (prefers-reduced-motion) → vòng vẫn sáng nhưng không xoay. */
+/* Vòng quanh avatar (anh Zon 2026-11-14): LUÔN có một vòng tròn quanh avatar.
+   Đang làm task / đang nói → đốm sáng chạy quanh vòng + nhịp tim (avatar sáng nhịp). Chờ anh → vòng vàng đứng yên.
+   Rảnh → vòng mờ đứng yên. Chạy cả khi Windows tắt "Animation effects" (anh Zon chọn, giống viền thẻ ghế). */
 @property --ring-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
-.seat-avatar.is-active::before, .seat-avatar.is-talking::before, .seat-avatar.is-waiting::before {
+.seat-card .seat-avatar::before {
   content: '';
   position: absolute;
   inset: -5px;
-  padding: 3px;
+  padding: 2px;
   border-radius: 50%;
+  background: rgba(148, 163, 184, 0.55);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   pointer-events: none;
 }
-.seat-avatar.is-active, .seat-avatar.is-talking { border-color: #9ec5ff; box-shadow: 0 0 14px 4px rgba(110, 168, 255, 0.6); }
-.seat-avatar.is-active::before, .seat-avatar.is-talking::before {
-  background: conic-gradient(from var(--ring-angle), #3b82f6, #9ec5ff, #ffffff, #22d3ee, #3b82f6);
+.seat-card .seat-avatar.is-active::before, .seat-card .seat-avatar.is-talking::before {
+  padding: 3px;
+  background: conic-gradient(from var(--ring-angle), rgba(59, 130, 246, 0.25) 0deg 200deg, #9ec5ff 290deg, #fff 345deg, rgba(59, 130, 246, 0.25) 360deg);
   filter: drop-shadow(0 0 6px #9ec5ff) drop-shadow(0 0 2px #fff);
   animation: avatar-ring 1.6s linear infinite;
 }
-.seat-avatar.is-waiting { border-color: #f5b041; }
-.seat-avatar.is-waiting::before { background: #f5b041; opacity: 0.85; }
+.seat-card .seat-avatar.is-active, .seat-card .seat-avatar.is-talking { border-color: #9ec5ff; animation: avatar-heartbeat 1.2s ease-in-out infinite; }
+.seat-card .seat-avatar.is-waiting::before { padding: 3px; background: #f5b041; }
 @keyframes avatar-ring { to { --ring-angle: 360deg; } }
-@media (prefers-reduced-motion: reduce) {
-  .seat-avatar.is-active::before, .seat-avatar.is-talking::before { animation: none; }
+@keyframes avatar-heartbeat {
+  0%, 40%, 100% { box-shadow: 0 0 4px 1px rgba(110, 168, 255, 0.35); }
+  15% { box-shadow: 0 0 16px 5px rgba(110, 168, 255, 0.8); }
+  28% { box-shadow: 0 0 10px 3px rgba(110, 168, 255, 0.55); }
 }
-
