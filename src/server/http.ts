@@ -20,6 +20,7 @@ import type { SpawnFn } from '../agents/login-flow.ts';
 import type { createMonitor } from '../energy/monitor.ts';
 import { approveGoal, type ApproveGoalResult } from '../ticket/goal.ts';
 import type { ReleaseInfo } from '../release/publish.ts';
+import { readFolders, type ExecAsync } from './folders.ts';
 
 export interface HostApi {
   start(
@@ -125,6 +126,8 @@ export function createServer(o: {
   /** Plan 7: test truyền exec/spawn giả cho tạo user, token, đăng nhập. */
   accountExec?: AdminExec;
   loginSpawn?: SpawnFn;
+  /** Tab Folder: test truyền exec giả cho lệnh đọc workspace dưới user worker. */
+  foldersExec?: ExecAsync;
 }): http.Server {
   const readSystem = createSystemReader(o.cfg.host.data_dir);
   interface SseClient {
@@ -165,6 +168,12 @@ export function createServer(o: {
       // Plan 9 Task 2: CPU/RAM/Disk/Net cho khung System Status (chỉ đọc).
       if (method === 'GET' && pathname === '/api/system') {
         sendJson(res, 200, readSystem());
+        return;
+      }
+
+      // Tab Folder: chỉ xem cấu trúc repo chính + workspace từng account (tên file, không nội dung).
+      if (method === 'GET' && pathname === '/api/folders') {
+        sendJson(res, 200, await readFolders(o.cfg, o.store, o.foldersExec));
         return;
       }
 

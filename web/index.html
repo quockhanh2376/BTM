@@ -1068,7 +1068,7 @@
     .diff-add { background-color: rgba(46, 160, 67, 0.15); }
     .diff-del { background-color: rgba(248, 81, 73, 0.15); }
 
-    .q-attach-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .cmd-composer-bar.q-attach-bar { justify-content: flex-start; flex-wrap: wrap; }
     .q-attach-preview { display: inline-flex; align-items: center; gap: 6px; }
     .q-attach-preview img { max-height: 64px; max-width: 160px; border-radius: 4px; border: 1px solid var(--border); }
 
@@ -1528,6 +1528,30 @@
     }
 
     /* Goal & Pipeline & Ticket styles */
+    /* Tab Goals | Folder */
+    .board-tabs { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--badge-bg); }
+    .board-tab { display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; color: var(--text-muted); font: inherit; font-size: 16px; font-weight: 700; padding: 4px 12px; border-radius: 8px; cursor: pointer; }
+    .board-tab.active { background: var(--card-bg); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+    .board-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .board-tab-ico svg { width: 16px; height: 16px; display: block; }
+    .folders-container { display: flex; flex-direction: column; gap: 12px; }
+    .folders-container[hidden] { display: none; }
+    .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .folder-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--card-bg); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .folder-title { font-weight: 700; color: var(--text); }
+    .folder-path { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+    .folder-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+    .folder-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--badge-bg); color: var(--text); overflow-wrap: anywhere; }
+    .folder-chip-k { color: var(--text-muted); }
+    .ftree { font-family: var(--font-mono); font-size: 12px; }
+    .ftree > summary { cursor: pointer; font-family: var(--font-sans); font-size: 13px; color: var(--accent); }
+    .ftree-dir { margin-left: 12px; }
+    .ftree-dir > summary { cursor: pointer; color: var(--text); }
+    .ftree-file { margin-left: 26px; color: var(--text-muted); overflow-wrap: anywhere; }
+    .ftree > .ftree-file { margin-left: 14px; }
+    .ftree-count { color: var(--text-muted); font-size: 11px; }
+    .goals-container[hidden] { display: none; }
+
     .goals-container {
       display: flex;
       flex-direction: column;
@@ -2773,12 +2797,14 @@
       <!-- Bảng goal & ticket -->
       <section class="card task-board-section goals-board-section" id="goals-board">
         <div class="sec-head">
-          <h2 class="section-title sec-title"><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span><span data-i18n="goals.title">Goals</span></h2>
+          <h2 class="section-title sec-title"><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span><span class="board-tabs" role="tablist"><button type="button" role="tab" id="tab-goals" class="board-tab active" aria-selected="true" aria-controls="goals-container" data-i18n="goals.title">Goals</button><button type="button" role="tab" id="tab-folders" class="board-tab" aria-selected="false" aria-controls="folders-container"><span class="board-tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span data-i18n="folders.tab">Folder</span></button></span></h2>
+          <button id="folders-refresh" class="btn btn-secondary btn-sm btn-tool" type="button" style="display: none;"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span data-i18n="folders.refresh">Refresh</span></button>
           <button id="goal-add" class="btn btn-secondary btn-sm btn-tool btn-accent-outline" type="button"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="goals.add">Add Goal</span></button>
         </div>
         <div id="goals-container" class="goals-container">
           <div class="empty-placeholder" data-i18n="goals.empty">No goals yet</div>
         </div>
+        <div id="folders-container" class="folders-container" role="tabpanel" hidden aria-live="polite"></div>
       </section>
 
       <!-- Nhật ký -->
@@ -2900,6 +2926,22 @@
           'energy.unavailable': 'Energy: unavailable',
           'energy.low': 'Low',
           'goals.title': 'Goals',
+          'folders.tab': 'Folder',
+          'folders.refresh': 'Refresh',
+          'folders.loading': 'Loading folders…',
+          'folders.failed': 'Could not read folders',
+          'folders.noProject': 'No active project',
+          'folders.repo': 'Main repo',
+          'folders.branch': 'Branch',
+          'folders.commit': 'Last commit',
+          'folders.dirty': 'Changed files',
+          'folders.synced': 'Last sync',
+          'folders.projects': 'Projects',
+          'folders.tree': 'Structure ({n} files)',
+          'folders.truncated': 'showing first {n} files',
+          'folders.notCreated': 'Folder not created yet (account has not run)',
+          'folders.shared': 'No isolation: every account works in the main repo.',
+          'folders.readOnly': 'View only. File names only, no file contents.',
           'goals.empty': 'No goals yet',
           'stage.intake': 'Intake',
           'stage.plan': 'Planning',
@@ -3563,6 +3605,16 @@
       var qDrafts = {};
       var qImages = {};
 
+      // Mượn icon tĩnh của ô Command (📎, mũi tên gửi) + chữ cho trình đọc màn hình.
+      function iconFrom(sel, el, label) {
+        var svg = document.querySelector(sel);
+        if (svg) el.appendChild(svg.cloneNode(true));
+        var sr = document.createElement('span');
+        sr.className = 'sr-only';
+        sr.textContent = label;
+        el.appendChild(sr);
+      }
+
       function readAnswerImage(qId, file, done) {
         if (!file) return;
         if (['image/png', 'image/jpeg', 'image/webp'].indexOf(file.type) < 0) {
@@ -3629,8 +3681,9 @@
           fileInput.className = 'sr-only';
           var attach = document.createElement('label');
           attach.htmlFor = fileId;
-          attach.className = 'btn btn-secondary btn-sm';
-          attach.textContent = '📎 ' + tx('q.attach');
+          attach.className = 'cmd-icon-btn';
+          attach.title = tx('q.attach');
+          iconFrom('#attach-image-label svg', attach, tx('q.attach'));
           var preview = document.createElement('span');
           preview.className = 'q-attach-preview';
           function showPreview() {
@@ -3662,17 +3715,20 @@
               }
             }
           });
+          // Nút gửi = mũi tên như ô Command, nằm góc phải trong khung.
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'cmd-icon-btn cmd-send-icon';
+          btn.title = tx('q.answer');
+          iconFrom('#cmd-send-btn svg', btn, tx('q.answer'));
           bar.appendChild(fileInput);
-          bar.appendChild(preview);
           bar.appendChild(attach);
+          bar.appendChild(preview);
+          bar.appendChild(btn);
           compose.appendChild(bar);
           item.appendChild(compose);
           showPreview();
 
-          var btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'btn btn-primary btn-sm';
-          btn.textContent = tx('q.answer');
           btn.addEventListener('click', async function () {
             // Chỉ có ảnh, chưa gõ chữ: vẫn gửi được, kèm câu mặc định (server cần chữ).
             var answerText = area.value.trim() || (qImages[q.id] ? tx('q.seeImage') : '');
@@ -3694,7 +3750,6 @@
               btn.disabled = false;
             }
           });
-          item.appendChild(btn);
           list.appendChild(item);
         });
       }
@@ -5198,6 +5253,164 @@
       }
       pollSystem();
       setInterval(pollSystem, 10000);
+
+      // Tab Folder (anh Zon 2026-11-14): chỉ xem cấu trúc repo chính + thư mục làm việc từng account.
+      function formatDateTimeVN(iso) {
+        var d = new Date(iso);
+        if (!iso || isNaN(d.getTime())) return '—';
+        return d.toLocaleString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+      }
+      function buildFileTree(files) {
+        var root = { dirs: {}, files: [], count: 0 };
+        files.forEach(function (f) {
+          var parts = String(f).split('/');
+          var node = root;
+          root.count++;
+          for (var i = 0; i < parts.length - 1; i++) {
+            if (!Object.prototype.hasOwnProperty.call(node.dirs, parts[i])) node.dirs[parts[i]] = { dirs: {}, files: [], count: 0 };
+            node = node.dirs[parts[i]];
+            node.count++;
+          }
+          node.files.push(parts[parts.length - 1]);
+        });
+        return root;
+      }
+      function renderFileTree(node, parent) {
+        Object.keys(node.dirs).sort().forEach(function (name) {
+          var det = document.createElement('details');
+          det.className = 'ftree-dir';
+          var sum = document.createElement('summary');
+          sum.textContent = '📁 ' + name + '/ ';
+          var cnt = document.createElement('span');
+          cnt.className = 'ftree-count';
+          cnt.textContent = String(node.dirs[name].count);
+          sum.appendChild(cnt);
+          det.appendChild(sum);
+          renderFileTree(node.dirs[name], det);
+          parent.appendChild(det);
+        });
+        node.files.sort().forEach(function (name) {
+          var f = document.createElement('div');
+          f.className = 'ftree-file';
+          f.textContent = name;
+          parent.appendChild(f);
+        });
+      }
+      function folderCard(title, path, rows, files, truncated, note) {
+        var card = document.createElement('div');
+        card.className = 'folder-card';
+        var h = document.createElement('div');
+        h.className = 'folder-title';
+        h.textContent = title;
+        card.appendChild(h);
+        var p = document.createElement('code');
+        p.className = 'folder-path';
+        p.textContent = path;
+        card.appendChild(p);
+        var meta = document.createElement('div');
+        meta.className = 'folder-meta';
+        rows.forEach(function (r) {
+          var chip = document.createElement('span');
+          chip.className = 'folder-chip';
+          var k = document.createElement('span');
+          k.className = 'folder-chip-k';
+          k.textContent = r[0];
+          chip.appendChild(k);
+          chip.appendChild(document.createTextNode(' ' + r[1]));
+          meta.appendChild(chip);
+        });
+        card.appendChild(meta);
+        if (note) {
+          var n = document.createElement('div');
+          n.className = 'account-detail';
+          n.textContent = note;
+          card.appendChild(n);
+        }
+        if (files && files.length) {
+          var det = document.createElement('details');
+          det.className = 'ftree';
+          var sum = document.createElement('summary');
+          sum.textContent = tx('folders.tree', { n: files.length }) + (truncated ? ' · ' + tx('folders.truncated', { n: files.length }) : '');
+          det.appendChild(sum);
+          renderFileTree(buildFileTree(files), det);
+          card.appendChild(det);
+        }
+        return card;
+      }
+      function renderFolders(data) {
+        var box = document.getElementById('folders-container');
+        if (!box) return;
+        clearChildren(box);
+        var ro = document.createElement('div');
+        ro.className = 'account-detail';
+        ro.textContent = tx('folders.readOnly');
+        box.appendChild(ro);
+        if (!data || !data.repo) {
+          var e = document.createElement('div');
+          e.className = 'empty-placeholder';
+          e.textContent = tx('folders.noProject');
+          box.appendChild(e);
+          return;
+        }
+        var r = data.repo;
+        box.appendChild(folderCard(tx('folders.repo'), r.path, [
+          [tx('folders.branch'), r.branch || '—'],
+          [tx('folders.commit'), r.commit ? r.commit.sha + ' · ' + r.commit.subject + ' · ' + formatDateTimeVN(r.commit.at) : '—'],
+          [tx('folders.dirty'), String(r.dirty)]
+        ], r.files, r.truncated, data.isolated ? '' : tx('folders.shared')));
+        var grid = document.createElement('div');
+        grid.className = 'folder-grid';
+        (data.accounts || []).forEach(function (a) {
+          var slug = a.key !== a.agent && a.key.indexOf(a.agent + '-') === 0 ? a.key.slice(a.agent.length + 1) : '';
+          grid.appendChild(folderCard(agentLabel(a.agent) + (slug ? ' · ' + slug : ''), a.path, [
+            [tx('folders.projects'), (a.projects || []).join(', ') || '—'],
+            [tx('folders.synced'), a.syncedAt ? formatDateTimeVN(a.syncedAt) : '—'],
+            [tx('folders.dirty'), a.dirty == null ? '—' : String(a.dirty)]
+          ], a.files, a.truncated, a.error ? tx('folders.notCreated') : ''));
+        });
+        box.appendChild(grid);
+      }
+      async function loadFolders() {
+        var box = document.getElementById('folders-container');
+        if (!box) return;
+        if (!box.firstChild) {
+          var l = document.createElement('div');
+          l.className = 'empty-placeholder';
+          l.textContent = tx('folders.loading');
+          box.appendChild(l);
+        }
+        try {
+          var res = await fetch('/api/folders', { cache: 'no-store' });
+          if (!res.ok) throw new Error(String(res.status));
+          renderFolders(await res.json());
+        } catch (e) {
+          clearChildren(box);
+          var f = document.createElement('div');
+          f.className = 'empty-placeholder';
+          f.textContent = tx('folders.failed');
+          box.appendChild(f);
+        }
+      }
+      (function () {
+        var tg = document.getElementById('tab-goals');
+        var tf = document.getElementById('tab-folders');
+        if (!tg || !tf) return;
+        function show(folders) {
+          tg.classList.toggle('active', !folders);
+          tf.classList.toggle('active', folders);
+          tg.setAttribute('aria-selected', folders ? 'false' : 'true');
+          tf.setAttribute('aria-selected', folders ? 'true' : 'false');
+          document.getElementById('goals-container').hidden = folders;
+          document.getElementById('folders-container').hidden = !folders;
+          // .btn đặt display nên thuộc tính hidden không ăn: ẩn bằng style.
+          document.getElementById('goal-add').style.display = folders ? 'none' : '';
+          document.getElementById('folders-refresh').style.display = folders ? '' : 'none';
+          if (folders) loadFolders();
+        }
+        tg.addEventListener('click', function () { show(false); });
+        tf.addEventListener('click', function () { show(true); });
+        document.getElementById('folders-refresh').addEventListener('click', loadFolders);
+      })();
 
       function renderSnapshot(state) {
         agentNames = (state && state.settings && state.settings.names) || {};
