@@ -1673,6 +1673,19 @@ describe('Ô trả lời câu hỏi (2026-11-14)', () => {
   });
 });
 
+describe('Stop: agent hỏi lại thân thiện (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('dùng <dialog> thay confirm(), mặc định là tiếp tục, chữ bằng textContent', () => {
+    expect(html).toContain('<dialog id="ask-dialog"');
+    expect(html).not.toContain("confirm(tx('confirm.stopCard'))");
+    expect(html).not.toContain("confirm(tx('confirm.stop'))");
+    expect(html).toContain("'ask.stopTicket': 'Do you want me to stop working on {ticket}?'");
+    const fn = html.slice(html.indexOf('function askOwner'), html.indexOf('function renderSeatAvatar'));
+    expect(fn).toContain('cancel.focus()');
+    expect(fn).not.toContain('innerHTML');
+  });
+});
+
 describe('Inbox / Goals / Log theo mẫu lần 2 (2026-11-14)', () => {
   const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
   it('cột Tags riêng, icon từng chặng, lọc log chỉ lỗi', () => {
