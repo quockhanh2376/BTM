@@ -1661,6 +1661,16 @@ describe('Đồng hồ bấm giờ trên thẻ đang chạy (2026-11-13)', () =>
   });
 });
 
+describe('Ô trả lời câu hỏi (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('ảnh nằm trong khung trả lời; chỉ có ảnh vẫn gửi được', () => {
+    expect(html).toContain("compose.className = 'cmd-composer q-compose'");
+    expect(html).toContain('compose.appendChild(bar)');
+    expect(html).toContain("area.value.trim() || (qImages[q.id] ? tx('q.seeImage') : '')");
+    expect(html).toContain("'q.seeImage': 'See attached image.'");
+  });
+});
+
 describe('Khu Agents theo mẫu (2026-11-14)', () => {
   const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
   it('đếm ghế Live / Waiting / Idle và tiêu đề Agents (N)', () => {
