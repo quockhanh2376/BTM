@@ -38,6 +38,30 @@ export interface GoalSnapshot {
   tickets: GoalTicketSnapshot[];
   /** Decision 0006: kết quả push GitHub sau khi merge (chỉ có khi project có cấu hình release.github). */
   release?: ReleaseInfo;
+  /** Thời gian goal: từ lúc tạo tới merge (hoặc tới bây giờ), thời gian agent chạy theo ghế, phần còn lại là chờ. */
+  time?: GoalTime;
+}
+
+export interface GoalTime {
+  startedAt: string;
+  endedAt: string | null;
+  wallMs: number;
+  agentMs: number;
+  bySeat: Record<string, number>;
+}
+
+/** Tổng hợp thời gian một goal từ các lượt (lượt đang chạy tính tới now). */
+export function goalTime(createdAt: string, endedAt: string | null, turns: Array<{ seat: string; started_at: string; ended_at: string | null }>, now = Date.now()): GoalTime {
+  const bySeat: Record<string, number> = {};
+  let agentMs = 0;
+  for (const t of turns) {
+    const ms = Math.max(0, (t.ended_at ? Date.parse(t.ended_at) : now) - Date.parse(t.started_at));
+    if (!Number.isFinite(ms)) continue;
+    bySeat[t.seat] = (bySeat[t.seat] ?? 0) + ms;
+    agentMs += ms;
+  }
+  const end = endedAt ? Date.parse(endedAt) : now;
+  return { startedAt: createdAt, endedAt, wallMs: Math.max(agentMs, end - Date.parse(createdAt)), agentMs, bySeat };
 }
 
 export interface SeatCard {
@@ -482,6 +506,7 @@ function buildGoals(
         total,
         tickets: combinedTickets,
         ...(release ? { release } : {}),
+        time: goalTime(g.created_at, g.state === 'merged' || g.state === 'approved' ? g.updated_at : null, store.goalTurns(project, g.n)),
       });
     }
 

@@ -1484,6 +1484,7 @@
     }
     .pipeline-bar .pipeline-step.stage-active { background-color: #2563EB; border-color: #2563EB; color: #FFFFFF; }
     .goal-group-title { font-size: 15px; line-height: 1.5; }
+    .goal-time { font-size: 12px; color: var(--text-muted); margin: 2px 0 8px; overflow-wrap: anywhere; }
     .goal-archive-btn { margin-left: auto; width: 28px; height: 28px; border: none; border-radius: 8px; background: transparent; color: var(--text-muted); font-size: 15px; cursor: pointer; flex-shrink: 0; }
     .goal-archive-btn:hover { background: var(--badge-bg); color: var(--error-text); }
     .goal-archive-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -3074,6 +3075,9 @@
           'energy.unavailable': 'Energy: unavailable',
           'energy.low': 'Low',
           'goals.title': 'Goals',
+          'goal.timeLine': '{total} total · agents {agent} ({seats}) · waiting {wait}',
+          'goal.timeRunning': 'still open',
+          'goal.timeTip': 'From {from} to {to} (VN time). Waiting = time paused for you or between sessions.',
           'ticket.retry': 'Retry',
           'ticket.retryFor': 'Retry {ticket}',
           'ticket.askRetry': '{ticket} is {state}. Want me to try it again?',
@@ -4550,6 +4554,15 @@
         }
       }
 
+      // 3725000 ms → "1h 02m"; dưới 1 giờ → "37m"; dưới 1 phút → "<1m".
+      function formatDuration(ms) {
+        var m = Math.round((ms || 0) / 60000);
+        if (m < 1) return '<1m';
+        var h = Math.floor(m / 60);
+        var mm = m % 60;
+        return h ? h + 'h ' + (mm < 10 ? '0' : '') + mm + 'm' : mm + 'm';
+      }
+
       function renderGoals(goals, seats) {
         var container = document.getElementById('goals-container');
         if (!container) return;
@@ -4682,6 +4695,22 @@
           }
 
           card.appendChild(header);
+
+          // Thời gian goal (anh Zon 2026-11-14): tổng · agent chạy (theo ghế) · chờ anh / tạm dừng.
+          if (g.time) {
+            var tl = document.createElement('div');
+            tl.className = 'goal-time';
+            var seatParts = ['pm', 'dev', 'qc', 'audit'].filter(function (k) { return g.time.bySeat && g.time.bySeat[k]; })
+              .map(function (k) { return (SEAT_LABELS[k] || k) + ' ' + formatDuration(g.time.bySeat[k]); });
+            tl.textContent = '⏱ ' + tx('goal.timeLine', {
+              total: formatDuration(g.time.wallMs),
+              agent: formatDuration(g.time.agentMs),
+              seats: seatParts.join(' · '),
+              wait: formatDuration(Math.max(0, g.time.wallMs - g.time.agentMs))
+            }) + (g.time.endedAt ? '' : ' · ' + tx('goal.timeRunning'));
+            tl.title = tx('goal.timeTip', { from: formatDateTimeVN(g.time.startedAt), to: g.time.endedAt ? formatDateTimeVN(g.time.endedAt) : '—' });
+            card.appendChild(tl);
+          }
 
           // 2. Thanh pipeline 6 chặng (chặng trước chặng hiện tại = đã qua, có dấu ✓)
           var pipeline = document.createElement('div');

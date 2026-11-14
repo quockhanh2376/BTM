@@ -218,6 +218,8 @@ export interface Store {
   exportGoal(project: string, n: number): Record<string, unknown>;
   /** Phiên của các goal (theo số n) – để bỏ qua phiên của goal đã vào thùng rác. */
   sessionGoalNumbers(sessionId: number): number[];
+  /** Thời gian goal (anh Zon 2026-11-14): các lượt thuộc phiên chỉ của goal này. */
+  goalTurns(project: string, n: number): Array<{ seat: string; started_at: string; ended_at: string | null }>;
   setGoalState(project: string, n: number, state: GoalState, by: string, reason?: string, reviewedSha?: string | null): void;
   upsertTicket(project: string, t: Ticket): void;
   getTicketState(project: string, id: string): { state: TicketState; fix_rounds: number; base_sha: string | null } | null;
@@ -1514,6 +1516,12 @@ export function openStore(file: string): Store {
         db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
           .run(key, String(Math.max(n, cur ? parseInt(cur.value, 10) || 0 : 0)));
       })();
+    },
+
+    goalTurns(project: string, n: number): Array<{ seat: string; started_at: string; ended_at: string | null }> {
+      const sids = sessionsOfGoal(project, n);
+      if (!sids.length) return [];
+      return db.prepare(`SELECT seat, started_at, ended_at FROM turns WHERE session_id IN (${sids.map(() => '?').join(',')}) ORDER BY id`).all(...sids) as Array<{ seat: string; started_at: string; ended_at: string | null }>;
     },
 
     sessionGoalNumbers(sessionId: number): number[] {
