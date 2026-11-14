@@ -2041,3 +2041,13 @@ describe('Thẻ thứ 5 Boss-Backup (2026-11-14)', () => {
     expect(html).toContain('renderBossCard(state, isBusy);');
   });
 });
+
+describe('Workspace trên sidebar (2026-11-14)', () => {
+  const html = readWeb();
+  it('thẻ System status có tiêu đề "<project> – Workspace"; sidebar tự thu gọn sau 5 phút không đụng tới', () => {
+    expect(html).toContain('<div class="ws-title" id="ws-title">Workspace</div>');
+    expect(html).toContain("'ws.title': '{name} – Workspace'");
+    expect(html).toContain('var AUTO_COLLAPSE_MS = 5 * 60 * 1000;');
+    expect(html).toMatch(/\['mousemove', 'click', 'keydown', 'focusin'\]\.forEach\(function \(ev\) \{ sidebarEl\.addEventListener\(ev, armAutoCollapse\); \}\);/);
+  });
+});

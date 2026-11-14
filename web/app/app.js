@@ -48,7 +48,17 @@
           try { localStorage.setItem('btm.sidebar', v ? 'collapsed' : 'open'); } catch (e) {}
         }
         setCollapsed(collapsed);
-        if (collapseBtn) collapseBtn.addEventListener('click', function () { setCollapsed(!collapsed); });
+        if (collapseBtn) collapseBtn.addEventListener('click', function () { setCollapsed(!collapsed); armAutoCollapse(); });
+        // Anh Zon 2026-11-14: sidebar đang mở mà 5 phút không đụng tới (rê chuột, bấm, phím trong sidebar) → tự thu gọn.
+        var AUTO_COLLAPSE_MS = 5 * 60 * 1000;
+        var autoTimer = null;
+        function armAutoCollapse() {
+          if (autoTimer) clearTimeout(autoTimer);
+          autoTimer = collapsed ? null : setTimeout(function () { setCollapsed(true); }, AUTO_COLLAPSE_MS);
+        }
+        var sidebarEl = document.getElementById('sidebar');
+        if (sidebarEl) ['mousemove', 'click', 'keydown', 'focusin'].forEach(function (ev) { sidebarEl.addEventListener(ev, armAutoCollapse); });
+        armAutoCollapse();
         function setOpen(v) {
           if (app) app.classList.toggle('sidebar-open', v);
           if (menuBtn) menuBtn.setAttribute('aria-expanded', v ? 'true' : 'false');
@@ -2090,6 +2100,8 @@
         // Project
         if (projectBadge) {
           projectBadge.textContent = state.project ? tx('bar.project', { name: state.project }) : tx('bar.noProject');
+          var wsTitle = document.getElementById('ws-title');
+          if (wsTitle) wsTitle.textContent = state.project ? tx('ws.title', { name: String(state.project).split(/[\\/]/).filter(Boolean).pop() }) : tx('ws.none');
         }
 
         // Settings

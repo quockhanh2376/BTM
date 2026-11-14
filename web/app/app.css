@@ -2477,3 +2477,7 @@
 .pill-mood.is-lively { background: rgba(245, 176, 65, 0.18); border-color: #f5b041; color: #f5b041; }
 .pill-mood:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* Tiêu đề workspace trên thẻ System status (anh Zon 2026-11-14) */
+.ws-title { font-weight: 700; font-size: 14px; color: var(--text); text-align: center; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-collapsed .ws-title { display: none; }
+
