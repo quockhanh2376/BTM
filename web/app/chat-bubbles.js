@@ -167,6 +167,13 @@
             chatRun([{ target: e.seat, text: chatTrim(e.text, 120), delay: 0, allowRunning: true }]);
           } else if (e.type === 'error') {
             chatRun([{ clear: e.seat, target: e.seat, text: pickChatLine('error', vars, L), delay: 0 }]);
+          } else if (e.type === 'decided') {
+            vars.option = e.option;
+            var who = ((snap && snap.seats) || []).filter(function (s) { return s.agent; }).map(function (s) { return s.seat; });
+            if (((snap && snap.accounts) || []).some(function (a) { return a.provider === 'zai'; })) who.push('backup');
+            chatRun(who.map(function (seat, i) {
+              return { target: seat, text: pickChatLine(e.overrode ? 'voteAgreeOverride' : 'voteAgree', vars, L), delay: i * 700, allowRunning: true };
+            }));
           }
         });
       }

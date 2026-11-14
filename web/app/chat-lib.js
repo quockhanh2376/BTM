@@ -107,6 +107,10 @@ function chatEvents(prev, next) {
   Object.keys(pq).forEach(function (id) {
     if (!nq[id]) ev.push({ type: 'answered', seat: pq[id].seat, ticket: pq[id].ticket });
   });
+  // Biểu quyết (anh Zon 2026-11-14): anh vừa chốt (hoặc đổi ý) → cả team "dạ".
+  var pd = prev.meeting && prev.meeting.decision;
+  var nd = next.meeting && next.meeting.decision;
+  if (nd && (!pd || pd.at !== nd.at)) ev.push({ type: 'decided', option: nd.option, overrode: !!nd.overrode });
   var seen = {};
   (prev.log || []).forEach(function (l) { seen[l.at + '|' + l.who + '|' + l.text] = true; });
   (next.log || []).forEach(function (l) {

@@ -105,7 +105,10 @@ function btmMeeting(d) {
         li.appendChild(row);
       });
       li.appendChild(el('div', 'meet-label', it.tally.winner ? tx('vote.majority', { option: it.tally.winner }) : tx('vote.tie')));
-      if (it.decision) li.appendChild(el('div', 'vote-decided', tx(it.decision.overrode ? 'vote.decidedOverride' : 'vote.decided', { option: it.decision.option })));
+      if (it.decision) {
+        li.appendChild(el('div', 'vote-decided', tx(it.decision.overrode ? 'vote.decidedOverride' : 'vote.decided', { option: it.decision.option })));
+        li.appendChild(el('div', 'vote-agree', tx('vote.teamAgrees', { option: it.decision.option })));
+      }
       return;
     }
     if (it.kind === 'meet-turn' && it.vote) {

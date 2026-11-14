@@ -157,3 +157,22 @@ describe('Nhận câu tranh luận: "Chủ đề:" và "A hay B?" (anh Zon 2026-
     expect(k('sửa lỗi hay bị treo khi tải trang')).toBe('goal');
   });
 });
+
+describe('Anh chốt biểu quyết → cả team "dạ" (anh Zon 2026-11-14)', () => {
+  it('sự kiện decided khi có quyết định mới / đổi ý; mỗi thẻ (kể cả Boss) nói một câu có tên phương án', () => {
+    const html = readWeb();
+    const lib = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return { chatEvents, pickChatLine, CHAT_LINES };')() as any;
+    const snap = (decision: unknown) => ({ answers: [], seats: [], questions: [], log: [], meeting: { id: 7, vote: { options: ['Dark', 'Light'] }, decision } });
+    expect(lib.chatEvents(snap(null), snap({ option: 'Light', at: 't1', overrode: true }))).toEqual([{ type: 'decided', option: 'Light', overrode: true }]);
+    expect(lib.chatEvents(snap({ option: 'Light', at: 't1', overrode: true }), snap({ option: 'Light', at: 't1', overrode: true }))).toEqual([]);
+    expect(lib.chatEvents(snap({ option: 'Light', at: 't1' }), snap({ option: 'Dark', at: 't2', overrode: false }))).toEqual([{ type: 'decided', option: 'Dark', overrode: false }]);
+    for (const k of ['voteAgree', 'voteAgreeOverride']) for (const l of ['en', 'vi']) {
+      expect(lib.CHAT_LINES[l][k].length).toBeGreaterThanOrEqual(5);
+      expect(lib.pickChatLine(k, { option: 'Dark' }, l)).toContain('Dark');
+    }
+    expect(lib.pickChatLine('voteAgree', { option: 'Dark' }, 'vi')).toMatch(/^(Dạ|Đồng ý)/);
+    expect(html).toContain("text: pickChatLine(e.overrode ? 'voteAgreeOverride' : 'voteAgree', vars, L), delay: i * 700, allowRunning: true");
+    expect(html).toContain("if (((snap && snap.accounts) || []).some(function (a) { return a.provider === 'zai'; })) who.push('backup');");
+    expect(html).toContain("tx('vote.teamAgrees', { option: it.decision.option })");
+  });
+});
