@@ -6,7 +6,8 @@ import type { ProcResult } from '../runner/run.ts';
 import { runProcess } from '../runner/run.ts';
 import { readEnergy, type EnergyReading, type EnergyWindow } from './quota.ts';
 import { checkLogin, type LoginHealth } from './login.ts';
-import { listModels } from '../agents/models.ts';
+import { listModels, ZAI_MODELS } from '../agents/models.ts';
+import { mbStatus } from '../mb/vault.ts';
 import { usageLimitedKey } from '../agents/usage-limit.ts';
 import { activeAccountKeys, agentOfAccount } from '../agents/accounts.ts';
 import type { NotifyEvent } from '../notify/notify.ts';
@@ -101,6 +102,17 @@ export function createMonitor(d: MonitorDeps): {
     }
 
     const task = (async () => {
+      if (agentCfg.provider === 'zai') {
+        // Boss (decision 0003): không chạy CLI để đọc quota/đăng nhập; trạng thái lấy từ kho key.
+        const st = mbStatus(d.store);
+        d.store.saveEnergy({ agent, status: 'unknown', windows: [], readAt: d.now().toISOString(), note: 'Z.ai' });
+        d.store.saveLogin(st.set && st.enabled
+          ? { agent, state: 'ok', detail: `Z.ai key …${st.last4}` }
+          : { agent, state: 'relogin', detail: st.set ? 'Boss is turned off' : 'Set Boss key on Accounts page' });
+        d.store.setSetting(agentModelsKey(owner!), JSON.stringify({ at: d.now().getTime(), models: ZAI_MODELS }));
+        checkedAt.set(agent, d.now().getTime());
+        return;
+      }
       const energyReading = await d.readEnergy(agent, agentCfg.tool, {
         run: runnerFor(agent),
         codexHome: codexHomeFor(agent),

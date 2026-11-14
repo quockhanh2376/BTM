@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { startMbProxy } from './mb/proxy.ts';
 import { parseArgs } from 'node:util';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -132,6 +133,10 @@ export async function serve(
 
   const addr = server.address() as AddressInfo | null;
   const actualPort = addr ? addr.port : port;
+  // Boss (decision 0003): cổng trung gian 127.0.0.1 chỉ khi config có agent provider zai.
+  const mbProxy = Object.values(cfg.agents).some((a) => a.provider === 'zai')
+    ? startMbProxy({ store, dataDir: cfg.host.data_dir })
+    : null;
   console.log(`BTM dashboard: http://127.0.0.1:${actualPort}`);
 
   const tickTimer = setInterval(() => {
@@ -153,6 +158,7 @@ export async function serve(
     isShuttingDown = true;
 
     clearInterval(tickTimer);
+    mbProxy?.close();
     process.removeListener('SIGINT', sigListener);
     process.removeListener('SIGTERM', sigListener);
 
@@ -184,6 +190,7 @@ export async function serve(
 
   server.on('close', () => {
     clearInterval(tickTimer);
+    mbProxy?.close();
     process.removeListener('SIGINT', sigListener);
     process.removeListener('SIGTERM', sigListener);
     if (!isShuttingDown) {

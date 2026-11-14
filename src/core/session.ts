@@ -145,7 +145,10 @@ async function processGoal(
   // Người dự phòng: team/project.yaml (main) ghi đè btm.config.yaml; chỉ agent có ghế đó trong can_sit.
   const projectBackups = readProjectSeats(d.repo, d.cfg.git?.protected_branch || 'main').backups;
   function backupsFor(seat: Seat): string[] {
-    const list = projectBackups[seat] ?? d.cfg.seats_backup?.[seat] ?? [];
+    const base = projectBackups[seat] ?? d.cfg.seats_backup?.[seat] ?? [];
+    // Boss (decision 0003): luôn là người dự phòng cuối của mọi ghế nó ngồi được.
+    const boss = Object.keys(d.cfg.agents).filter((a) => d.cfg.agents[a]!.provider === 'zai' && !base.includes(a));
+    const list = [...base, ...boss];
     return list.filter((a) => {
       if (!Object.hasOwn(d.cfg.agents, a) || !d.cfg.agents[a]!.can_sit.includes(seat)) return false;
       return pickAccount(d.cfg, d.store, a) !== null;

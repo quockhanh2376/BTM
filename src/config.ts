@@ -82,6 +82,8 @@ export const AgentConfigSchema = z.object({
   model: ModelSchema.optional(),
   /** Không đặt → medium (agentEffort). */
   effort: EffortSchema.optional(),
+  /** Decision 0003: 'zai' = Boss (MB) – Claude Code gọi model GLM qua cổng trung gian của BTM (key Z.ai mã hoá trong DB). */
+  provider: z.literal('zai').optional(),
 }).strict();
 
 export const RulesSchema = z.object({
@@ -184,6 +186,11 @@ export const ConfigSchema = BaseConfigSchema.superRefine((cfg, ctx) => {
       if (!agent || !agent.can_sit.includes(seat)) {
         ctx.addIssue({ code: 'custom', message: `seats_backup.${seat}: agent '${id}' unknown or not allowed in this seat`, path: ['seats_backup', seat] });
       }
+    }
+  }
+  for (const [id, agent] of Object.entries(cfg.agents)) {
+    if (agent.provider === 'zai' && agent.tool !== 'claude-code') {
+      ctx.addIssue({ code: 'custom', message: `Agent '${id}': provider zai needs tool claude-code`, path: ['agents', id, 'provider'] });
     }
   }
   // Plan 8 Task 1: agy không có chế độ chỉ đọc → không được ngồi ghế QC/Audit.

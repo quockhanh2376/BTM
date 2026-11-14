@@ -3246,6 +3246,18 @@
           renameBtn.title = tx('acc.renameFor', { agent: acc.agent });
           renameBtn.addEventListener('click', function () { renameAgent(acc.agent); });
           nameEl.insertAdjacentElement('afterend', renameBtn);
+          // ID Worker (anh Zon 2026-11-14): đối chiếu với log; Boss có nhãn dự phòng mọi ghế.
+          var idEl = document.createElement('span');
+          idEl.className = 'acc-id';
+          idEl.textContent = acc.agent;
+          idEl.title = tx('acc.idTitle');
+          renameBtn.insertAdjacentElement('afterend', idEl);
+          if (acc.provider === 'zai') {
+            var bossEl = document.createElement('span');
+            bossEl.className = 'acc-boss-badge';
+            bossEl.textContent = tx('mb.badge');
+            idEl.insertAdjacentElement('afterend', bossEl);
+          }
           var shown = items;
           var awake = shown.filter(function (a) { return a.active; });
           var sleeping = shown.filter(function (a) { return !a.active; });
@@ -3576,6 +3588,7 @@
           try {
             var snapshot = JSON.parse(e.data);
             renderSnapshot(snapshot);
+            paintMbKey(snapshot);
           } catch (err) {}
         });
 
@@ -3978,5 +3991,49 @@
           if (e.key === 'Escape') { input.value = ''; hide(); }
         });
         clearBtn.addEventListener('click', function () { input.value = ''; hide(); input.focus(); });
+      })();
+
+      // ===== Boss key (decision 0003): dán key một lần; trang chỉ hiện 4 ký tự cuối. Không bao giờ đọc key ra. =====
+      var mbEnabled = true;
+      function paintMbKey(snap, st) {
+        var card = document.getElementById('mb-key-card');
+        if (!card) return;
+        if (snap) card.hidden = !((snap.accounts || []).some(function (a) { return a.provider === 'zai'; }));
+        st = st || (snap && snap.settings && snap.settings.mb);
+        if (!st) return;
+        mbEnabled = st.enabled;
+        document.getElementById('mb-key-status').textContent = st.set
+          ? tx('mb.statusSet', { last4: st.last4, state: tx(st.enabled ? 'mb.on' : 'mb.off') }) : tx('mb.statusNone');
+        var toggle = document.getElementById('mb-key-toggle');
+        toggle.textContent = tx(st.enabled ? 'mb.disable' : 'mb.enable');
+        toggle.disabled = !st.set;
+        document.getElementById('mb-key-remove').disabled = !st.set;
+      }
+      (function () {
+        var input = document.getElementById('mb-key-input');
+        var fb = document.getElementById('mb-key-feedback');
+        if (!input) return;
+        async function send(body) {
+          var res = await fetch('/api/mb', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-btm': '1' }, body: JSON.stringify(body) });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw new Error(data.error || tx('cmd.failed'));
+          paintMbKey(null, data);
+          return data;
+        }
+        document.getElementById('mb-key-save').addEventListener('click', async function () {
+          if (!input.value.trim()) { input.focus(); return; }
+          try {
+            await send({ action: 'set', key: input.value });
+            input.value = '';
+            showFeedback(fb, tx('mb.saved'), false);
+          } catch (e) { showFeedback(fb, e.message, true); }
+        });
+        document.getElementById('mb-key-toggle').addEventListener('click', function () {
+          send({ action: mbEnabled ? 'disable' : 'enable' }).catch(function (e) { showFeedback(fb, e.message, true); });
+        });
+        document.getElementById('mb-key-remove').addEventListener('click', async function () {
+          if (!(await askOwner({ who: 'Boss', text: tx('mb.removeConfirm'), ok: tx('mb.remove'), cancel: tx('acc.cancel') }))) return;
+          send({ action: 'remove' }).catch(function (e) { showFeedback(fb, e.message, true); });
+        });
       })();
     })();

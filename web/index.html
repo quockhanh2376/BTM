@@ -224,6 +224,16 @@
           <button id="acc-import-cancel" class="btn btn-secondary btn-sm" type="button" data-i18n="acc.cancel">Cancel</button>
         </div>
       </div>
+      <div id="mb-key-card" class="acc-panel mb-key-card" hidden>
+        <div class="acc-panel-row"><strong data-i18n="mb.title">Boss key (Z.ai)</strong> <span id="mb-key-status" class="mb-key-status"></span></div>
+        <div class="acc-panel-row">
+          <input id="mb-key-input" type="password" autocomplete="off" spellcheck="false" maxlength="300" data-i18n-placeholder="mb.placeholder" placeholder="Paste Z.ai API key" aria-label="Boss key" data-i18n-aria="mb.title">
+          <button id="mb-key-save" class="btn btn-primary btn-sm" type="button" data-i18n="mb.save">Save</button>
+          <button id="mb-key-toggle" class="btn btn-secondary btn-sm" type="button" data-i18n="mb.disable">Turn off</button>
+          <button id="mb-key-remove" class="btn btn-secondary btn-sm" type="button" data-i18n="mb.remove">Remove key</button>
+        </div>
+        <div id="mb-key-feedback" class="action-feedback" style="display: none;"></div>
+      </div>
       <div id="accounts-list" class="accounts-list">
         <div class="account-row">
           <div class="account-info">
