@@ -7,7 +7,7 @@ import { directPrompt, askPrompt } from '../core/prompts.ts';
 import { knowledgeFor } from '../knowledge/digest.ts';
 import { git, commitAll } from '../git.ts';
 import { snapshotTurn, guardStoredAgentTurn, restoreTicketFilesFromBase } from '../core/guard.ts';
-import { usableAccounts } from '../agents/accounts.ts';
+import { seatOpts, usableAccounts } from '../agents/accounts.ts';
 import { saveAnswer } from './ask-lane.ts';
 
 // Lệnh trực tiếp trong hàng đợi (Dev / QC / PM / Audit / "ask-<ghế>"), tách khỏi host.ts 2026-11-14
@@ -81,7 +81,7 @@ async function runReadOnly(c: DirectCtx): Promise<DirectResult> {
   const prompt = c.askSeat
     ? askPrompt(c.askSeat, c.item.text, knowledgeFor(c.store, c.cfg, c.project, c.item.text))
     : directPrompt(c.item.to, c.item.text);
-  const r = await runOnce(c, c.turnSeat === 'audit' ? 'audit' : 'qc', prompt, usableAccounts(c.cfg, c.store, c.agent, new Date(), { readOnly: true })[0]?.key);
+  const r = await runOnce(c, c.turnSeat === 'audit' ? 'audit' : 'qc', prompt, usableAccounts(c.cfg, c.store, c.agent, new Date(), seatOpts(c.cfg, c.store, c.turnSeat === 'audit' ? 'audit' : 'qc', c.project))[0]?.key);
   if (r.kind === 'error' || r.kind === 'abort') {
     c.store.endTurn(c.turnId, 'error', r.reason);
     c.store.setQueueStatus(c.item.id, r.kind === 'abort' ? 'cancelled' : 'done');
@@ -132,7 +132,7 @@ async function runDevOrQc(c: DirectCtx): Promise<DirectResult> {
   let gateFailedReason: string | null = null;
   let account: string | undefined;
   if (c.agent) {
-    const candidates = usableAccounts(c.cfg, c.store, c.agent, new Date(), { readOnly: seat === 'qc' });
+    const candidates = usableAccounts(c.cfg, c.store, c.agent, new Date(), seatOpts(c.cfg, c.store, seat, c.project));
     if (candidates.length === 0) gateFailedReason = `usage_limited:${c.agent}`;
     for (const cand of candidates) {
       if (c.monitor) {

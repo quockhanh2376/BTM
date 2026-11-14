@@ -5,7 +5,7 @@ import type { ServerOpts, SendJson } from '../http.ts';
 import { z } from 'zod';
 import { AGENT_NAME_RE, AVATAR_MAX_BYTES, agentAvatarKey, agentAvatarVerKey, agentNameKey } from '../../agents/names.ts';
 import { EffortSchema, ModelSchema, type Seat } from '../../config.ts';
-import { agentEffortKey, agentModelKey } from '../../agents/model.ts';
+import { agentEffortKey, agentModelKey, toolScope } from '../../agents/model.ts';
 import { effectiveSeats, seatSettingKey } from '../../store/db.ts';
 import { detectImage } from '../inbox.ts';
 
@@ -32,6 +32,8 @@ export async function handleSeatsPost(method: string | undefined, pathname: stri
   if (pathname === '/api/agent') {
     const AgentBodySchema = z.object({
       agent: z.string(),
+      /** Công cụ đang chỉnh model/effort (mặc định: công cụ chính của thẻ). */
+      tool: z.enum(['claude-code', 'codex-cli', 'antigravity-cli']).optional(),
       model: z.union([z.literal(''), ModelSchema]).optional(),
       effort: EffortSchema.optional(),
       name: z.string().transform((x) => x.trim()).refine((x) => x === '' || AGENT_NAME_RE.test(x)).optional(),
@@ -42,7 +44,7 @@ export async function handleSeatsPost(method: string | undefined, pathname: stri
       sendJson(res, 400, { error: 'Invalid model, effort or name' });
       return true;
     }
-    const { agent, model, effort, name, avatar } = parsed.data;
+    const { agent, tool, model, effort, name, avatar } = parsed.data;
     if (!Object.hasOwn(o.cfg.agents, agent)) {
       sendJson(res, 400, { error: `Unknown agent "${agent}"` });
       return true;
@@ -65,8 +67,9 @@ export async function handleSeatsPost(method: string | undefined, pathname: stri
       sendJson(res, 409, { error: 'Session running' });
       return true;
     }
-    if (model !== undefined) o.store.setSetting(agentModelKey(agent), model);
-    if (effort !== undefined) o.store.setSetting(agentEffortKey(agent), effort);
+    const scope = toolScope(o.cfg, agent, tool);
+    if (model !== undefined) o.store.setSetting(agentModelKey(scope), model);
+    if (effort !== undefined) o.store.setSetting(agentEffortKey(scope), effort);
     sendJson(res, 200, { ok: true, agent, model: model ?? null, effort: effort ?? null });
     return true;
   }

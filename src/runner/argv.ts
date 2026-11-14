@@ -11,7 +11,7 @@ export interface ArgvOpts {
   effort?: Effort;
 }
 
-// Ghế chỉ đọc (Plan 8 Task 1): QC và Audit không được ghi file. agy không có chế độ chỉ đọc nên bị cấm ở config.
+// Ghế chỉ đọc (Plan 8 Task 1): QC và Audit không được ghi file. agy chạy --mode plan (thử trên VM 2026-11-15: không ghi được file).
 export const READ_ONLY_SEATS: ReadonlySet<Seat> = new Set<Seat>(['qc', 'audit']);
 
 function shQuote(s: string): string {
@@ -21,15 +21,16 @@ function shQuote(s: string): string {
 export function buildArgv(tool: Tool, prompt: string, o: ArgvOpts): string[] {
   switch (tool) {
     case 'antigravity-cli': {
+      const readOnly = READ_ONLY_SEATS.has(o.seat);
       const json = JSON.stringify({
         permissions: {
-          allow: o.allow.map((cmd) => `command(${cmd})`),
+          allow: readOnly ? [] : o.allow.map((cmd) => `command(${cmd})`),
         },
       });
       const modelArg = o.model ? ` --model ${shQuote(o.model)}` : '';
       // Model Gemini của agy mang sẵn mức effort trong tên (…-low/-medium/-high); gửi thêm --effort lệch thì agy từ chối.
       const effortArg = o.effort && !/-(low|medium|high)$/.test(o.model ?? '') ? ` --effort ${shQuote(o.effort)}` : '';
-      const cmd = `agy -p ${shQuote(prompt)} --mode accept-edits --sandbox --settings ${shQuote(json)} --print-timeout ${o.timeoutMin}m${modelArg}${effortArg}`;
+      const cmd = `agy -p ${shQuote(prompt)} --mode ${readOnly ? 'plan' : 'accept-edits'} --sandbox --settings ${shQuote(json)} --print-timeout ${o.timeoutMin}m${modelArg}${effortArg}`;
       return ['script', '-qec', cmd, '/dev/null'];
     }
     case 'codex-cli': {

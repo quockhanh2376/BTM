@@ -63,7 +63,8 @@ export async function runAuditPhase(ctx: GoalCtx): Promise<SessionOutcome | 'aga
   const goalTicketIds = new Set(goalTicketsAfter.map((t) => t.id));
   const goalCoders = new Set<string>();
   for (const t of d.store.listTurns(sessionId)) {
-    if (t.seat === 'dev' && t.task_id && goalTicketIds.has(t.task_id) && t.agent) {
+    // Anh Zon 2026-11-15: Dev, QC, Audit là ba thẻ khác nhau – thẻ đã code HOẶC đã QC ticket của goal thì không Audit.
+    if ((t.seat === 'dev' || t.seat === 'qc') && t.task_id && goalTicketIds.has(t.task_id) && t.agent) {
       goalCoders.add(t.agent);
     }
   }

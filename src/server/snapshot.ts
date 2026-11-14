@@ -13,7 +13,8 @@ import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerUser } from '../isolation/worker.ts';
 import { readAgentModels } from '../energy/monitor.ts';
 import { effectiveSeats, resolveSeats, type Store, type GoalState, type QueueItem, type AccountLabel } from '../store/db.ts';
-import { accountKey, accountLastKey, pickAccount, toolOfAccountKey, usableAccounts } from '../agents/accounts.ts';
+import { accountKey, accountLastKey, emailOwner, pickAccount, seatOpts, toolOfAccountKey, usableAccounts } from '../agents/accounts.ts';
+import { toolScope } from '../agents/model.ts';
 import { READ_ONLY_SEATS } from '../runner/argv.ts';
 import { usageLimitedKey } from '../agents/usage-limit.ts';
 import { loadTickets, type Ticket, type TicketState, type TicketType, type TicketSize } from '../ticket/ticket.ts';
@@ -148,6 +149,10 @@ export interface AccountCard {
   user: string | null;
   /** Model CLI liệt kê được (đọc định kỳ dưới user của agent); rỗng khi chưa đọc. */
   modelOptions: string[];
+  /** Thẻ ghế: ghế thẻ này được ngồi (theo config). */
+  canSit: Seat[];
+  /** Model/effort riêng cho từng công cụ KHÁC công cụ chính đang có tài khoản trong thẻ. */
+  toolModels: Array<{ tool: Tool; model: string | null; effort: Effort | null; modelOptions: string[] }>;
   energy: SeatCard['energy'];
   /** Plan 7: tài khoản của Worker theo thứ tự (card login/energy = tài khoản đang dùng). */
   accounts: AccountItem[];
@@ -159,6 +164,8 @@ export interface AccountItem {
   /** Công cụ của tài khoản (một Worker có thể dùng nhiều công cụ, 2026-11-14). */
   tool: Tool;
   email: string | null;
+  /** Email này đang nằm ở tài khoản khác (thẻ/acc) → hai tài khoản dùng chung một quota; null khi không trùng. */
+  dupOf: string | null;
   label: AccountLabel;
   active: boolean;
   status: 'in_use' | 'next' | 'free' | 'limited' | 'sleeping' | 'relogin';
@@ -368,7 +375,8 @@ function accountItems(store: Store, cfg: Config, agent: string, now: Date): Acco
             : usable[1] === key
               ? 'next'
               : 'free';
-    return { key, slug: a.slug, tool: a.tool ?? cfg.agents[agent]!.tool, email: a.email, label: a.label, active: a.active, status, resetsAt: limited ? until : null, user: userOf(cfg, key), login, energy: getSeatEnergy(store, key, cfg) };
+    const dup = emailOwner(cfg, store, a.email, key);
+    return { key, slug: a.slug, tool: a.tool ?? cfg.agents[agent]!.tool, email: a.email, dupOf: dup ? `${dup.agent}/${dup.slug}` : null, label: a.label, active: a.active, status, resetsAt: limited ? until : null, user: userOf(cfg, key), login, energy: getSeatEnergy(store, key, cfg) };
   });
 }
 
@@ -388,6 +396,13 @@ function getAccounts(store: Store, cfg: Config): AccountCard[] {
       effort: agentEffort(cfg, store, agent),
       user: userOf(cfg, current),
       modelOptions: readAgentModels(store, agent)?.models ?? [],
+      canSit: cfg.agents[agent].can_sit,
+      toolModels: [...new Set(accounts.map((a) => a.tool))].filter((t) => t !== tool).map((t) => ({
+        tool: t,
+        model: agentModel(cfg, store, agent, t) ?? null,
+        effort: agentEffort(cfg, store, agent, t) ?? null,
+        modelOptions: readAgentModels(store, toolScope(cfg, agent, t))?.models ?? [],
+      })),
       energy: getSeatEnergy(store, current, cfg),
       accounts,
     };
@@ -416,7 +431,7 @@ function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
     const candidates = Object.entries(cfg.agents)
       .filter(([_, a]) => a.can_sit.includes(seat))
       .map(([name]) => name);
-    const idleAccount = pickAccount(cfg, store, agent, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) })?.key || agent;
+    const idleAccount = pickAccount(cfg, store, agent, new Date(), seatOpts(cfg, store, seat))?.key || agent;
     return {
       seat,
       agent,
@@ -738,7 +753,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     const lastTurn = seatTurns.length > 0 ? seatTurns[seatTurns.length - 1] : null;
 
     // Plan 7: đang chạy → tài khoản lượt này; rảnh → tài khoản lượt kế sẽ dùng.
-    const seatAccount = (status === 'running' ? store.getSetting(accountLastKey(agent)) : pickAccount(cfg, store, agent, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) })?.key) || agent;
+    const seatAccount = (status === 'running' ? store.getSetting(accountLastKey(agent)) : pickAccount(cfg, store, agent, new Date(), seatOpts(cfg, store, seat))?.key) || agent;
     const ticket = (status === 'running' && runningTurn?.seat === seat) ? (runningTurn.task_id ?? null) : null;
     const since = lastTurn?.started_at ?? null;
     const turnsCount = store.countTurns(s.id, seat);

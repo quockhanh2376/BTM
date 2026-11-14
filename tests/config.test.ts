@@ -54,11 +54,11 @@ describe('Config', () => {
     }))).toThrow(ConfigError);
   });
 
-  it('Plan 8 Task 1: agy (không có chế độ chỉ đọc) không được ngồi QC hay Audit', () => {
+  it('agy ngồi được QC và Audit (chạy --mode plan, anh Zon 2026-11-15)', () => {
     for (const seat of ['qc', 'audit']) {
       expect(() => loadConfig(writeTestConfig((raw) => {
         raw.agents.kai = { tool: 'antigravity-cli', command: 'agy', can_sit: ['dev', seat] };
-      }))).toThrow(/no read-only mode/);
+      }))).not.toThrow();
     }
   });
 

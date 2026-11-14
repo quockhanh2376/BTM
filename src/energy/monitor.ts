@@ -10,7 +10,8 @@ import { listModels, ZAI_MODELS } from '../agents/models.ts';
 import { mbStatus, readMbKey } from '../mb/vault.ts';
 import { fetchZaiQuota } from '../mb/quota.ts';
 import { usageLimitedKey } from '../agents/usage-limit.ts';
-import { activeAccountKeys, agentOfAccount, toolOfAccountKey } from '../agents/accounts.ts';
+import { activeAccountKeys, agentOfAccount, slugOfKey, toolOfAccountKey } from '../agents/accounts.ts';
+import { toolScope } from '../agents/model.ts';
 import type { NotifyEvent } from '../notify/notify.ts';
 
 export interface MonitorDeps {
@@ -150,19 +151,24 @@ export function createMonitor(d: MonitorDeps): {
       });
       const before = d.store.latestLogin(agent)?.state;
       d.store.saveLogin(loginHealth);
+      if (loginHealth.email && owner) {
+        const slug = slugOfKey(owner, agent);
+        if (d.store.getAccount(owner, slug) && d.store.getAccount(owner, slug)!.email !== loginHealth.email) d.store.updateAccount(owner, slug, { email: loginHealth.email });
+      }
       if ((before === 'ok' || before === 'expiring') && loginHealth.state === 'relogin') {
         d.notify?.({ kind: 'account_logout', project: '', notes: [agent] });
       }
 
       // Danh sách model cho ô chọn trên dashboard: đọc dưới user của agent, tối đa 6 giờ/lần, lỗi thì giữ bản cũ.
-      // Danh sách model là của công cụ chính của Worker; tài khoản công cụ khác không ghi đè.
-      if ((loginHealth.state === 'ok' || loginHealth.state === 'expiring') && tool === agentCfg.tool) {
-        const cached = readAgentModels(d.store, owner!); // Plan 7: danh sách model theo Worker, không theo tài khoản
+      // Mỗi thẻ có danh sách model riêng cho từng công cụ (anh Zon 2026-11-15): công cụ chính lưu theo thẻ, công cụ khác theo thẻ:công cụ.
+      if (loginHealth.state === 'ok' || loginHealth.state === 'expiring') {
+        const scope = toolScope(d.cfg, owner!, tool);
+        const cached = readAgentModels(d.store, scope); // Plan 7: danh sách model theo Worker, không theo tài khoản
         if (!cached || d.now().getTime() - cached.at > MODELS_TTL_MS) {
           try {
-            const models = await (d.listModels ?? listModels)(agentCfg.tool, runnerFor(agent));
+            const models = await (d.listModels ?? listModels)(tool, runnerFor(agent));
             if (models.length > 0) {
-              d.store.setSetting(agentModelsKey(owner!), JSON.stringify({ at: d.now().getTime(), models }));
+              d.store.setSetting(agentModelsKey(scope), JSON.stringify({ at: d.now().getTime(), models }));
             }
           } catch {}
         }

@@ -184,6 +184,8 @@ export interface Store {
   addAccount(agent: string, slug: string, opts: { email?: string | null; label?: AccountLabel; active: boolean; tool?: Tool | null }): AccountRow;
   updateAccount(agent: string, slug: string, patch: Partial<Pick<AccountRow, 'email' | 'label' | 'active'>>): void;
   moveAccount(agent: string, slug: string, dir: 'up' | 'down'): void;
+  /** Xoá dòng tài khoản (dùng khi chuyển tài khoản sang thẻ khác). */
+  deleteAccount(agent: string, slug: string): void;
   /** Plan 6 Task 3: ghi chú dòng của anh trên diff ticket. */
   addLineNote(project: string, ticket: string, path: string, line: number, text: string): number;
   listLineNotes(project: string, ticket: string, onlyUnused?: boolean): LineNote[];

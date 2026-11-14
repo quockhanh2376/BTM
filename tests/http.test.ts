@@ -1189,7 +1189,8 @@ describe('HTTP Server & SSE', () => {
       const r2 = await (await del({ all: true })).json();
       expect([r2.deleted, r2.skipped]).toEqual([[c], [b]]);
       expect((await del({ ids: [b] })).status).toBe(409);
-      store.setSessionStatus(sid, 'done');
+      // Phiên cũ hơn (không còn Resume được vì project đã có phiên mới) không giữ note nữa (anh Zon 2026-11-15, N-4 kẹt)
+      store.setSessionStatus(store.createSession(['y'], testRepo), 'error');
       expect((await del({ all: true })).status).toBe(200);
       expect(store.listNotes(testRepo)).toHaveLength(0);
       expect((await del({ all: true })).status).toBe(404);

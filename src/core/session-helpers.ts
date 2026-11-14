@@ -9,7 +9,7 @@ import { loadTickets, checkReady, type Ticket, type TicketState, TicketError } f
 import { readProjectKey } from '../ticket/goal.ts';
 import { runGate } from '../gate/gate.ts';
 import { detectUsageLimit, usageLimitedKey } from '../agents/usage-limit.ts';
-import { accountLastKey, canRunOnSeat, isUsable, pickAccount, slugOfKey, soonestReset, toolOfAccountKey, usableAccounts } from '../agents/accounts.ts';
+import { accountLastKey, isUsable, pickAccount, seatOpts, slugOfKey, soonestReset, toolOfAccountKey, usableAccounts } from '../agents/accounts.ts';
 import { READ_ONLY_SEATS } from '../runner/argv.ts';
 import { notify as sendNotify, type NotifyEvent } from '../notify/notify.ts';
 import { formatHHmm } from '../energy/monitor.ts';
@@ -367,7 +367,8 @@ export function withUsageLimit(d: SessionDeps): SessionDeps {
       const pre = chosen.get(agentId);
       chosen.delete(agentId);
       const preTool = pre ? toolOfAccountKey(d.cfg, d.store, pre) : null;
-      const key = pre && isUsable(d.store, pre, new Date()) && (!preTool || canRunOnSeat(preTool, seat, d.cfg.agents[agentId]!.tool)) ? pre : pickAccount(d.cfg, d.store, agentId, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) })?.key;
+      const opts = seatOpts(d.cfg, d.store, seat, d.repo);
+      const key = pre && isUsable(d.store, pre, new Date()) && !(opts.avoidTool && preTool === opts.avoidTool) ? pre : pickAccount(d.cfg, d.store, agentId, new Date(), opts)?.key;
       if (!key) throw new Error(soonestReset(d.store, agentId) ? `usage_limit_hit:${agentId}` : `no_usable_account:${agentId}`);
       const prev = d.store.getSetting(accountLastKey(agentId));
       if (prev && prev !== key) {

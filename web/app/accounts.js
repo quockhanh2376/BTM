@@ -1,6 +1,7 @@
 /* BTM dashboard – khu Accounts của Worker (danh sách, thêm, đăng nhập, export/import). Tách từ app.js 2026-11-14, không đổi hành vi.
    Hàm dùng chung của app.js truyền vào qua d; thân hàm giữ nguyên thụt lề cũ. */
     function btmAccounts(d) {
+      var askOwner = d.askOwner, SEAT_LABELS = d.SEAT_LABELS;
       var renameAgent = d.renameAgent, agentLabel = d.agentLabel, clearChildren = d.clearChildren, showFeedback = d.showFeedback,
         getLoginDisplay = d.getLoginDisplay, copyLoginCommand = d.copyLoginCommand, getSshTarget = d.getSshTarget,
         getLoginCommand = d.getLoginCommand, energyWarnChip = d.energyWarnChip, buildModelControls = d.buildModelControls,
@@ -23,8 +24,9 @@
         }
 
         var sshTarget = getSshTarget(sshHint);
+        accounts = seatCards(accounts);
 
-        accounts.forEach(function (acc) {
+        accounts.forEach(function (acc, cardIdx) {
           var row = document.createElement('div');
           row.className = 'account-row';
 
@@ -36,6 +38,11 @@
           headDot.className = 'login-dot ' + lDisp.dotClass;
           headDot.setAttribute('aria-hidden', 'true');
           head.appendChild(headDot);
+          // Thẻ ghế (anh Zon 2026-11-15): thẻ 1 PM · 2 Dev · 3 QC · 4 Audit · 5 Boss dự phòng mọi ghế.
+          var seatEl = document.createElement('span');
+          seatEl.className = 'acc-seat-chip';
+          seatEl.textContent = tx('acc.cardSeat', { i: cardIdx + 1, seat: cardSeatText(acc) });
+          head.appendChild(seatEl);
           var nameEl = document.createElement('span');
           nameEl.className = 'account-name';
           nameEl.textContent = acc.agent;
@@ -52,6 +59,15 @@
           head.appendChild(toolEl);
           row.appendChild(head);
           row.appendChild(buildModelControls(acc));
+          // Model riêng cho từng công cụ khác đang có tài khoản trong thẻ.
+          (acc.toolModels || []).forEach(function (tm) {
+            var extra = buildModelControls({ agent: acc.agent, model: tm.model, effort: tm.effort, modelOptions: tm.modelOptions, modelTool: tm.tool });
+            var lab = document.createElement('span');
+            lab.className = 'acc-tool-tag';
+            lab.textContent = toolLabel(tm.tool);
+            extra.insertBefore(lab, extra.firstChild);
+            row.appendChild(extra);
+          });
 
           var info = document.createElement('div');
           info.className = 'account-info';
@@ -139,6 +155,15 @@
           var awake = shown.filter(function (a) { return a.active; });
           var sleeping = shown.filter(function (a) { return !a.active; });
           var primary = awake.find(function (a) { return a.status === 'in_use'; }) || awake[0];
+          if (acc.provider !== 'zai') {
+            var addHere = document.createElement('button');
+            addHere.type = 'button';
+            addHere.className = 'btn btn-secondary btn-xs acc-add-here';
+            addHere.textContent = tx('acc.addHere');
+            addHere.setAttribute('aria-label', tx('acc.addHereFor', { name: agentLabel(acc.agent) }));
+            addHere.addEventListener('click', function () { openAddForm(acc.agent); });
+            idEl.insertAdjacentElement('afterend', addHere);
+          }
           if (awake.length) row.appendChild(buildAccountItems(acc, awake, sshTarget, primary));
           if (sleeping.length) {
             var open = Boolean(accSleepOpen[acc.agent]);
@@ -160,6 +185,20 @@
 
           container.appendChild(row);
         });
+      }
+
+      var SEAT_ORDER = ['pm', 'dev', 'qc', 'audit'];
+      function cardRank(acc) {
+        if (acc.provider === 'zai') return 99;
+        var ranks = (acc.canSit || []).map(function (s) { return SEAT_ORDER.indexOf(s); }).filter(function (i) { return i >= 0; });
+        return ranks.length ? Math.min.apply(null, ranks) : 50;
+      }
+      function seatCards(accounts) {
+        return accounts.map(function (a, i) { return [a, i]; }).sort(function (x, y) { return cardRank(x[0]) - cardRank(y[0]) || x[1] - y[1]; }).map(function (x) { return x[0]; });
+      }
+      function cardSeatText(acc) {
+        if (acc.provider === 'zai') return tx('acc.cardBackup');
+        return (acc.canSit || []).map(function (s) { return (SEAT_LABELS && SEAT_LABELS[s]) || s; }).join(' / ');
       }
 
       // ===== Plan 7: tài khoản của Worker =====
@@ -265,6 +304,14 @@
             line.appendChild(toolTag);
           }
 
+          if (a.dupOf) {
+            var dupTag = document.createElement('span');
+            dupTag.className = 'acc-dup-tag';
+            dupTag.textContent = tx('acc.dupEmail', { at: a.dupOf });
+            dupTag.title = tx('acc.dupEmailTip');
+            line.appendChild(dupTag);
+          }
+
           var badge = document.createElement('span');
           badge.className = 'acc-badge st-' + a.status;
           badge.textContent = statusText(a);
@@ -320,6 +367,37 @@
           copy.addEventListener('click', function () { copyLoginCommand(cmd, null, copy); });
           ctrl.appendChild(copy);
 
+          // Chuyển sang thẻ khác (không áp cho tài khoản đầu tiên của thẻ).
+          var targets = lastAccounts.filter(function (w) { return w.provider !== 'zai' && w.agent !== worker.agent; });
+          if (a.slug !== 'default' && targets.length) {
+            var mv = document.createElement('select');
+            mv.className = 'acc-move-select';
+            mv.setAttribute('aria-label', tx('acc.moveFor', { key: a.key }));
+            var first = document.createElement('option');
+            first.value = '';
+            first.textContent = tx('acc.moveTo');
+            mv.appendChild(first);
+            targets.forEach(function (w) {
+              var o = document.createElement('option');
+              o.value = w.agent;
+              o.textContent = cardSeatText(w) + ' · ' + agentLabel(w.agent);
+              mv.appendChild(o);
+            });
+            mv.addEventListener('change', async function () {
+              var to = mv.value;
+              mv.value = '';
+              if (!to) return;
+              if (!(await askOwner({ who: tx('ask.team'), text: tx('acc.moveConfirm', { key: a.email || a.key, name: agentLabel(to) }), ok: tx('acc.moveOk'), cancel: tx('ask.keepIt') }))) return;
+              try {
+                await postJson('/api/accounts/' + encodeURIComponent(a.key) + '/move', { agent: to });
+                showFeedback(topFeedback, tx('acc.moved', { name: agentLabel(to) }), false);
+              } catch (err) {
+                showFeedback(topFeedback, err.message, true);
+              }
+            });
+            ctrl.appendChild(mv);
+          }
+
           line.appendChild(ctrl);
           box.appendChild(line);
         });
@@ -345,19 +423,22 @@
         var t = accAddTool ? accAddTool.value : workerTool(accAddWorker.value);
         accAddAgy.hidden = t !== 'antigravity-cli';
       }
-      document.getElementById('acc-add-btn').addEventListener('click', function () {
+      function openAddForm(agent) {
         clearChildren(accAddWorker);
         lastAccounts.forEach(function (w) {
           if (w.provider === 'zai') return; // Boss dùng API key, không thêm tài khoản
           var o = document.createElement('option');
           o.value = w.agent;
-          o.textContent = w.agent + ' · ' + w.tool;
+          o.textContent = cardSeatText(w) + ' · ' + agentLabel(w.agent);
           accAddWorker.appendChild(o);
         });
+        if (agent) accAddWorker.value = agent;
         accAddPanel.hidden = false;
         accLogin.hidden = true;
         syncAddForm();
-      });
+        if (agent && accAddPanel.scrollIntoView) accAddPanel.scrollIntoView({ block: 'nearest' });
+      }
+      document.getElementById('acc-add-btn').addEventListener('click', function () { openAddForm(''); });
       accAddWorker.addEventListener('change', function () { syncAddForm(true); });
       if (accAddTool) accAddTool.addEventListener('change', function () { syncAddForm(false); });
       document.getElementById('acc-add-cancel').addEventListener('click', function () {
@@ -472,13 +553,6 @@
       document.getElementById('acc-import-btn').addEventListener('click', function () { accImportFile.value = ''; accImportFile.click(); });
       async function previewImport() {
         try {
-          // Chấp nhận dấu phẩy thừa trước ] hoặc } (file Antigravity sửa tay hay có).
-          try { accImportData = JSON.parse(rawText); } catch (e1) { accImportData = JSON.parse(rawText.replace(/,\s*([\]}])/g, '$1')); }
-        } catch (e) {
-          showFeedback(topFeedback, tx('acc.badJson'), true);
-          return;
-        }
-        try {
           var dry = await postJson('/api/accounts/import', Object.assign({ file: accImportData, dryRun: true }, accImportTarget && accImportTarget.value ? { agent: accImportTarget.value } : {}));
           var sum = document.getElementById('acc-import-summary');
           clearChildren(sum);
@@ -498,6 +572,8 @@
             });
           }
           dry.rejected.forEach(function (r) { add(tx('acc.importRejected', { entry: r.entry, reason: r.reason })); });
+          // Email đã có trên BTM: bỏ qua, không thêm lần hai (anh Zon 2026-11-15).
+          (dry.skipped || []).forEach(function (r) { add(tx('acc.importSkipped', { entry: r.entry, at: r.at })); });
           if (!dry.new.length && !dry.conflicts.length) add(tx('acc.importNothing'));
           accImportPanel.hidden = false;
         } catch (err) {
