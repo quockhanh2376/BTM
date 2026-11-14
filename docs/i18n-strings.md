@@ -278,3 +278,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | q.multiHint | Một câu trả lời chung cho cả {n} câu, hoặc ghi "1. … 2. …" để trả lời riêng. | One answer for all {n} questions, or write "1. … 2. …" to answer each one. |
 | q.clear | Xoá câu trả lời | Clear answer |
 | q.delegate / q.delegateTip / q.delegateSent / q.teamGuard / q.teamGuardOk / q.teamGuardCancel | Để {name} trả lời / … / {name} đang trả lời… / Đang có câu hỏi; tin cho Team sẽ tạo goal MỚI… / Tạo goal mới / Huỷ | Let {name} answer / … |
+| trash.* | Thùng rác ({n}) / Thùng rác trống / Chuyển G{n} vào thùng rác? / Khôi phục / Xoá vĩnh viễn / … | Trash ({n}) / Trash is empty / Move G{n} to Trash? / Restore / Delete permanently / … |

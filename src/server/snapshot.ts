@@ -174,6 +174,8 @@ export interface Snapshot {
   sshHint?: string;
   /** Plan 9: phiên bản BTM (package.json) cho sidebar. */
   version?: string;
+  /** Thùng rác goal: số goal đang trong thùng rác. */
+  trash?: number;
 }
 
 const ANSI_REGEX = /(?:\x1B\]|\u009D)[\s\S]*?(?:\x07|\x1B\\|\u009C)|(?:\x1B\[|\u009B)[0-?]*[ -/]*[@-~]|[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]|\x1B[@-Z\\-_]/g;
@@ -409,7 +411,7 @@ function buildGoals(
     const auditAgent = (effectiveSeats(cfg, store).audit || cfg.seats?.audit || '').trim();
     const hasAudit = auditAgent.length > 0;
 
-    const goalRows = store.listGoals(project);
+    const goalRows = store.listGoals(project).filter((g) => !g.archived_at);
     const goals: GoalSnapshot[] = [];
 
     for (const g of goalRows) {
@@ -569,6 +571,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       notes,
       accounts,
       seatWarnings: resolveSeats(cfg, store).warnings,
+      trash: project ? store.listArchivedGoals(project).length : 0,
       questions: openQuestions(store),
       sshHint,
       version: BTM_VERSION,
@@ -576,6 +579,19 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   }
 
   let latestSessionRow = store.getLatestSession(undefined, project);
+  // Phiên chỉ của goal đã vào thùng rác: không coi là phiên hiện tại (lấy phiên mới nhất còn lại).
+  if (latestSessionRow && project) {
+    const archived = new Set(store.listArchivedGoals(project).map((g) => g.n));
+    const isArchivedOnly = (id: number) => { const ns = store.sessionGoalNumbers(id); return ns.length > 0 && ns.every((x) => archived.has(x)); };
+    if (archived.size > 0 && isArchivedOnly(latestSessionRow.id)) {
+      const top = latestSessionRow.id;
+      latestSessionRow = null;
+      for (let id = top - 1; id > 0; id--) {
+        const s = store.getSession(id);
+        if (s && s.project === project && !isArchivedOnly(id)) { latestSessionRow = { id: s.id, status: s.status, project: s.project }; break; }
+      }
+    }
+  }
   if (!latestSessionRow) {
     const anyLatest = store.getLatestSession();
     if (anyLatest && (!anyLatest.project || anyLatest.project === project)) {
@@ -597,6 +613,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       notes,
       accounts,
       seatWarnings: resolveSeats(cfg, store).warnings,
+      trash: project ? store.listArchivedGoals(project).length : 0,
       questions: openQuestions(store),
       sshHint,
       version: BTM_VERSION,
@@ -618,6 +635,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       notes,
       accounts,
       seatWarnings: resolveSeats(cfg, store).warnings,
+      trash: project ? store.listArchivedGoals(project).length : 0,
       questions: openQuestions(store),
       sshHint,
       version: BTM_VERSION,
@@ -742,6 +760,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     notes,
     accounts,
     seatWarnings: resolveSeats(cfg, store).warnings,
+    trash: project ? store.listArchivedGoals(project).length : 0,
     questions: openQuestions(store),
     sshHint,
     version: BTM_VERSION,
