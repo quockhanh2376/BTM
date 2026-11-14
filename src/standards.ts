@@ -35,8 +35,8 @@ export type Standards = z.infer<typeof StandardsSchema>;
 export const CHAT_KEY = 'chat_settings';
 const range = (min: number, max: number) => z.tuple([z.number().min(min).max(max), z.number().min(min).max(max)]).transform(([a, b]) => [Math.min(a, b), Math.max(a, b)] as [number, number]);
 export const ChatSettingsSchema = z.object({
-  /** Tối đa số agent cùng nói trong một lượt tán gẫu (1–3). */
-  speakers: z.number().int().min(1).max(3),
+  /** Tối đa số agent cùng nói trong một lượt tán gẫu (1–5: 4 ghế + Boss). */
+  speakers: z.number().int().min(1).max(5),
   /** Vui vẻ: nghỉ ngẫu nhiên giữa hai lượt, tính bằng giây (10–600). */
   livelySec: range(10, 600),
   /** Bình thường: nghỉ ngẫu nhiên giữa hai lượt, tính bằng phút (1–60). */
