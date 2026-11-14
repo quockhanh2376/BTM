@@ -126,6 +126,8 @@
           'goal.timeRunning': 'still open',
           'goal.byAgent': 'By agent: {list}',
           'lessons.title': 'Lessons from {goal}:',
+          'ws.title': '{name} – Workspace',
+          'ws.none': 'Workspace',
           'goal.map': 'Map',
           'goal.mapTip': 'Project map: files, functions they already have, and which tickets changed them (built from the code).',
           'search.kind.map': 'Map',
