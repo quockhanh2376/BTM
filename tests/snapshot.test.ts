@@ -545,12 +545,12 @@ from_audit: false
       // 2. Overridden by store.setSetting('auto_approve', 'true')
       store.setSetting('auto_approve', 'true');
       const snap3 = buildSnapshot(store, cfg);
-      expect(snap3.settings).toEqual({ autoApprove: true, names: {}, avatars: {} });
+      expect(snap3.settings).toEqual({ autoApprove: true, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true } });
 
       // 3. Overridden by store.setSetting('auto_approve', 'false')
       store.setSetting('auto_approve', 'false');
       const snap4 = buildSnapshot(store, cfg);
-      expect(snap4.settings).toEqual({ autoApprove: false, names: {}, avatars: {} });
+      expect(snap4.settings).toEqual({ autoApprove: false, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true } });
     });
 
     it('settings.names: tên hiển thị Worker từ setting agent_name:<agent>; rỗng = không có', () => {
