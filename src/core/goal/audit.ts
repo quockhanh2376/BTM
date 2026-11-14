@@ -1,17 +1,32 @@
 // Kiểm ticket + Audit + PM sửa theo audit (tách khỏi processGoal 2026-11-14, không đổi hành vi).
 import { skillsFor } from '../../skills/lane.ts';
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Seat } from '../../config.ts';
 import { effectiveSeats } from '../../store/db.ts';
 import { loadTickets, type Ticket } from '../../ticket/ticket.ts';
 import { git, commitAll } from '../../git.ts';
-import { parseAuditResult } from '../../audit/result.ts';
+import { parseAuditResult, type AuditResult } from '../../audit/result.ts';
+import { mbStatus } from '../../mb/vault.ts';
 import { pmTicketPrompt, auditPrompt } from '../prompts.ts';
 import { snapshotTurn, guardStoredAgentTurn } from '../guard.ts';
 import { authorForAgent, cleanupPmWorkingTree, getWorkingTreeChanges, hasInvalidDependsOn, isOutOfTurns, pmModifiedExistingTickets, recordExistingTickets, writeGoalSummaryAndCommit } from '../session-helpers.ts';
-import type { SessionOutcome } from '../session.ts';
+import type { SessionDeps, SessionOutcome } from '../session.ts';
 import type { GoalCtx } from './ctx.ts';
+
+/**
+ * Người kiểm bảo mật lần 2 (anh Zon 2026-11-14): Boss (agent provider zai) khi key đã đặt và đang bật, không phải người vừa
+ * audit, chưa code ticket nào của goal. Không có Boss → { agent: null } (không ghi chú); Boss bị chặn → kèm lý do để ghi báo cáo.
+ */
+export function bossAuditor(d: Pick<SessionDeps, 'cfg' | 'store' | 'gate'>, firstAuditor: string, coders: Set<string>): { agent: string | null; note?: string } {
+  const st = mbStatus(d.store);
+  const boss = Object.keys(d.cfg.agents).find((a) => d.cfg.agents[a]!.provider === 'zai');
+  if (!boss || !st.set || !st.enabled || boss === firstAuditor) return { agent: null };
+  if (coders.has(boss)) return { agent: null, note: 'Boss coded a ticket in this goal' };
+  const gate = d.gate?.(boss);
+  if (gate && !gate.ok) return { agent: null, note: gate.reason };
+  return { agent: boss };
+}
 
 /** Kiểm ticket + Audit; audit fail → PM lập ticket sửa. 'again' = chạy lại vòng ticket; 'break' = sang kiểm tra cuối. */
 export async function runAuditPhase(ctx: GoalCtx): Promise<SessionOutcome | 'again' | 'break'> {
@@ -85,165 +100,189 @@ export async function runAuditPhase(ctx: GoalCtx): Promise<SessionOutcome | 'aga
     auditAgent = pick.agent;
   }
 
-  if (isOutOfTurns(d.store, sessionId, d.cfg, 'audit')) {
-    return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns for Audit'] };
-  }
-
-  const auditTurnId = d.store.startTurn(sessionId, 'audit', auditAgent, `G${goal.n}`);
-  const auditLogFile = join(d.logDir, `turn-${auditTurnId}.log`);
-  d.store.setTurnLog(auditTurnId, auditLogFile);
-
-  let auditBase = baseBranch;
-  try {
-    const mb = git(d.repo, 'merge-base', baseBranch, 'HEAD').trim();
-    if (mb) auditBase = mb;
-  } catch {
-    auditBase = baseBranch;
-  }
-
-  const auditPromptText = auditPrompt(
-    { n: goal.n, title: goal.title },
-    auditBase,
-    goalTicketsAfter.map((t) => t.id),
-    auditAgent,
-    skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'audit', auditTurnId)
-  );
-  const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'audit');
-  if (auditSnapshot.protectedBranchMoved) {
-    d.store.endTurn(auditTurnId, 'rejected', 'protected_branch_moved');
-    return {
-      status: 'needs_owner',
-      sessionId,
-      tasks,
-      notes: [
-        `protected_branch_moved: ${auditSnapshot.protectedHead} → ${auditSnapshot.protectedBranchActualSha ?? ''}`,
-        'protected_branch_moved',
-      ],
-    };
-  }
-
-  let auditOutput;
-  try {
-    auditOutput = await d.runner('audit', auditAgent, auditPromptText, d.repo, auditLogFile, {
-      signal: d.signal,
-    });
-  } catch (err) {
-    const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
-    const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
-    d.store.endTurn(auditTurnId, 'error', reason);
-    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
-    if (auditGuard.gitConfigTampered) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+  // Một lượt audit (tách 2026-11-14 để Boss kiểm lần 2 sau Audit – anh Zon). Trả SessionOutcome nếu phải dừng phiên,
+  // còn lại trả kết quả audit; báo cáo ghi vào team/reports/<reportName> và commit.
+  async function auditTurn(auditAgent: string, reportName: string, label: string): Promise<SessionOutcome | AuditResult> {
+    if (isOutOfTurns(d.store, sessionId, d.cfg, 'audit')) {
+      return { status: 'out_of_turns', sessionId, tasks, notes: ['Out of turns for Audit'] };
     }
-    if (auditGuard.modifiedProtectedBranch) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+
+    const auditTurnId = d.store.startTurn(sessionId, 'audit', auditAgent, `G${goal.n}`);
+    const auditLogFile = join(d.logDir, `turn-${auditTurnId}.log`);
+    d.store.setTurnLog(auditTurnId, auditLogFile);
+
+    let auditBase = baseBranch;
+    try {
+      const mb = git(d.repo, 'merge-base', baseBranch, 'HEAD').trim();
+      if (mb) auditBase = mb;
+    } catch {
+      auditBase = baseBranch;
     }
-    if (auditGuard.protectedBranchMoved) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
+
+    const auditPromptText = auditPrompt(
+      { n: goal.n, title: goal.title },
+      auditBase,
+      goalTicketsAfter.map((t) => t.id),
+      auditAgent,
+      skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'audit', auditTurnId)
+    );
+    const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'audit');
+    if (auditSnapshot.protectedBranchMoved) {
+      d.store.endTurn(auditTurnId, 'rejected', 'protected_branch_moved');
+      return {
+        status: 'needs_owner',
+        sessionId,
+        tasks,
+        notes: [
+          `protected_branch_moved: ${auditSnapshot.protectedHead} → ${auditSnapshot.protectedBranchActualSha ?? ''}`,
+          'protected_branch_moved',
+        ],
+      };
     }
-    if (auditGuard.modifiedOtherGoal) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+
+    let auditOutput;
+    try {
+      auditOutput = await d.runner('audit', auditAgent, auditPromptText, d.repo, auditLogFile, {
+        signal: d.signal,
+      });
+    } catch (err) {
+      const isAbort = d.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
+      const reason = isAbort ? 'aborted' : (err instanceof Error ? err.message : String(err));
+      d.store.endTurn(auditTurnId, 'error', reason);
+      const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+      if (auditGuard.gitConfigTampered) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+      }
+      if (auditGuard.modifiedProtectedBranch) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+      }
+      if (auditGuard.protectedBranchMoved) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
+      }
+      if (auditGuard.modifiedOtherGoal) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+      }
+      if (isAbort) {
+        return { status: 'stopped', sessionId, tasks, notes: [reason] };
+      }
+      return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
     }
-    if (isAbort) {
+
+    if (d.signal?.aborted) {
+      const reason = 'aborted';
+      d.store.endTurn(auditTurnId, 'error', reason);
+      const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+      if (auditGuard.gitConfigTampered) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+      }
+      if (auditGuard.modifiedProtectedBranch) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+      }
+      if (auditGuard.protectedBranchMoved) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
+      }
+      if (auditGuard.modifiedOtherGoal) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+      }
       return { status: 'stopped', sessionId, tasks, notes: [reason] };
     }
-    return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-  }
 
-  if (d.signal?.aborted) {
-    const reason = 'aborted';
-    d.store.endTurn(auditTurnId, 'error', reason);
-    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+    if (auditOutput.timedOut || auditOutput.exitCode !== 0) {
+      const reason = auditOutput.timedOut ? 'timeout' : `exit_${auditOutput.exitCode}`;
+      d.store.endTurn(auditTurnId, auditOutput.timedOut ? 'timeout' : 'error', reason);
+      const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
+      if (auditGuard.gitConfigTampered) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
+      }
+      if (auditGuard.modifiedProtectedBranch) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
+      }
+      if (auditGuard.protectedBranchMoved) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
+      }
+      if (auditGuard.modifiedOtherGoal) {
+        return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+      }
+      return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
+    }
+    d.store.endTurn(auditTurnId, 'ok');
+
+    let auditResult = parseAuditResult(auditOutput.lastMessage || auditOutput.output || '');
+
+    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit');
+    if (auditGuard.ignoredListFailed) {
+      d.store.endTurn(auditTurnId, 'ok', 'ignored_list_failed');
+    } else if ((auditGuard.ignoredCleanedCount ?? 0) > 0) {
+      d.store.endTurn(auditTurnId, 'ok', `ignored_cleaned:${auditGuard.ignoredCleanedCount}`);
+    }
     if (auditGuard.gitConfigTampered) {
+      d.store.endTurn(auditTurnId, 'rejected', 'git_config_tampered');
       return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
     }
-    if (auditGuard.modifiedProtectedBranch) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
-    }
-    if (auditGuard.protectedBranchMoved) {
+    if (auditGuard.protectedBranchMoved && !auditGuard.modifiedProtectedBranch) {
+      d.store.endTurn(auditTurnId, 'rejected', 'protected_branch_moved');
       return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
     }
-    if (auditGuard.modifiedOtherGoal) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
+    if (
+      auditGuard.switchedBranch ||
+      auditGuard.headChanged ||
+      auditGuard.treeDirty ||
+      auditGuard.modifiedProtectedBranch ||
+      auditGuard.modifiedOtherGoal
+    ) {
+      const text = auditGuard.modifiedProtectedBranch
+        ? 'agent_modified_protected_branch'
+        : (auditGuard.modifiedOtherGoal
+          ? 'agent_modified_other_goal'
+          : (auditGuard.switchedBranch ? 'agent_switched_branch' : 'audit_modified_repo'));
+      auditResult = {
+        verdict: 'fail',
+        findings: [
+          { ticket: '', severity: 'high', text },
+        ],
+      };
     }
-    return { status: 'stopped', sessionId, tasks, notes: [reason] };
+
+    const reportsDir = join(d.repo, 'team', 'reports');
+    mkdirSync(reportsDir, { recursive: true });
+    const auditReportPath = join(reportsDir, reportName);
+    const auditReportLines = [
+      `G${goal.n} · ${goal.title} · ${auditAgent}-${label === 'audit' ? 'Audit' : 'Boss audit'}`,
+      `Verdict: ${auditResult.verdict}`,
+      '',
+      '## Findings',
+    ];
+    if (auditResult.findings.length === 0) {
+      auditReportLines.push('OK');
+    } else {
+      for (const f of auditResult.findings) {
+        auditReportLines.push(`- [${f.severity.toUpperCase()}] ${f.ticket ? `${f.ticket}: ` : ''}${f.text}`);
+      }
+    }
+    writeFileSync(auditReportPath, auditReportLines.join('\n') + '\n', 'utf8');
+    const coreAuthor = { name: 'core', email: 'core@btm.local' };
+    commitAll(d.repo, `G${goal.n}: ${label} ${auditResult.verdict}`, coreAuthor);
+    return auditResult;
   }
 
-  if (auditOutput.timedOut || auditOutput.exitCode !== 0) {
-    const reason = auditOutput.timedOut ? 'timeout' : `exit_${auditOutput.exitCode}`;
-    d.store.endTurn(auditTurnId, auditOutput.timedOut ? 'timeout' : 'error', reason);
-    const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit', { isErrorOrTimeoutOrAbort: true });
-    if (auditGuard.gitConfigTampered) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
-    }
-    if (auditGuard.modifiedProtectedBranch) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_protected_branch'] };
-    }
-    if (auditGuard.protectedBranchMoved) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
-    }
-    if (auditGuard.modifiedOtherGoal) {
-      return { status: 'needs_owner', sessionId, tasks, notes: ['agent_modified_other_goal'] };
-    }
-    return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
-  }
-  d.store.endTurn(auditTurnId, 'ok');
-
-  let auditResult = parseAuditResult(auditOutput.lastMessage || auditOutput.output || '');
-
-  const auditGuard = guardStoredAgentTurn(d.store, d.repo, auditSnapshot, 'audit');
-  if (auditGuard.ignoredListFailed) {
-    d.store.endTurn(auditTurnId, 'ok', 'ignored_list_failed');
-  } else if ((auditGuard.ignoredCleanedCount ?? 0) > 0) {
-    d.store.endTurn(auditTurnId, 'ok', `ignored_cleaned:${auditGuard.ignoredCleanedCount}`);
-  }
-  if (auditGuard.gitConfigTampered) {
-    d.store.endTurn(auditTurnId, 'rejected', 'git_config_tampered');
-    return { status: 'needs_owner', sessionId, tasks, notes: ['git_config_tampered'] };
-  }
-  if (auditGuard.protectedBranchMoved && !auditGuard.modifiedProtectedBranch) {
-    d.store.endTurn(auditTurnId, 'rejected', 'protected_branch_moved');
-    return { status: 'needs_owner', sessionId, tasks, notes: ['protected_branch_moved'] };
-  }
-  if (
-    auditGuard.switchedBranch ||
-    auditGuard.headChanged ||
-    auditGuard.treeDirty ||
-    auditGuard.modifiedProtectedBranch ||
-    auditGuard.modifiedOtherGoal
-  ) {
-    const text = auditGuard.modifiedProtectedBranch
-      ? 'agent_modified_protected_branch'
-      : (auditGuard.modifiedOtherGoal
-        ? 'agent_modified_other_goal'
-        : (auditGuard.switchedBranch ? 'agent_switched_branch' : 'audit_modified_repo'));
-    auditResult = {
-      verdict: 'fail',
-      findings: [
-        { ticket: '', severity: 'high', text },
-      ],
-    };
-  }
-
-  const reportsDir = join(d.repo, 'team', 'reports');
-  mkdirSync(reportsDir, { recursive: true });
-  const auditReportPath = join(reportsDir, `G${goal.n}-audit.md`);
-  const auditReportLines = [
-    `G${goal.n} · ${goal.title} · ${auditAgent}-Audit`,
-    `Verdict: ${auditResult.verdict}`,
-    '',
-    '## Findings',
-  ];
-  if (auditResult.findings.length === 0) {
-    auditReportLines.push('OK');
-  } else {
-    for (const f of auditResult.findings) {
-      auditReportLines.push(`- [${f.severity.toUpperCase()}] ${f.ticket ? `${f.ticket}: ` : ''}${f.text}`);
+  const first = await auditTurn(auditAgent, `G${goal.n}-audit.md`, 'audit');
+  if ('status' in first) return first;
+  let auditResult = first;
+  // Boss kiểm bảo mật lần 2 (anh Zon 2026-11-14): chỉ khi Audit lần 1 đạt, Boss đang bật, Boss chưa code ticket nào của goal
+  // và không phải người vừa audit. Boss hết quota / mất đăng nhập → bỏ lượt này (ghi chú), không chặn goal.
+  if (auditResult.verdict === 'pass') {
+    const second = bossAuditor(d, auditAgent, goalCoders);
+    if (second.agent) {
+      const r = await auditTurn(second.agent, `G${goal.n}-audit-boss.md`, 'boss audit');
+      if ('status' in r) return r;
+      auditResult = r;
+    } else if (second.note) {
+      // Ghi vào báo cáo audit để anh thấy vì sao không có lần kiểm thứ hai.
+      const firstReport = join(d.repo, 'team', 'reports', `G${goal.n}-audit.md`);
+      writeFileSync(firstReport, `${readFileSync(firstReport, 'utf8').trimEnd()}\n\nBoss audit: skipped – ${second.note}\n`, 'utf8');
+      commitAll(d.repo, `G${goal.n}: boss audit skipped`, { name: 'core', email: 'core@btm.local' });
     }
   }
-  writeFileSync(auditReportPath, auditReportLines.join('\n') + '\n', 'utf8');
-  const coreAuthor = { name: 'core', email: 'core@btm.local' };
-  commitAll(d.repo, `G${goal.n}: audit ${auditResult.verdict}`, coreAuthor);
 
   if (auditResult.verdict === 'pass') {
     writeGoalSummaryAndCommit(d.repo, goal, loadTickets(d.repo, key, `G${goal.n}`), d.store);
