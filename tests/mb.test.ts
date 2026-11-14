@@ -7,6 +7,8 @@ import { openStore } from '../src/store/db.ts';
 import { ConfigSchema, loadConfig, type Config } from '../src/config.ts';
 import { cleanKey, decryptKey, encryptKey, loadMasterKey, mbStatus, readMbKey, removeMbKey, saveMbKey, setMbEnabled } from '../src/mb/vault.ts';
 import { createMbProxy, issueTurnToken, revokeTurnToken } from '../src/mb/proxy.ts';
+import { fetchZaiQuota, parseZaiQuota } from '../src/mb/quota.ts';
+import { createMonitor } from '../src/energy/monitor.ts';
 import { zaiArgv } from '../src/runner/run.ts';
 import { listModels, ZAI_MODELS } from '../src/agents/models.ts';
 import { createServer, type HostApi } from '../src/server/http.ts';
@@ -151,5 +153,44 @@ describe('Boss – agent, model, API', () => {
     expect(mbStatus(store).enabled).toBe(false);
     expect(JSON.stringify(buildSnapshot(store, cfg))).not.toContain(KEY);
     expect(readMbKey(store, t.dataDir)).toBe(KEY);
+  });
+});
+
+describe('Boss – Energy từ quota Z.ai', () => {
+  it('parse: TOKENS_LIMIT thứ nhất = 5h, thứ hai = tuần; còn lại = 100 - đã dùng; thiếu dữ liệu → []', () => {
+    const w = parseZaiQuota({ data: { limits: [
+      { type: 'TOKENS_LIMIT', percentage: 12.4, nextResetTime: 1794600000000 },
+      { type: 'TOKENS_LIMIT', percentage: 40, nextResetTime: 1795000000000 },
+      { type: 'TIME_LIMIT', percentage: 0 },
+    ] } });
+    expect(w).toEqual([
+      { name: '5h', remainingPercent: 88, resetsAt: new Date(1794600000000).toISOString() },
+      { name: 'week', remainingPercent: 60, resetsAt: new Date(1795000000000).toISOString() },
+    ]);
+    expect(parseZaiQuota({})).toEqual([]);
+    expect(parseZaiQuota({ data: { limits: [{ type: 'TOKENS_LIMIT', percentage: 'x' }] } })).toEqual([]);
+  });
+
+  it('fetch: gửi key thô (không Bearer) trong core; lỗi mạng/HTTP → []', async () => {
+    let auth = '';
+    const ok = (async (_u: unknown, init: any) => { auth = init.headers.Authorization; return new Response(JSON.stringify({ data: { limits: [{ type: 'TOKENS_LIMIT', percentage: 0 }] } })); }) as any;
+    expect((await fetchZaiQuota(KEY, ok))[0]!.remainingPercent).toBe(100);
+    expect(auth).toBe(KEY);
+    expect(await fetchZaiQuota(KEY, (async () => new Response('x', { status: 401 })) as any)).toEqual([]);
+    expect(await fetchZaiQuota(KEY, (async () => { throw new Error('net'); }) as any)).toEqual([]);
+  });
+
+  it('monitor: Boss có key → Energy fresh từ quota; gate chặn khi dưới mức tối thiểu', async () => {
+    const t = setup();
+    saveMbKey(t.store, t.dataDir, KEY);
+    const base = loadConfig('btm.config.yaml');
+    const cfg = { ...base, host: { ...base.host, data_dir: t.dataDir, worker_prefix: '' }, agents: { ...base.agents, mb: { tool: 'claude-code', command: 'claude', can_sit: ['dev'], provider: 'zai' } } } as Config;
+    t.store.ensureDefaultAccounts(Object.keys(cfg.agents));
+    const seen: string[] = [];
+    const m = createMonitor({ cfg, store: t.store, readEnergy: async () => { throw new Error('no CLI for Boss'); }, checkLogin: async () => { throw new Error('no CLI'); }, now: () => new Date(), zaiQuota: async (k) => { seen.push(k); return [{ name: '5h', remainingPercent: 5, resetsAt: new Date().toISOString() }]; } } as any);
+    await m.refresh(['mb'], true);
+    expect(seen).toEqual([KEY]);
+    expect(t.store.latestEnergy('mb')).toMatchObject({ status: 'fresh', windows: [{ name: '5h', remainingPercent: 5 }] });
+    expect(m.gate('mb').ok).toBe(false);
   });
 });
