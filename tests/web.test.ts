@@ -1721,6 +1721,11 @@ describe('Chat bubbles (2026-11-14)', () => {
     expect(lib.chatStyleOf('jenny')).toBeGreaterThanOrEqual(0);
     expect(lib.chatStyleOf('jenny')).toBeLessThan(6);
   });
+  it('danh sách xổ xuống (Chat, View…) đọc được ở dark mode', () => {
+    expect(html).toContain('select option { background-color: var(--card-bg); color: var(--text); }');
+    expect(html).toContain('[data-theme="dark"] select { color-scheme: dark; }');
+  });
+
   it('công tắc Chat nhớ trong localStorage (có try), chữ bằng textContent, có bong bóng chờ chớp', () => {
     expect(html).toContain('id="chat-toggle"');
     expect(html).toMatch(/try \{ var cm = window\.localStorage\.getItem\('btm\.chat'\)/);
