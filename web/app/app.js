@@ -3925,15 +3925,15 @@
         var list = document.getElementById('search-list');
         var count = document.getElementById('search-count');
         var clearBtn = document.getElementById('search-clear');
-        if (!input || !panel || !list) return;
+        if (!input || !panel || !list) return; // panel: khung Results (luôn hiện)
         var timer = null;
         var seq = 0;
         var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log' };
-        function hide() { seq++; clearChildren(list); count.textContent = ''; panel.style.display = 'none'; }
+        // Ô Results luôn hiện (anh Zon 2026-11-14); trống → dòng hướng dẫn.
+        function hide() { seq++; clearChildren(list); count.textContent = ''; list.appendChild(line('empty-placeholder', tx('search.hint'))); }
         function line(cls, text) { var d = document.createElement('div'); d.className = cls; d.textContent = text; return d; }
         function show(hits) {
           clearChildren(list);
-          panel.style.display = '';
           count.textContent = hits.length ? tx('search.count', { n: hits.length }) : '';
           if (!hits.length) { list.appendChild(line('empty-placeholder', tx('search.none'))); return; }
           hits.forEach(function (h) {
@@ -3971,6 +3971,7 @@
             if (my === seq) { show([]); count.textContent = tx('search.failed'); }
           }
         }
+        hide();
         input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(run, 300); });
         input.addEventListener('keydown', function (e) {
           if (e.key === 'Enter') { clearTimeout(timer); run(); }
