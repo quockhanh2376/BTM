@@ -174,7 +174,7 @@
         var open = accDetailsTimer !== null;
         if (list) list.classList.toggle('acc-collapsed', !open);
         if (btn) {
-          btn.textContent = open ? '▾' : '▸';
+          btn.textContent = tx('acc.detailsBtn') + ' ' + (open ? '▾' : '▸');
           btn.setAttribute('aria-expanded', open ? 'true' : 'false');
           btn.setAttribute('aria-label', tx(open ? 'acc.detailsHide' : 'acc.details'));
         }
@@ -187,6 +187,33 @@
           syncAccDetails();
         });
         syncAccDetails();
+      })();
+      // Thu gọn CẢ thẻ Accounts (anh Zon 2026-11-14): mũi tên to ▾/▸; mở mà 3 phút không đụng tới thì tự thu, chỉ còn hàng tiêu đề.
+      (function () {
+        var card = document.getElementById('accounts-container');
+        var btn = document.getElementById('acc-card-toggle');
+        if (!card || !btn) return;
+        var open = true;
+        var timer = null;
+        function arm() {
+          if (timer) clearTimeout(timer);
+          timer = open ? setTimeout(function () { setOpen(false); }, ACC_SLEEP_COLLAPSE_MS) : null;
+        }
+        function setOpen(v) {
+          open = v;
+          card.classList.toggle('acc-card-collapsed', !open);
+          btn.textContent = open ? '▾' : '▸';
+          btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          btn.setAttribute('aria-label', tx(open ? 'acc.cardHide' : 'acc.cardShow'));
+          btn.title = tx(open ? 'acc.cardHide' : 'acc.cardShow');
+          arm();
+        }
+        btn.addEventListener('click', function (ev) { ev.stopPropagation(); setOpen(!open); });
+        // Đang thu gọn mà bấm Import / Add Account / All accounts… thì mở thẻ ra để thấy kết quả.
+        var bar = card.querySelector('.acc-toolbar');
+        if (bar) bar.addEventListener('click', function (ev) { if (!open && ev.target !== btn) setOpen(true); });
+        ['mousemove', 'click', 'keydown', 'focusin'].forEach(function (ev) { card.addEventListener(ev, function () { if (open) arm(); }); });
+        setOpen(true);
       })();
       var lastAccounts = [];
       var lastSshHint = null;

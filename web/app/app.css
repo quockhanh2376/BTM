@@ -2532,3 +2532,12 @@
 .settings-feedback.is-error { color: var(--error-text); }
 
 .board-and-log-layout > .settings-section { grid-column: 1 / -1; }
+
+/* Thu gọn cả thẻ Accounts (anh Zon 2026-11-14): mũi tên to, dễ thấy */
+.acc-details-toggle { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.acc-card-toggle { width: 38px; height: 32px; border: 1px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: 20px; line-height: 1; cursor: pointer; flex-shrink: 0; }
+.acc-card-toggle:hover { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.acc-card-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.accounts-section.acc-card-collapsed > :not(.acc-header) { display: none !important; }
+.accounts-section.acc-card-collapsed .acc-header { margin-bottom: 0; }
+
