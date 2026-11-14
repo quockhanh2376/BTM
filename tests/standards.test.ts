@@ -49,7 +49,8 @@ describe('Settings: chat lúc rảnh (2026-11-14)', () => {
     expect(p).toEqual({ speakers: 1, livelySec: [20, 90], normalMin: [3, 3] });
     store.setSetting(CHAT_KEY, JSON.stringify(p));
     expect(readChatSettings(store)).toEqual(p);
-    expect(ChatSettingsSchema.safeParse({ speakers: 4, livelySec: [30, 60], normalMin: [5, 8] }).success).toBe(false);
+    expect(ChatSettingsSchema.safeParse({ speakers: 5, livelySec: [30, 60], normalMin: [5, 8] }).success).toBe(true);
+    expect(ChatSettingsSchema.safeParse({ speakers: 6, livelySec: [30, 60], normalMin: [5, 8] }).success).toBe(false);
     expect(ChatSettingsSchema.safeParse({ speakers: 2, livelySec: [5, 60], normalMin: [5, 8] }).success).toBe(false);
   });
 });
