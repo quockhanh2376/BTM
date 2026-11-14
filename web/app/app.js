@@ -2912,7 +2912,23 @@
           var runner = null;
           (chatSnap.seats || []).forEach(function (s) { if (!runner && s.status === 'running' && s.agent) runner = s; });
           var goal = (chatSnap.goals || [])[0];
-          if (runner && goal && idle.length >= 2 && Math.random() < 0.7) {
+          // Hỏi thăm theo giờ VN / thời tiết (anh Zon 2026-11-14): người rảnh hỏi anh hoặc hỏi nhau.
+          if (idle.length >= 1 && Math.random() < 0.4) {
+            var speaker = idle[Math.floor(Math.random() * idle.length)];
+            var others = idle.filter(function (x) { return x !== speaker; });
+            var weather = Math.random() < 0.25;
+            var kindT = weather ? 'weatherAsk' : timeKind(vnHour());
+            if (weather || !others.length || Math.random() < 0.5) {
+              chatRun([{ target: speaker, text: pickChatLine(kindT, { to: chatMode === 'vi' ? 'anh Zon' : 'Zon' }, chatMode), delay: 0 }]);
+            } else {
+              var other = others[Math.floor(Math.random() * others.length)];
+              var otherSeat = (chatSnap.seats || []).filter(function (x) { return x.seat === other; })[0];
+              chatRun([
+                { target: speaker, text: pickChatLine(kindT, { to: agentLabel(otherSeat && otherSeat.agent) || other }, chatMode), delay: 0 },
+                { target: other, text: pickChatLine('timeAck', {}, chatMode), delay: 1800 }
+              ]);
+            }
+          } else if (runner && goal && idle.length >= 2 && Math.random() < 0.7) {
             var pv = { goal: chatTrim(goal.title, 32), ticket: runner.ticket || 'G' + goal.n, runner: agentLabel(runner.agent) };
             var order = idle.slice().sort(function () { return Math.random() - 0.5; });
             var talk = [

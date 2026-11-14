@@ -1861,6 +1861,21 @@ describe('Chat Auto: phân loại tin nhắn (2026-11-14)', () => {
   });
 });
 
+describe('Câu thoại theo giờ VN + file chat-lines.js (2026-11-14)', () => {
+  const html = readWeb();
+  const lib = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return { vnHour, timeKind, CHAT_LINES };')() as any;
+  it('khung giờ → nhóm câu; giờ VN là UTC+7; nhóm câu nằm trong web/app/chat-lines.js', () => {
+    expect([6, 12, 15, 18, 21, 2].map(lib.timeKind)).toEqual(['timeMorning', 'timeLunch', 'timeAfternoon', 'timeDinner', 'timeEvening', 'timeLate']);
+    expect(lib.vnHour(Date.parse('2026-11-14T05:30:00Z'))).toBe(12);
+    expect(lib.CHAT_LINES.vi.timeLunch.some((l: string) => l.includes('{to}'))).toBe(true);
+    expect(lib.CHAT_LINES.vi.weatherAsk[0]).toContain('mưa');
+    const pick = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return pickChatLine;')() as any;
+    for (let k = 0; k < 6; k++) expect(pick('timeAfternoon', { to: 'anh Zon' }, 'vi')).toMatch(/^[A-ZĐ]/);
+    expect(readFileSync(resolve(process.cwd(), 'web/app/chat-lines.js'), 'utf8')).toContain('Anh Zon sửa / thêm tay ở đây được');
+    expect(html).toContain('<script src="/app/chat-lines.js"></script>');
+  });
+});
+
 describe('Câu dạ khi nhận câu hỏi (2026-11-14)', () => {
   const html = readWeb();
   const ack = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return ackLine;')() as (id: number, t: string) => string;
