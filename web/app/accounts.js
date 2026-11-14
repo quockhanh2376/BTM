@@ -449,11 +449,28 @@
       var accImportFile = document.getElementById('acc-import-file');
       var accImportPanel = document.getElementById('acc-import-panel');
       var accImportData = null;
+      var accImportTarget = document.getElementById('acc-import-target');
+      // Danh sách "Nhập vào Worker" (anh Zon 2026-11-14): danh sách Antigravity [{email, refresh_token}] không ghi agent thì vào Worker này.
+      function fillImportTargets() {
+        if (!accImportTarget) return;
+        var keep = accImportTarget.value;
+        clearChildren(accImportTarget);
+        var workers = lastAccounts.filter(function (w) { return w.provider !== 'zai'; });
+        var agyWorkers = workers.filter(function (w) { return w.tool === 'antigravity-cli'; });
+        var auto = document.createElement('option');
+        auto.value = '';
+        auto.textContent = agyWorkers.length === 1 ? tx('acc.importTargetAuto', { name: agentLabel(agyWorkers[0].agent) }) : tx('acc.importTargetAutoNone');
+        accImportTarget.appendChild(auto);
+        workers.forEach(function (w) {
+          var o = document.createElement('option');
+          o.value = w.agent;
+          o.textContent = agentLabel(w.agent) + ' · ' + w.agent;
+          accImportTarget.appendChild(o);
+        });
+        accImportTarget.value = keep && workers.some(function (w) { return w.agent === keep; }) ? keep : '';
+      }
       document.getElementById('acc-import-btn').addEventListener('click', function () { accImportFile.value = ''; accImportFile.click(); });
-      accImportFile.addEventListener('change', async function () {
-        var f = accImportFile.files && accImportFile.files[0];
-        if (!f) return;
-        var rawText = await f.text();
+      async function previewImport() {
         try {
           // Chấp nhận dấu phẩy thừa trước ] hoặc } (file Antigravity sửa tay hay có).
           try { accImportData = JSON.parse(rawText); } catch (e1) { accImportData = JSON.parse(rawText.replace(/,\s*([\]}])/g, '$1')); }
@@ -462,7 +479,7 @@
           return;
         }
         try {
-          var dry = await postJson('/api/accounts/import', { file: accImportData, dryRun: true });
+          var dry = await postJson('/api/accounts/import', Object.assign({ file: accImportData, dryRun: true }, accImportTarget && accImportTarget.value ? { agent: accImportTarget.value } : {}));
           var sum = document.getElementById('acc-import-summary');
           clearChildren(sum);
           var add = function (text) { var d = document.createElement('div'); d.textContent = text; sum.appendChild(d); return d; };
@@ -486,13 +503,28 @@
         } catch (err) {
           showFeedback(topFeedback, err.message, true);
         }
+      }
+      accImportFile.addEventListener('change', async function () {
+        var f = accImportFile.files && accImportFile.files[0];
+        if (!f) return;
+        var rawText = await f.text();
+        try {
+          // Chấp nhận dấu phẩy thừa trước ] hoặc } (file Antigravity sửa tay hay có).
+          try { accImportData = JSON.parse(rawText); } catch (e1) { accImportData = JSON.parse(rawText.replace(/,\s*([\]}])/g, '$1')); }
+        } catch (e) {
+          showFeedback(topFeedback, tx('acc.badJson'), true);
+          return;
+        }
+        fillImportTargets();
+        await previewImport();
       });
+      if (accImportTarget) accImportTarget.addEventListener('change', function () { if (accImportData) previewImport(); });
       document.getElementById('acc-import-cancel').addEventListener('click', function () { accImportPanel.hidden = true; accImportData = null; });
       document.getElementById('acc-import-confirm').addEventListener('click', async function () {
         if (!accImportData) return;
         var overwrite = Array.from(accImportPanel.querySelectorAll('.acc-overwrite')).filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
         try {
-          var res = await postJson('/api/accounts/import', { file: accImportData, overwrite: overwrite });
+          var res = await postJson('/api/accounts/import', Object.assign({ file: accImportData, overwrite: overwrite }, accImportTarget && accImportTarget.value ? { agent: accImportTarget.value } : {}));
           var msg = tx('acc.imported', { n: res.imported.length });
           res.failed.forEach(function (x) { msg += ' · ' + x.entry + ': ' + x.reason; });
           showFeedback(topFeedback, msg, res.failed.length > 0);
