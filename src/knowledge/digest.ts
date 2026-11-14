@@ -42,9 +42,10 @@ export function buildGoalDigest(store: Store, cfg: Config, project: string, n: n
   const tickets = store.listTickets(project, `G${n}`);
   const t = goalTime(g.created_at, g.state === 'merged' || g.state === 'approved' ? g.updated_at : null, store.goalTurns(project, n));
   const seats = Object.entries(t.bySeat).map(([k, v]) => `${k} ${dur(v)}`).join(', ');
+  const agents = Object.entries(t.byAgent).map(([k, v]) => `${k} ${dur(v)}`).join(', ');
   const lines: string[] = [
     `# G${n} · ${one(g.title, 160)}`,
-    `Trạng thái: ${g.state}${g.archived_at ? ' (đã vào thùng rác)' : ''} · bắt đầu ${vn(g.created_at)} · ${t.endedAt ? `xong ${vn(t.endedAt)}` : 'đang mở'} (giờ VN) · tổng ${dur(t.wallMs)}, agent ${dur(t.agentMs)}${seats ? ` (${seats})` : ''}`,
+    `Trạng thái: ${g.state}${g.archived_at ? ' (đã vào thùng rác)' : ''} · bắt đầu ${vn(g.created_at)} · ${t.endedAt ? `xong ${vn(t.endedAt)}` : 'đang mở'} (giờ VN) · tổng ${dur(t.wallMs)}, agent ${dur(t.agentMs)}${seats ? ` (${seats})` : ''}${agents ? ` · theo agent: ${agents}` : ''}`,
     '',
     '## Ticket',
   ];

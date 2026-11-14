@@ -290,6 +290,13 @@
             }) + (g.time.endedAt ? '' : ' · ' + tx('goal.timeRunning'));
             tl.title = tx('goal.timeTip', { from: formatDateTimeVN(g.time.startedAt), to: g.time.endedAt ? formatDateTimeVN(g.time.endedAt) : '—' });
             card.appendChild(tl);
+            var agentParts = Object.keys(g.time.byAgent || {}).map(function (k) { return agentLabel(k) + ' ' + formatDuration(g.time.byAgent[k]); });
+            if (agentParts.length) {
+              var ta = document.createElement('div');
+              ta.className = 'goal-time';
+              ta.textContent = '👥 ' + tx('goal.byAgent', { list: agentParts.join(' · ') });
+              card.appendChild(ta);
+            }
           }
 
           // 2. Thanh pipeline 6 chặng (chặng trước chặng hiện tại = đã qua, có dấu ✓)

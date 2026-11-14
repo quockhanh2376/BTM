@@ -5,6 +5,8 @@ import type { ServerOpts, SendJson } from '../http.ts';
 import { z } from 'zod';
 import { ticketDiff } from '../diff.ts';
 import { retryTicket } from '../ticket-retry.ts';
+import { join } from 'node:path';
+import { buildTicketTrace, readTurnLog } from '../trace.ts';
 
 export async function handleTicketsGet(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
   // Ticket history route
@@ -18,6 +20,29 @@ export async function handleTicketsGet(method: string | undefined, pathname: str
     }
     const history = o.store.ticketHistory(activeProject, ticketId);
     sendJson(res, 200, history);
+    return true;
+  }
+
+  // Truy vết ticket (anh Zon 2026-11-14): đổi trạng thái + lượt chạy + tổng; log của lượt (chỉ file đã ghi trong DB).
+  const traceMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/trace$/);
+  const logMatch = pathname.match(/^\/api\/turns\/(\d{1,10})\/log$/);
+  if (method === 'GET' && (traceMatch || logMatch)) {
+    const activeProject = o.store.getActiveProject();
+    if (!activeProject) {
+      sendJson(res, 404, { error: 'No active project' });
+      return true;
+    }
+    if (traceMatch) {
+      sendJson(res, 200, buildTicketTrace(o.store, activeProject, traceMatch[1]!));
+      return true;
+    }
+    const text = readTurnLog(o.store, activeProject, join(o.cfg.host.data_dir, 'logs'), parseInt(logMatch![1]!, 10));
+    if (text === null) {
+      sendJson(res, 404, { error: 'No log' });
+      return true;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    res.end(text);
     return true;
   }
 

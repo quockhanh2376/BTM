@@ -1184,17 +1184,30 @@
         loadingEl.textContent = tx('history.loading');
         containerEl.appendChild(loadingEl);
         try {
-          var res = await fetch('/api/tickets/' + encodeURIComponent(ticketId) + '/history');
+          // Truy vết (anh Zon 2026-11-14): tổng + đổi trạng thái + lượt chạy (ai, ghế, bao lâu, kết quả, log).
+          var res = await fetch('/api/tickets/' + encodeURIComponent(ticketId) + '/trace');
           if (!res.ok) throw new Error(tx('history.cannotLoad'));
-          var list = await res.json();
+          var trace = await res.json();
+          var list = (trace && trace.events) || [];
           clearChildren(containerEl);
-          if (!Array.isArray(list) || list.length === 0) {
+          if (list.length === 0) {
             var emptyEl = document.createElement('div');
             emptyEl.className = 'empty-placeholder';
             emptyEl.textContent = tx('history.empty');
             containerEl.appendChild(emptyEl);
             return;
           }
+          var tot = trace.totals || {};
+          var totEl = document.createElement('div');
+          totEl.className = 'history-totals';
+          totEl.textContent = tx('history.totals', {
+            turns: tot.turns || 0,
+            agent: goalsUi.formatDuration(tot.agentMs || 0),
+            seats: Object.keys(tot.bySeat || {}).map(function (k) { return (SEAT_LABELS[k] || k) + ' ' + goalsUi.formatDuration(tot.bySeat[k]); }).join(' · '),
+            fix: tot.fixRounds || 0,
+            ret: tot.returns || 0
+          });
+          containerEl.appendChild(totEl);
           list.forEach(function (h) {
             var entry = document.createElement('div');
             entry.className = 'history-entry';
@@ -1204,6 +1217,42 @@
             timeEl.textContent = formatTime(h.at);
             entry.appendChild(timeEl);
 
+            if (h.kind === 'turn') {
+              var turnEl = document.createElement('span');
+              turnEl.className = 'history-trans';
+              turnEl.textContent = tx('history.turn', {
+                seat: SEAT_LABELS[h.seat] || h.seat,
+                agent: agentLabel(h.agent),
+                dur: goalsUi.formatDuration(h.ms || 0),
+                result: h.endedAt ? (h.result || '?') + (h.error ? ' – ' + h.error : '') : tx('history.running')
+              });
+              entry.appendChild(turnEl);
+              containerEl.appendChild(entry);
+              if (!h.hasLog) return;
+              var logBtn = document.createElement('button');
+              logBtn.type = 'button';
+              logBtn.className = 'history-log-btn';
+              logBtn.textContent = tx('history.log');
+              entry.appendChild(logBtn);
+              var pre = document.createElement('pre');
+              pre.className = 'history-log';
+              pre.hidden = true;
+              containerEl.appendChild(pre);
+              logBtn.addEventListener('click', async function () {
+                if (!pre.hidden) { pre.hidden = true; logBtn.textContent = tx('history.log'); return; }
+                pre.hidden = false;
+                logBtn.textContent = tx('history.logHide');
+                pre.textContent = tx('history.loading');
+                try {
+                  var lr = await fetch('/api/turns/' + encodeURIComponent(h.id) + '/log');
+                  pre.textContent = lr.ok ? await lr.text() : tx('history.cannotLoad');
+                } catch (e) {
+                  pre.textContent = tx('history.cannotLoad');
+                }
+              });
+              return;
+            }
+
             var whoEl = document.createElement('span');
             whoEl.className = 'history-who';
             whoEl.textContent = '[' + (h.by || 'system') + ']';
@@ -1211,7 +1260,7 @@
 
             var transEl = document.createElement('span');
             transEl.className = 'history-trans';
-            transEl.textContent = (h.from_state || 'none') + ' → ' + (h.to_state || 'none');
+            transEl.textContent = (h.from || 'none') + ' → ' + (h.to || 'none');
             entry.appendChild(transEl);
 
             if (h.reason) {

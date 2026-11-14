@@ -1586,6 +1586,12 @@ describe('HTTP Server & SSE', () => {
       expect(history[1].to_state).toBe('awaiting_qc');
       expect(history[2].to_state).toBe('passed');
       expect(history[2].by).toBe('jenny');
+
+      // Truy vết (2026-11-14): cùng dữ liệu qua /trace; log lượt không có → 404.
+      const tr = await (await fetch(`${baseUrl}/api/tickets/GTM-0001/trace`)).json();
+      expect(tr.events.filter((e: any) => e.kind === 'state')).toHaveLength(3);
+      expect(tr.totals).toMatchObject({ turns: 0, returns: 0 });
+      expect((await fetch(`${baseUrl}/api/turns/12345/log`)).status).toBe(404);
     });
   });
 

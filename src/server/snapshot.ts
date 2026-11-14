@@ -50,20 +50,24 @@ export interface GoalTime {
   wallMs: number;
   agentMs: number;
   bySeat: Record<string, number>;
+  /** Theo agent (kể cả Boss) – truy vết khối lượng (2026-11-14). */
+  byAgent: Record<string, number>;
 }
 
 /** Tổng hợp thời gian một goal từ các lượt (lượt đang chạy tính tới now). */
-export function goalTime(createdAt: string, endedAt: string | null, turns: Array<{ seat: string; started_at: string; ended_at: string | null }>, now = Date.now()): GoalTime {
+export function goalTime(createdAt: string, endedAt: string | null, turns: Array<{ seat: string; agent?: string; started_at: string; ended_at: string | null }>, now = Date.now()): GoalTime {
   const bySeat: Record<string, number> = {};
+  const byAgent: Record<string, number> = {};
   let agentMs = 0;
   for (const t of turns) {
     const ms = Math.max(0, (t.ended_at ? Date.parse(t.ended_at) : now) - Date.parse(t.started_at));
     if (!Number.isFinite(ms)) continue;
     bySeat[t.seat] = (bySeat[t.seat] ?? 0) + ms;
+    if (t.agent) byAgent[t.agent] = (byAgent[t.agent] ?? 0) + ms;
     agentMs += ms;
   }
   const end = endedAt ? Date.parse(endedAt) : now;
-  return { startedAt: createdAt, endedAt, wallMs: Math.max(agentMs, end - Date.parse(createdAt)), agentMs, bySeat };
+  return { startedAt: createdAt, endedAt, wallMs: Math.max(agentMs, end - Date.parse(createdAt)), agentMs, bySeat, byAgent };
 }
 
 export interface SeatCard {

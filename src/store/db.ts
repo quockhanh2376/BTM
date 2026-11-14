@@ -12,7 +12,7 @@ import { parse as parseYaml } from 'yaml';
 // Kiểu dữ liệu, chọn ghế, schema: tách 2026-11-14 (docs/engineering-rules.md); db.ts re-export để import cũ vẫn chạy.
 export * from './types.ts';
 export * from './seats.ts';
-import type { AccountLabel, AccountRow, Store, BoardState, GoalRow, GoalState, LineNote, NoteRow, QuestionRow, QuestionState, QueueItem, SessionRow, TicketHistoryRow, TicketRow, TurnResult } from './types.ts';
+import type { AccountLabel, AccountRow, Store, BoardState, GoalRow, GoalState, LineNote, NoteRow, QuestionRow, QuestionState, QueueItem, SessionRow, TicketHistoryRow, TicketRow, TicketTurnRow, TurnResult } from './types.ts';
 import { migrate } from './schema.ts';
 
 function toAccount(r: any): AccountRow {
@@ -1019,10 +1019,10 @@ export function openStore(file: string): Store {
       })();
     },
 
-    goalTurns(project: string, n: number): Array<{ seat: string; started_at: string; ended_at: string | null }> {
+    goalTurns(project: string, n: number): Array<{ seat: string; agent: string; started_at: string; ended_at: string | null }> {
       const sids = sessionsOfGoal(project, n);
       if (!sids.length) return [];
-      return db.prepare(`SELECT seat, started_at, ended_at FROM turns WHERE session_id IN (${sids.map(() => '?').join(',')}) ORDER BY id`).all(...sids) as Array<{ seat: string; started_at: string; ended_at: string | null }>;
+      return db.prepare(`SELECT seat, agent, started_at, ended_at FROM turns WHERE session_id IN (${sids.map(() => '?').join(',')}) ORDER BY id`).all(...sids) as Array<{ seat: string; agent: string; started_at: string; ended_at: string | null }>;
     },
 
     sessionGoalNumbers(sessionId: number): number[] {
@@ -1103,6 +1103,16 @@ export function openStore(file: string): Store {
 
     ticketHistory(project: string, id: string): TicketHistoryRow[] {
       return ticketHistoryStmt.all(project, id) as TicketHistoryRow[];
+    },
+
+    ticketTurns(project: string, ticketId: string): TicketTurnRow[] {
+      return db.prepare(`SELECT t.id, t.seat, t.agent, t.started_at, t.ended_at, t.result, t.error, t.log_file
+        FROM turns t JOIN sessions s ON s.id = t.session_id WHERE s.project = ? AND t.task_id = ? ORDER BY t.id`).all(project, ticketId) as TicketTurnRow[];
+    },
+
+    turnLogFile(project: string, turnId: number): string | null {
+      const r = db.prepare(`SELECT t.log_file FROM turns t JOIN sessions s ON s.id = t.session_id WHERE s.project = ? AND t.id = ?`).get(project, turnId) as { log_file: string | null } | undefined;
+      return r?.log_file ?? null;
     },
 
     nextTicketSeq(project: string): number {
