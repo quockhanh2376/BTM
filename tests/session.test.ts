@@ -1387,6 +1387,31 @@ describe('Goal & Ticket Session Coordinator', () => {
     store.close();
   });
 
+  // GT-0005 (2026-11-14): codex in lại cả prompt ("Bị nghẽn trả lời BLOCKED") vào output → lượt làm xong bị coi là BLOCKED.
+  it('chữ BLOCKED chỉ nằm trong prompt in lại / giữa câu → không coi là BLOCKED, ticket qua QC', async () => {
+    const repo = tmpRepo({ 'src/app.ts': '// initial\n' });
+    const { deps, store } = makeDeps(repo);
+    const { runner, calls } = createFakeRunner([
+      (_s, _a, _p, cwd) => {
+        writeTicketFile(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 });
+      },
+      (_s, agent, _p, cwd) => {
+        writeFileSync(join(cwd, 'src', 'app.ts'), 'export const x = 1;\n');
+        writeDevReport(cwd, { id: 'GTM-0001', goal: 'G1', number: 1, of: 1 }, agent);
+        return {
+          output: 'user\nChỉ sửa file trong phạm vi. Bị nghẽn trả lời BLOCKED.\n-Cần xác nhận: BLOCKED nghiệm thu trên Linux?\ncodex\nDone.',
+          lastMessage: 'Done. Report says the earlier BLOCKED note is resolved.',
+        };
+      },
+      () => makeQcResponse({ id: 'GTM-0001', goal: 'G1', number: 1 }, 'pass'),
+    ]);
+    deps.runner = runner;
+    const outcome = await runSession(deps, ['Goal'], { approved: true });
+    expect(outcome.tasks['GTM-0001']).toBe('passed');
+    expect(calls.map((c) => c.seat)).toEqual(['pm', 'dev', 'qc']);
+    store.close();
+  });
+
   it('FIX-E B5: Dev BLOCKED sửa ticket → khôi phục ticket từ base, chỉ commit phần còn lại với <ID>: blocked', async () => {
     const repo = tmpRepo({ 'src/app.ts': 'export const a = 0;\n' });
     const { deps, store } = makeDeps(repo);

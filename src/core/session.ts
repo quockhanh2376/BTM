@@ -1097,7 +1097,6 @@ async function processGoal(
           return { status: 'needs_owner', sessionId, tasks, notes: [reason] };
         }
 
-        const devText = (devOutput.lastMessage || '') + ' ' + (devOutput.output || '');
         const hasAutoDenied =
           (devOutput.output || '').includes('auto-denied') ||
           (devOutput.lastMessage || '').includes('auto-denied');
@@ -1175,7 +1174,9 @@ async function processGoal(
           continue;
         }
 
-        if (devText.includes('BLOCKED')) {
+        // BLOCKED chỉ khi câu trả lời cuối của Dev MỞ ĐẦU một dòng bằng BLOCKED. Không quét cả output: codex in lại
+        // prompt (luôn có "Bị nghẽn trả lời BLOCKED") nên lượt làm xong vẫn bị coi là BLOCKED (GT-0005, 2026-11-14).
+        if (/(^|\n)\s*(\*\*)?BLOCKED\b/.test(devOutput.lastMessage || '')) {
           d.store.endTurn(devTurnId, 'ok');
           try {
             restoreTicketFilesFromBase(d.repo, base);
