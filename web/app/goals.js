@@ -50,7 +50,27 @@
         });
         // Họp tranh luận (2026-11-14): cuộc đang mở / gần nhất nằm cuối khung.
         (typeof meetItems === 'function' ? meetItems(state && state.meeting) : []).forEach(function (x) { out.push(x); });
-        return out;
+        return roomFilter(out, state);
+      }
+      // Dọn Meeting room (anh Zon 2026-11-14): ẩn tin trước mốc anh bấm dọn; cuộc họp đang chạy / tạm dừng và phiên đang chạy vẫn hiện.
+      function roomFilter(items, state) {
+        var cut = state && state.settings && state.settings.roomClearedAt;
+        if (!cut) return items;
+        var t = Date.parse(cut);
+        var m = state.meeting;
+        var meetLive = m && (m.status === 'running' || m.status === 'paused');
+        var sessionLive = state.session && state.session.status === 'running';
+        var hidden = 0;
+        var kept = items.filter(function (it) {
+          var keep;
+          if (String(it.kind).indexOf('meet-') === 0) keep = meetLive || Date.parse(it.at || (m && m.createdAt) || 0) >= t || (m && Date.parse(m.createdAt) >= t);
+          else if (it.kind === 'goal') keep = sessionLive;
+          else keep = Date.parse(it.at || 0) >= t;
+          if (!keep) hidden++;
+          return keep;
+        });
+        if (hidden) kept.unshift({ kind: 'room-cleared', id: 'room-cleared', status: 'ok', at: cut, n: hidden });
+        return kept;
       }
       var HIST_ICON = { done: '✓', cancelled: '✕', running: '⏳', queued: '⏳' };
       function renderHistory(el, state) {
@@ -73,6 +93,18 @@
         var who = function (seat, agent) { return agentLabel(agent || seatAgent[seat]) || String(seat).toUpperCase(); };
         items.forEach(function (it) {
           var li = document.createElement('li');
+          if (it.kind === 'room-cleared') {
+            li.className = 'msg-divider room-cleared';
+            li.textContent = tx('room.hidden', { n: it.n }) + ' ';
+            var showBtn = document.createElement('button');
+            showBtn.type = 'button';
+            showBtn.className = 'room-show-btn';
+            showBtn.textContent = tx('room.show');
+            showBtn.addEventListener('click', function () { postJson('/api/meeting-room', { action: 'show' }).catch(function (e) { showFeedback(topFeedback, e.message, true); }); });
+            li.appendChild(showBtn);
+            el.appendChild(li);
+            return;
+          }
           if (String(it.kind).indexOf('meet-') === 0) {
             d.renderMeetItem(li, it);
             el.appendChild(li);

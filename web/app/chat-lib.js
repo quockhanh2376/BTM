@@ -27,6 +27,8 @@ function classifyMessage(text, names) {
     if (!seat && (names[sk] || []).some(function (n) { return n && has([String(n).toLowerCase()]); })) seat = sk;
   });
   if (has(words('intentProject'))) return { kind: 'project', seat: seat };
+  // Anh Zon 2026-11-14: câu dạng "có nên…", "A hay B", "tranh luận…" → mời mở Meeting (nhiều agent phản biện).
+  if (has(words('intentDebate'))) return { kind: 'debate', seat: seat };
   if (has(words('intentPlan'))) return { kind: 'plan', seat: seat };
   var ask = t.indexOf('?') >= 0 || has(words('intentAsk'));
   var stripped = t.replace(/^\s*[^,:]{1,20}[,:]\s*/, ' ');

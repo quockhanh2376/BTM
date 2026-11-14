@@ -1622,6 +1622,17 @@
           if (!pick) return;
           c.kind = pick === 'alt' ? 'goal' : 'ask';
         }
+        if (c.kind === 'debate') {
+          var how = await askAsSeat('pm', { text: tx('auto.debate', { text: text.slice(0, 140) }), note: tx('auto.debateNote'), ok: tx('auto.debateFull'), alt: tx('auto.debateQuick'), cancel: tx('auto.debateAsk'), tone: 'primary' });
+          if (how === true || how === 'alt') {
+            var mr = await postJson('/api/meeting', { action: 'start', topic: text, quick: how === 'alt' });
+            if (mr && mr.error) { showFeedback(cmdFeedback, mr.error, true); return; }
+            showFeedback(cmdFeedback, tx('meet.started'), false);
+            cmdTextArea.value = '';
+            return;
+          }
+          c.kind = 'ask'; // "Chỉ hỏi PM": một agent trả lời như câu hỏi thường
+        }
         if (c.kind === 'project') {
           await askAsSeat('pm', { text: tx('auto.project'), note: tx('auto.projectNote'), ok: tx('auto.gotIt'), cancel: tx('ask.keepIt'), tone: 'primary' });
           return;

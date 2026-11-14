@@ -150,3 +150,48 @@ describe('Settings: nút Save trên tiêu đề + tự thu gọn', () => {
     expect(html).toContain("action: 'check-update'");
   });
 });
+
+describe('Meeting room: dọn phòng + nhận câu tranh luận (anh Zon 2026-11-14)', () => {
+  const html = readWeb();
+  it('câu "có nên…" / "should we…" / "A hay B" → debate; câu hỏi thường không đổi', () => {
+    const lib = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return { classifyMessage };')() as any;
+    expect(lib.classifyMessage('Có nên cho trẻ em học tiếng Anh sớm trước lớp 4', {}).kind).toBe('debate');
+    expect(lib.classifyMessage('Should we rewrite the server in Rust?', {}).kind).toBe('debate');
+    expect(lib.classifyMessage('Dùng React hay là Vue cho dashboard?', {}).kind).toBe('debate');
+    expect(lib.classifyMessage('Tranh luận: monorepo có tốt không', {}).kind).toBe('debate');
+    expect(lib.classifyMessage('G1 làm tới đâu rồi?', {}).kind).toBe('ask');
+    expect(lib.classifyMessage('thêm nút xoá vào trang chủ', {}).kind).toBe('goal');
+    expect(html).toContain("if (how === true || how === 'alt') {");
+    expect(html).toContain("postJson('/api/meeting', { action: 'start', topic: text, quick: how === 'alt' })");
+  });
+
+  it('dọn phòng: tin trước mốc bị ẩn (có dòng "đã ẩn N tin" + Hiện lại); họp đang chạy và phiên đang chạy vẫn hiện', () => {
+    const src = html.slice(html.indexOf('function roomFilter'), html.indexOf('var HIST_ICON'));
+    const roomFilter = new Function(src + 'return roomFilter;')();
+    const items = [
+      { kind: 'ask', id: 1, at: '2026-11-14T01:00:00Z' },
+      { kind: 'reply', id: 1, at: '2026-11-14T01:01:00Z' },
+      { kind: 'goal', text: 'G1' },
+      { kind: 'ask', id: 2, at: '2026-11-14T03:00:00Z' },
+      { kind: 'meet-head', id: 'M1', at: '2026-11-14T00:30:00Z' },
+    ];
+    const state = { settings: { roomClearedAt: '2026-11-14T02:00:00Z' }, session: { status: 'done' }, meeting: { status: 'done', createdAt: '2026-11-14T00:30:00Z' } };
+    const out = roomFilter(items, state);
+    expect(out.map((x: any) => x.kind)).toEqual(['room-cleared', 'ask']);
+    expect(out[0].n).toBe(4);
+    const live = roomFilter(items, { ...state, session: { status: 'running' }, meeting: { status: 'running', createdAt: '2026-11-14T00:30:00Z' } });
+    expect(live.map((x: any) => x.kind)).toEqual(['room-cleared', 'goal', 'ask', 'meet-head']);
+    expect(roomFilter(items, { settings: {} })).toBe(items);
+    for (const id of ['room-clear']) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain("postJson('/api/meeting-room', { action: 'clear' })");
+    expect(html).toContain("postJson('/api/meeting-room', { action: 'show' })");
+  });
+
+  it('lời nhắc họp: chủ đề ngoài project dùng kiến thức chung có nguồn; bản đồ project chỉ khi liên quan', async () => {
+    const { meetingPrompt } = await import('../src/meeting/core.ts');
+    const m = { id: 1, topic: 'Có nên cho trẻ em học tiếng Anh sớm?', quick: true, status: 'running', createdAt: 't', speakers: [{ agent: 'a', seats: ['pm'] }], turns: [], ownerNotes: [] } as any;
+    const p = meetingPrompt(m, m.speakers[0], 1, { material: '', knowledge: '- a.js', name: 'Finn' });
+    expect(p).toContain('Vấn đề không thuộc project này');
+    expect(p).toContain('chỉ dùng khi vấn đề liên quan tới project này');
+  });
+});

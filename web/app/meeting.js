@@ -186,6 +186,13 @@ function btmMeeting(d) {
   }
   loadDocs();
 
+  // Dọn Meeting room (anh Zon 2026-11-14): ẩn tin cũ trước khi họp / thử tranh luận nháp; tin vẫn lưu, bấm "Hiện lại" để xem.
+  var clearBtn = document.getElementById('room-clear');
+  if (clearBtn) clearBtn.addEventListener('click', async function () {
+    clearBtn.disabled = true;
+    try { await postJson('/api/meeting-room', { action: 'clear' }); } catch (err) { showFeedback(feedbackEl, err.message, true); } finally { clearBtn.disabled = false; }
+  });
+
   // Zoom chữ trong Meeting room (anh Zon 2026-11-14): A− / A+, nhớ theo trình duyệt.
   (function () {
     var list = document.getElementById('queue-list');
