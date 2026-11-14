@@ -2177,3 +2177,13 @@ describe('Settings: chat lúc rảnh + lỗi tay nắm ô Command (2026-11-14)',
     expect(html).toMatch(/\.cmd-composer \.cmd-composer-text \{\s*resize: none;/);
   });
 });
+
+describe('Skills: bước thêm vào BTM rõ ràng (2026-11-14)', () => {
+  const html = readWeb();
+  it('nút thêm ghi số skill đã tick, tắt khi chưa tick; Save settings nhắc khi còn skill đã tick chưa thêm', () => {
+    expect(html).toContain("'skills.import': 'Add {n} selected skill(s) to BTM (security check first)'");
+    expect(html).toContain('imp.disabled = n === 0;');
+    expect(html).toContain("var pending = document.querySelectorAll('#skills-candidates input:checked').length;");
+    expect(html).toContain("tx('skills.notAdded', { n: pending })");
+  });
+});

@@ -78,7 +78,8 @@ function btmSettings(d) {
           }
         });
         fill(Object.assign({ timezones: {} }, r));
-        say(tx('settings.saved'), false);
+        var pending = document.querySelectorAll('#skills-candidates input:checked').length;
+        say(tx('settings.saved') + (pending ? ' · ' + tx('skills.notAdded', { n: pending }) : ''), pending > 0);
       } catch (err) {
         say(err.message, true);
       } finally {
