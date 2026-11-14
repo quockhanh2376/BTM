@@ -1721,6 +1721,17 @@ describe('Chat bubbles (2026-11-14)', () => {
     expect(lib.chatStyleOf('jenny')).toBeGreaterThanOrEqual(0);
     expect(lib.chatStyleOf('jenny')).toBeLessThan(6);
   });
+  it('"go ahead" / "tiếp e" trong Command = Resume (chỉ khi gõ đúng cả câu)', () => {
+    const f = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('var chatLastIdx')) + html.slice(html.indexOf('function isResumeWord'), html.indexOf('function chatStyleOf')) + 'return isResumeWord;')() as (t: string) => boolean;
+    expect(f('go ahead')).toBe(true);
+    expect(f('Go ahead!')).toBe(true);
+    expect(f('tiếp e')).toBe(true);
+    expect(f('Tiếp tục.')).toBe(true);
+    expect(f('tiếp e làm phần UI')).toBe(false);
+    expect(f('hello')).toBe(false);
+    expect(html).toContain("var rr = await postJson('/api/resume', {});");
+  });
+
   it('Ctrl+Enter = Send ở ô Command và ô trả lời', () => {
     expect(html).toContain("if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && cmdSendBtn && !cmdSendBtn.disabled) { e.preventDefault(); cmdSendBtn.click(); }");
     expect(html).toContain("if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !btn.disabled) { e.preventDefault(); btn.click(); }");
