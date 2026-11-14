@@ -9,6 +9,7 @@ import { pmAnswerQuestions, type DelegateResult } from '../core/delegate.ts';
 import { saveGoalDigest } from '../knowledge/digest.ts';
 import { saveProjectMap } from '../knowledge/map.ts';
 import { createAskLane, LESSONS_TO } from './ask-lane.ts';
+import { createMeetingLane } from '../meeting/lane.ts';
 import { runDirectCommand } from './direct-command.ts';
 import { isIsolated } from '../isolation/trusted.ts';
 import { notify, type NotifyKind } from '../notify/notify.ts';
@@ -95,9 +96,25 @@ export function createHost(d: HostDeps): HostApi & {
   });
   const askTimer = setInterval(() => { void askLane.tick(); }, 15_000);
   askTimer.unref?.();
+  // Họp tranh luận (2026-11-14): từng lượt chỉ đọc, lần lượt; chờ agent đang bận.
+  const meetingLane = createMeetingLane({
+    cfg: d.cfg, store: d.store, runner: d.runner, logDir: d.logDir,
+    isolated: isIsolated(d.cfg),
+    hostBusy: () => isBusy || isStopping,
+    gate: (agent) => monitor.gate(agent),
+  });
+  const meetingTimer = setInterval(() => { void meetingLane.tick(); }, 15_000);
+  meetingTimer.unref?.();
+  async function meeting(action: 'start' | 'stop' | 'resume' | 'conclude' | 'close', p: { topic?: string; quick?: boolean; note?: string }) {
+    if (action === 'start') return meetingLane.start(p.topic ?? '', Boolean(p.quick));
+    if (action === 'stop') return meetingLane.stop();
+    if (action === 'resume') return meetingLane.resume(p.note);
+    if (action === 'conclude') return meetingLane.resume(p.note, true);
+    return meetingLane.close();
+  }
 
   function busy(): boolean {
-    if (isBusy || isStopping || (!isIsolated(d.cfg) && askLane.running())) {
+    if (isBusy || isStopping || (!isIsolated(d.cfg) && (askLane.running() || meetingLane.running()))) {
       return true;
     }
     const lockPath = join(d.dataDir, 'btm.lock');
@@ -874,6 +891,7 @@ export function createHost(d: HostDeps): HostApi & {
     retryRelease,
     resume,
     delegateAnswers,
+    meeting,
     stop,
     command,
     busy,

@@ -8,8 +8,10 @@ import { readAnswers } from './ask-lane.ts';
 import { buildGoalDigest } from '../knowledge/digest.ts';
 import { projectLessonsFile, readLessons, sharedLessonsFile } from '../knowledge/lessons.ts';
 import { buildProjectMap } from '../knowledge/map.ts';
+import { readMeetings } from '../meeting/lane.ts';
+import { renderMeetingMd } from '../meeting/core.ts';
 
-export type SearchKind = 'goal' | 'ticket' | 'qa' | 'history' | 'log' | 'lesson' | 'map';
+export type SearchKind = 'goal' | 'ticket' | 'qa' | 'history' | 'log' | 'lesson' | 'map' | 'meeting';
 export interface SearchHit { kind: SearchKind; title: string; text: string; at?: string }
 
 export const SEARCH_MAX_HITS = 30;
@@ -87,6 +89,7 @@ export function searchBtm(store: Store, cfg: Config, query: string): SearchHit[]
   const lessonLines = new Set([projectLessonsFile(cfg.host.data_dir, project) ?? '', sharedLessonsFile(cfg.host.data_dir)]
     .flatMap((f) => (f ? readLessons(f) : '').split(/\r?\n/).filter((l) => l.startsWith('- '))));
   for (const l of lessonLines) items.push({ kind: 'lesson', title: 'Lesson', text: l.slice(2) });
+  for (const m of readMeetings(store, project)) items.push({ kind: 'meeting', title: `M${m.id} · ${m.topic.slice(0, 80)}`, text: renderMeetingMd(m), at: m.createdAt });
   // Bản đồ project: mỗi file một mục (tìm "logic.js", tên hàm, ticket đã sửa).
   for (const l of buildProjectMap(store, project).split(/\r?\n/)) {
     if (l.startsWith('- ') && !/^- G\d+ /.test(l)) items.push({ kind: 'map', title: 'Map', text: l.slice(2) });

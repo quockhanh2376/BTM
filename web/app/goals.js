@@ -41,13 +41,15 @@
         var goalsAll = (state && state.goals) || [];
         ((s && s.goals) || []).forEach(function (g) {
           var text = String(g);
-          if (text === 'Direct command' || text === 'Ask' || text === 'Lessons') return;
+          if (text === 'Direct command' || text === 'Ask' || text === 'Lessons' || text === 'Meeting') return;
           if (/^\d+$/.test(text)) {
             var found = goalsAll.filter(function (x) { return String(x.n) === text; })[0];
             text = 'G' + text + (found && found.title ? ' · ' + found.title : '');
           }
           out.push({ kind: 'goal', text: text, status: s.status });
         });
+        // Họp tranh luận (2026-11-14): cuộc đang mở / gần nhất nằm cuối khung.
+        (typeof meetItems === 'function' ? meetItems(state && state.meeting) : []).forEach(function (x) { out.push(x); });
         return out;
       }
       var HIST_ICON = { done: '✓', cancelled: '✕', running: '⏳', queued: '⏳' };
@@ -71,6 +73,11 @@
         var who = function (seat, agent) { return agentLabel(agent || seatAgent[seat]) || String(seat).toUpperCase(); };
         items.forEach(function (it) {
           var li = document.createElement('li');
+          if (String(it.kind).indexOf('meet-') === 0) {
+            d.renderMeetItem(li, it);
+            el.appendChild(li);
+            return;
+          }
           if (it.kind === 'goal') {
             li.className = 'msg-divider';
             li.textContent = tx('hist.goal') + ' · ' + (it.text.length > 70 ? it.text.slice(0, 69) + '…' : it.text) + ' · ' + formatStatus(it.status);

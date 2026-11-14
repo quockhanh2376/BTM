@@ -161,6 +161,7 @@
                 <button id="remove-image-btn" class="btn-sm" type="button" data-i18n="cmd.removeImage">Remove image</button>
               </div>
             </div>
+            <label id="meet-quick-wrap" class="meet-quick" hidden><input type="checkbox" id="meet-quick"> <span data-i18n="meet.quickOpt">Quick (no rebuttal round)</span></label>
             <button id="cmd-send-btn" class="cmd-icon-btn cmd-send-icon" type="button" title="Send" data-i18n-title="cmd.send">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
               <span class="sr-only" data-i18n="cmd.send">Send</span>
@@ -173,7 +174,9 @@
       </div>
 
       <div class="queue-container">
-        <h3 class="queue-title" data-i18n="queue.title">Meeting room</h3>
+        <div class="queue-head"><h3 class="queue-title" data-i18n="queue.title">Meeting room</h3><span class="chat-zoom"><button type="button" id="chat-zoom-out" class="cmd-icon-btn" title="Smaller text" aria-label="Smaller text" data-i18n-title="zoom.out" data-i18n-aria="zoom.out">A−</button><button type="button" id="chat-zoom-in" class="cmd-icon-btn" title="Larger text" aria-label="Larger text" data-i18n-title="zoom.in" data-i18n-aria="zoom.in">A+</button></span></div>
+        <!-- Họp tranh luận (anh Zon 2026-11-14): trạng thái + Stop / Resume / Conclude / Close -->
+        <div id="meet-bar" class="meet-bar" hidden></div>
         <ul id="queue-list" class="queue-list">
           <li class="empty-placeholder" data-i18n="queue.empty">Nothing running or queued</li>
         </ul>
@@ -689,6 +692,7 @@
   <script src="/app/chat-lib.js"></script>
   <script src="/app/folders.js"></script>
   <script src="/app/goals.js"></script>
+  <script src="/app/meeting.js"></script>
   <script src="/app/chat-bubbles.js"></script>
   <script src="/app/accounts.js"></script>
   <script src="/app/app.js"></script>

@@ -53,6 +53,11 @@ export interface HostApi {
   ): { ok: boolean; status?: number; error?: string };
   approveGoal?(n: number): ApproveGoalResult | Promise<ApproveGoalResult>;
   retryRelease?(n: number): Promise<ReleaseInfo | null>;
+  /** Họp tranh luận (2026-11-14). */
+  meeting?(
+    action: 'start' | 'stop' | 'resume' | 'conclude' | 'close',
+    p: { topic?: string; quick?: boolean; note?: string }
+  ): Promise<{ ok: true; id: number } | { ok: false; status: number; error: string }>;
 }
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
@@ -452,6 +457,27 @@ export function createServer(o: {
           }
           const result = await o.host.stop(parsed.data.seat);
           sendJson(res, result.status ?? 200, result);
+          return;
+        }
+
+        // Họp tranh luận (2026-11-14): mở / dừng / tiếp tục (kèm ghi chú) / kết luận luôn / đóng.
+        if (pathname === '/api/meeting') {
+          const parsed = z.object({
+            action: z.enum(['start', 'stop', 'resume', 'conclude', 'close']),
+            topic: z.string().trim().max(4000).optional(),
+            quick: z.boolean().optional(),
+            note: z.string().max(1000).optional(),
+          }).safeParse(body);
+          if (!parsed.success || (parsed.data.action === 'start' && !parsed.data.topic)) {
+            sendJson(res, 400, { error: 'Invalid meeting request' });
+            return;
+          }
+          if (!o.host.meeting) {
+            sendJson(res, 501, { error: 'Meetings not available' });
+            return;
+          }
+          const r = await o.host.meeting(parsed.data.action, parsed.data);
+          sendJson(res, r.ok ? 200 : r.status, r.ok ? r : { error: r.error });
           return;
         }
 

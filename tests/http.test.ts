@@ -1594,6 +1594,13 @@ describe('HTTP Server & SSE', () => {
       expect((await fetch(`${baseUrl}/api/turns/12345/log`)).status).toBe(404);
     });
 
+    it('POST /api/meeting: thiếu topic / action lạ → 400; host không hỗ trợ họp → 501', async () => {
+      const post = (b: unknown) => fetch(`${baseUrl}/api/meeting`, { method: 'POST', headers: { 'x-btm': '1', 'content-type': 'application/json' }, body: JSON.stringify(b) });
+      expect((await post({ action: 'start' })).status).toBe(400);
+      expect((await post({ action: 'dance' })).status).toBe(400);
+      expect((await post({ action: 'start', topic: 'Nên dùng X?' })).status).toBe(501);
+    });
+
     it('GET/POST /api/lessons: lưu rồi đọc lại; scope sai → 400', async () => {
       const keep = cfg.host.data_dir;
       cfg.host.data_dir = mkdtempSync(join(tmpdir(), 'btm-http-lessons-'));
