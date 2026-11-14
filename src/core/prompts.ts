@@ -58,7 +58,7 @@ export function pmTicketPrompt(
     `number và of đánh số liên tục 1..N trong goal ${goalId} (number ≤ of). Mỗi file 1 ticket.`,
     `Thẻ bắt buộc có front matter YAML hợp lệ, chuỗi có ': ' đặt trong nháy.`,
     `Định dạng ticket: id, goal (${goalId}), number, of, title, type (feat|fix|chore|security), size (S|M|L), scope (mảng), acceptance (1-5 mục), done_when.`,
-    `Quy định size: S hoặc M; size L phải tách nhỏ trước khi giao Dev.`,
+    `Quy định size: ưu tiên S (1-3 file, Dev làm xong trong 1 lượt); M chỉ khi không tách được; size L phải tách nhỏ trước khi giao Dev.`,
     `Scope chỉ là đường dẫn trần (file, hoặc thư mục kết thúc '/'), không chú thích.`,
     `acceptance và done_when chỉ mô tả kết quả sản phẩm kiểm tra được; KHÔNG ghi quy trình git vì Core tự lo.`,
     `Chỉ ghi file vào team/tickets/, không sửa file khác, cấm git commit và push.`,
@@ -125,7 +125,7 @@ export function devTicketPrompt(
     `Phạm vi cho phép: ${scope}. Nghiệm thu: ${doneWhen}`,
     notesLine,
     allowLine,
-    `Chỉ sửa file trong phạm vi, cấm git commit và push. Bị nghẽn trả lời BLOCKED. Sau mỗi bước ghi đè 1 dòng tiếng Anh việc đang làm vào .btm-status (không commit).`,
+    `Chỉ sửa file trong phạm vi, cấm git commit và push. Bị nghẽn trả lời BLOCKED. Chỉ khi chuyển sang phần việc mới (đọc ticket, sửa code, chạy test, viết báo cáo) thì ghi đè 1 dòng tiếng Anh vào .btm-status (không commit); không ghi sau mỗi bước. Chạy npm test tối đa 2 lần: một lần sau khi sửa xong, một lần sau khi sửa lỗi test; không chạy lại khi chưa sửa gì.`,
     `Báo cáo vào team/reports/${t.id}-dev.md: dòng đầu bắt buộc là "${header}", theo sau là tối đa 5 dòng Bug / Cần sửa / Cần xác nhận (câu hỏi cho anh Zon, kết thúc bằng ?), ổn ghi OK.`,
   ];
 
