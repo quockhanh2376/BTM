@@ -2078,6 +2078,8 @@
 
       // Tab Folder: web/app/folders.js (nạp trước file này).
       btmFolders({ clearChildren: clearChildren, agentLabel: agentLabel });
+      // Settings: web/app/settings.js (nạp trước file này).
+      btmSettings({ postJson: postJson });
 
       // Lọc log (mẫu anh Zon): chỉ ẩn/hiện dòng đã có, không đổi dữ liệu.
       function isLogError(t) { return /^(error|timeout|rejected|command_denied|fail)/i.test(String(t || '')); }

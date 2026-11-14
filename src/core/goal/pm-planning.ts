@@ -1,4 +1,5 @@
 // Lượt PM lập ticket cho goal (tách khỏi processGoal 2026-11-14, không đổi hành vi).
+import { standardsFor } from '../../standards.ts';
 import { lessonsForPrompt } from '../../knowledge/lessons.ts';
 import { buildProjectMap, MAP_PM_MAX } from '../../knowledge/map.ts';
 import { existsSync } from 'node:fs';
@@ -56,6 +57,7 @@ export async function runPmPlanning(ctx: GoalCtx): Promise<SessionOutcome | null
       docsTicket: Boolean(d.cfg.release?.docs_ticket),
       lessons: lessonsForPrompt(d.cfg.host.data_dir, key),
       map: buildProjectMap(d.store, d.repo, MAP_PM_MAX),
+      standards: standardsFor(d.store),
     });
     const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
     if (pmSnapshot.protectedBranchMoved) {

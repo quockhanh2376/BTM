@@ -65,7 +65,7 @@ describe('Web Dashboard (web/index.html)', () => {
     expect(html).toContain('data-lang="en"');
     expect(html).toContain('data-lang="vi"');
     expect(html).toContain('data-soon="nav.reports"');
-    expect(html).toContain('data-soon="nav.settings"');
+    expect(html).toContain('href="#settings-section" data-nav="settings"'); // Settings có thật từ 2026-11-14
     // nút cũ vẫn còn
     for (const id of ['project-badge', 'session-badge', 'turns-badge', 'holder-box', 'auto-approve-toggle', 'approve-btn', 'stop-btn', 'theme-toggle', 'top-feedback']) {
       expect(html).toContain(`id="${id}"`);
@@ -2096,5 +2096,15 @@ describe('Họp: tài liệu upload + xuất biên bản trên dashboard (2026-1
     expect(html).toContain("a.href = '/api/meetings/' + m.id + '/export.' + f[0];");
     const lib = new Function(html.slice(html.indexOf('function meetItems'), html.indexOf('function btmMeeting')) + 'return { meetItems };')() as any;
     expect(lib.meetItems({ id: 1, topic: 't', status: 'done', createdAt: 'x', docs: [{ name: 'a.pdf', note: '3 pages' }] })[0].docs).toEqual([{ name: 'a.pdf', note: '3 pages' }]);
+  });
+});
+
+describe('Settings trên dashboard (2026-11-14)', () => {
+  const html = readWeb();
+  it('có trang Settings: 4 chuẩn + chuẩn riêng + mặc định dashboard, lưu qua /api/standards; trình duyệt mới theo mặc định server', () => {
+    for (const id of ['settings-section', 'std-tz', 'std-tz-value', 'std-utf8', 'std-theme', 'std-bilingual', 'std-custom', 'ui-lang', 'ui-theme', 'settings-save']) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain("postJson('/api/standards', {");
+    expect(html).toContain("if (!localStorage.getItem('btm-theme') && (ui.theme === 'light' || ui.theme === 'dark')) document.documentElement.setAttribute('data-theme', ui.theme);");
+    expect(html).toContain('<script src="/app/settings.js"></script>');
   });
 });

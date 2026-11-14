@@ -1624,6 +1624,18 @@ describe('HTTP Server & SSE', () => {
       expect((await post({ action: 'add', name: 'a.txt', base64: 'eA==' })).status).toBe(501);
     });
 
+    it('GET/POST /api/standards: mặc định, lưu chuẩn + mặc định dashboard, dữ liệu sai → 400', async () => {
+      const got = await (await fetch(`${baseUrl}/api/standards`)).json();
+      expect(got.standards).toMatchObject({ utf8: true, theme: true, bilingual: true, timezone: { on: true, value: 'Asia/Ho_Chi_Minh' } });
+      expect(got.timezones['Asia/Ho_Chi_Minh']).toBe('UTC+7');
+      const post = (b: unknown) => fetch(`${baseUrl}/api/standards`, { method: 'POST', headers: { 'x-btm': '1', 'content-type': 'application/json' }, body: JSON.stringify(b) });
+      const saved = await (await post({ standards: { ...got.standards, bilingual: false, custom: ['Tiền tệ VND'] }, ui: { lang: 'vi', theme: 'dark' } })).json();
+      expect(saved).toMatchObject({ ok: true, standards: { bilingual: false, custom: ['Tiền tệ VND'] }, ui: { lang: 'vi', theme: 'dark' } });
+      expect((await post({})).status).toBe(400);
+      expect((await post({ ui: { lang: 'fr', theme: 'dark' } })).status).toBe(400);
+      expect((await post({ standards: { ...got.standards, timezone: { on: true, value: 'Nowhere' } } })).status).toBe(400);
+    });
+
     it('GET/POST /api/lessons: lưu rồi đọc lại; scope sai → 400', async () => {
       const keep = cfg.host.data_dir;
       cfg.host.data_dir = mkdtempSync(join(tmpdir(), 'btm-http-lessons-'));

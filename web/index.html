@@ -22,7 +22,7 @@
       <a class="nav-item" href="#logs-section" data-nav="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h6"/></svg><span class="nav-label" data-i18n="nav.logs">Logs</span></a>
       <!-- Phần dư (Plan 9): chỉ hiện, chưa có chức năng – xem bảng "Phần UI dư" trong plan -->
       <button type="button" class="nav-item" data-soon="nav.reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span class="nav-label" data-i18n="nav.reports">Reports</span><span class="nav-soon" data-i18n="nav.soon">Soon</span></button>
-      <button type="button" class="nav-item" data-soon="nav.settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span class="nav-label" data-i18n="nav.settings">Settings</span><span class="nav-soon" data-i18n="nav.soon">Soon</span></button>
+      <a class="nav-item" href="#settings-section" data-nav="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span class="nav-label" data-i18n="nav.settings">Settings</span></a>
     </nav>
     <!-- Plan 9 Task 2 đổ số liệu vào (/api/system) -->
     <div class="sys-status" id="sys-status">
@@ -678,6 +678,27 @@
           <div class="empty-placeholder" data-i18n="log.empty">No log entries</div>
         </div>
       </section>
+
+      <!-- Settings (anh Zon 2026-11-14): chuẩn mặc định cho mọi project + mặc định dashboard -->
+      <section class="card settings-section" id="settings-section">
+        <div class="sec-head"><h2 class="section-title sec-title" data-i18n="settings.title">Settings</h2></div>
+        <h3 class="settings-sub" data-i18n="settings.standards">Standards for every project BTM builds</h3>
+        <p class="settings-note" data-i18n="settings.standardsNote">PM puts these into ticket acceptance, Dev follows them, QC fails a ticket that breaks one. They apply to tickets planned from now on.</p>
+        <div class="settings-rows">
+          <label class="settings-row"><input type="checkbox" id="std-tz"> <span data-i18n="settings.tz">Default timezone</span> <select id="std-tz-value" class="settings-select" aria-label="Default timezone" data-i18n-aria="settings.tz"></select></label>
+          <label class="settings-row"><input type="checkbox" id="std-utf8"> <span data-i18n="settings.utf8">Unicode (UTF-8) everywhere, so Vietnamese text never breaks</span></label>
+          <label class="settings-row"><input type="checkbox" id="std-theme"> <span data-i18n="settings.theme">Light and Dark mode (apps with a user interface)</span></label>
+          <label class="settings-row"><input type="checkbox" id="std-bilingual"> <span data-i18n="settings.bilingual">Bilingual English / Vietnamese (apps with a user interface)</span></label>
+          <label class="settings-row settings-col" for="std-custom"><span data-i18n="settings.custom">Your own standards (one per line, up to 10)</span>
+            <textarea id="std-custom" class="form-textarea settings-custom" rows="4" maxlength="2500" placeholder="Date format dd/mm/yyyy&#10;Currency VND" data-i18n-placeholder="settings.customPh"></textarea></label>
+        </div>
+        <h3 class="settings-sub" data-i18n="settings.dashboard">This dashboard (default for a new browser)</h3>
+        <div class="settings-rows">
+          <label class="settings-row"><span data-i18n="settings.uiLang">Language</span> <select id="ui-lang" class="settings-select"><option value="en">English</option><option value="vi">Vietnamese</option></select></label>
+          <label class="settings-row"><span data-i18n="settings.uiTheme">Theme</span> <select id="ui-theme" class="settings-select"><option value="system" data-i18n="settings.themeSystem">Follow the device</option><option value="light" data-i18n="settings.themeLight">Light</option><option value="dark" data-i18n="settings.themeDark">Dark</option></select></label>
+        </div>
+        <div class="settings-actions"><button type="button" id="settings-save" class="btn btn-primary btn-sm" data-i18n="settings.save">Save settings</button><span id="settings-feedback" class="settings-feedback" aria-live="polite"></span></div>
+      </section>
     </div>
 
     <!-- Plan 6 Task 3: diff ticket -->
@@ -696,6 +717,7 @@
   <script src="/app/folders.js"></script>
   <script src="/app/goals.js"></script>
   <script src="/app/meeting.js"></script>
+  <script src="/app/settings.js"></script>
   <script src="/app/chat-bubbles.js"></script>
   <script src="/app/accounts.js"></script>
   <script src="/app/app.js"></script>
