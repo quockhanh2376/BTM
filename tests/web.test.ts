@@ -315,7 +315,8 @@ describe('Web Dashboard (web/index.html)', () => {
   });
 
   it('has radio inputs for recipient with team (Cả team) as default', () => {
-    expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']team["'][^>]*checked/);
+    expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']auto["'][^>]*checked/); // 2026-11-14: Auto mặc định
+    expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']team["']/);
     expect(html).toMatch(/Team/);
     expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']pm["']/);
     expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']dev["']/);
@@ -509,7 +510,7 @@ describe('Web Dashboard (web/index.html)', () => {
 
     it('người nhận có Cả team mặc định và sinh từ snapshot.seats', () => {
       // Có input radio Cả team mặc định
-      expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']team["'][^>]*checked/);
+      expect(html).toMatch(/<input[^>]*type=["']radio["'][^>]*value=["']auto["'][^>]*checked/);
       expect(html).toMatch(/Team/);
 
       // Render danh sách người nhận từ snapshot.seats
@@ -1831,6 +1832,31 @@ describe('Thời gian goal (2026-11-14)', () => {
     expect(f(37 * 60000)).toBe('37m');
     expect(f(20_000)).toBe('<1m');
     expect(html).toContain("tl.className = 'goal-time';");
+  });
+});
+
+describe('Chat Auto: phân loại tin nhắn (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const classify = new Function(
+    html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('var chatLastIdx')) +
+      html.slice(html.indexOf('function classifyMessage'), html.indexOf('// Anh Zon gõ đúng "go ahead"')) + 'return classifyMessage;'
+  )() as (t: string, n?: any) => { kind: string; seat: string | null };
+  const names = { pm: ['pm', 'Finn'], dev: ['dev', 'Marry'], qc: ['qc', 'Finn'], audit: ['audit', 'Bruno'] };
+  it('câu thật của anh Zon hôm nay', () => {
+    expect(classify('Audit G1 vừa rồi gặp lỗi secure gì ?', names)).toEqual({ kind: 'ask', seat: 'audit' });
+    expect(classify('Kế tiếp làm job nào Finn?', names).kind).toBe('plan');
+    expect(classify('Thêm boss và âm thanh cho game', names).kind).toBe('goal');
+    expect(classify('Finn, thêm bảng điểm cao', names)).toEqual({ kind: 'goal', seat: 'pm' });
+    expect(classify('Làm app ghi chú mới, project mới nhé', names).kind).toBe('project');
+    expect(classify('Finn e trả lời luôn đi', names).kind).toBe('unknown');
+    expect(classify('Marry làm đến đâu rồi?', names).kind).not.toBe('goal');
+  });
+  it('mặc định chọn Auto; gửi Auto không bao giờ tạo goal khi chưa xác nhận', () => {
+    expect(html).toContain('<input type="radio" name="cmd-to" value="auto" checked>');
+    const fn = html.slice(html.indexOf('async function sendAuto'), html.indexOf("if (cmdSendBtn && cmdTextArea) {"));
+    const goalIdx = fn.indexOf("postJson('/api/team-note'");
+    expect(fn.lastIndexOf("tx('auto.goalConfirm'", goalIdx)).toBeGreaterThan(-1);
+    expect(fn).toContain("to: 'ask-' + seat");
   });
 });
 

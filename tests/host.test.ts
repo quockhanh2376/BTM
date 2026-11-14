@@ -551,6 +551,19 @@ done_when: done
     expect(t.error).toBe('readonly_cmd_modified_repo');
   });
 
+  it('chat Auto: ask-<ghế> chạy chỉ đọc (runner ghế qc), lượt ghi đúng ghế được hỏi, prompt có câu hỏi', async () => {
+    const calls: Array<{ seat: string; prompt: string }> = [];
+    const runner: Runner = vi.fn(async (seat: any, _a: any, prompt: string) => { calls.push({ seat, prompt }); return { exitCode: 0, timedOut: false, durationMs: 1, output: 'ok', lastMessage: 'ok' }; }) as any;
+    const host = createHost({ cfg, store, runner, logDir, dataDir, env: {} });
+    expect((await host.command('ask-dev' as any, 'Marry làm tới đâu rồi?')).ok).toBe(true);
+    await host.tick();
+    expect(calls[0]!.seat).toBe('qc');
+    expect(calls[0]!.prompt).toContain('Marry làm tới đâu rồi?');
+    expect(calls[0]!.prompt).toContain('chỉ đọc');
+    expect(store.listTurns(store.getLatestSession()!.id).at(-1)?.seat).toBe('dev');
+    expect((await host.command('ask-nobody' as any, 'x')).ok).toBe(false);
+  });
+
   it('6) lượt trực tiếp: phiên tạo cho nó được setSessionStatus "done" hoặc "error" khi xong', async () => {
     git(repoDir, 'checkout', '-b', 'goal/G1-status');
     // 6.1 Success case -> session status 'done'
