@@ -2506,3 +2506,15 @@
 .meet-quick { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; margin-right: 8px; }
 .meet-quick[hidden] { display: none; }
 
+/* Tài liệu cuộc họp + xuất biên bản (anh Zon 2026-11-14, bước 2) */
+.meet-docs { display: inline-flex; margin-right: 8px; }
+.meet-docs[hidden] { display: none; }
+.meet-doc-btn { cursor: pointer; }
+.meet-docs-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.meet-docs-list[hidden] { display: none; }
+.meet-doc-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--badge-bg); color: var(--badge-text); overflow-wrap: anywhere; }
+.meet-doc-remove { border: none; background: transparent; color: inherit; cursor: pointer; font-size: 11px; padding: 0 2px; }
+.meet-doc-remove:hover { color: var(--error-text); }
+.meet-bar a.btn { text-decoration: none; }
+.cmd-composer-bar { flex-wrap: wrap; row-gap: 6px; }
+.meet-doc-btn, .meet-quick { white-space: nowrap; }

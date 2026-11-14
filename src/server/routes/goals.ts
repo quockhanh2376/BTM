@@ -8,6 +8,9 @@ import { projectLessonsFile, readLessons, sharedLessonsFile, writeLessons, LESSO
 import { archiveGoalAction, restoreGoalAction, purgeGoalAction } from '../goal-trash.ts';
 import { buildGoalDigest, saveGoalDigest } from '../../knowledge/digest.ts';
 import { saveProjectMap, buildProjectMap } from '../../knowledge/map.ts';
+import { readMeetings, readStagedDocs } from '../../meeting/lane.ts';
+import { renderMeetingHtml, renderMeetingMd } from '../../meeting/core.ts';
+import { agentNameKey } from '../../agents/names.ts';
 import { readFileSync } from 'node:fs';
 
 export async function handleGoalsGet(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
@@ -33,6 +36,39 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
       n: g.n, title: g.title, state: g.state, archivedAt: g.archived_at,
       tickets: project ? o.store.listTickets(project, `G${g.n}`).length : 0,
     })));
+    return true;
+  }
+
+  // Họp (2026-11-14): tài liệu đang chờ; danh sách cuộc họp; xuất biên bản (md / html – html in ra PDF hoặc mở bằng Word).
+  if (method === 'GET' && pathname === '/api/meeting/docs') {
+    const project = o.store.getActiveProject();
+    sendJson(res, 200, { docs: project ? readStagedDocs(o.store, project) : [] });
+    return true;
+  }
+  if (method === 'GET' && pathname === '/api/meetings') {
+    const project = o.store.getActiveProject();
+    sendJson(res, 200, { meetings: (project ? readMeetings(o.store, project) : []).map((m) => ({ id: m.id, topic: m.topic.slice(0, 200), status: m.status, createdAt: m.createdAt })) });
+    return true;
+  }
+  const exportMatch = method === 'GET' ? pathname.match(/^\/api\/meetings\/(\d{1,6})\/export\.(md|html)$/) : null;
+  if (exportMatch) {
+    const project = o.store.getActiveProject();
+    const m = project ? readMeetings(o.store, project).find((x) => x.id === parseInt(exportMatch[1]!, 10)) : null;
+    if (!m) {
+      sendJson(res, 404, { error: 'Unknown meeting' });
+      return true;
+    }
+    const nameOf = (agent: string) => o.store.getSetting(agentNameKey(agent)) || agent;
+    const html = exportMatch[2] === 'html';
+    res.writeHead(200, {
+      'Content-Type': html ? 'text/html; charset=utf-8' : 'text/markdown; charset=utf-8',
+      'Content-Disposition': `attachment; filename="meeting-M${m.id}.${exportMatch[2]}"`,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      // Biên bản chứa chữ của agent: file HTML tải về không được chạy script hay tải gì từ ngoài.
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+    });
+    res.end(html ? renderMeetingHtml(m, nameOf) : renderMeetingMd(m, nameOf));
     return true;
   }
 

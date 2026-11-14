@@ -58,6 +58,12 @@ export interface HostApi {
     action: 'start' | 'stop' | 'resume' | 'conclude' | 'close',
     p: { topic?: string; quick?: boolean; note?: string }
   ): Promise<{ ok: true; id: number } | { ok: false; status: number; error: string }>;
+  /** Tài liệu đính kèm cuộc họp sắp mở (bước 2). */
+  meetingDocs?: {
+    add(name: string, bytes: Buffer): Promise<{ ok: true; doc: { id: number; name: string; note: string; chars: number } } | { ok: false; status: number; error: string }>;
+    remove(id: number): Array<{ id: number; name: string; note: string; chars: number }>;
+    list(): Array<{ id: number; name: string; note: string; chars: number }>;
+  };
 }
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
@@ -384,7 +390,7 @@ export function createServer(o: {
         }
 
         // 4. Read body (max 16 KB, or 7 MB for team-note)
-        const maxBytes = pathname === '/api/team-note' || /^\/api\/questions\/\d{1,9}\/answer$/.test(pathname) ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : pathname === '/api/agent' ? 96 * 1024 : 16384;
+        const maxBytes = pathname === '/api/team-note' || /^\/api\/questions\/\d{1,9}\/answer$/.test(pathname) ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : pathname === '/api/meeting/doc' ? 28 * 1024 * 1024 : pathname === '/api/agent' ? 96 * 1024 : 16384;
         let body: unknown;
         try {
           body = await readJsonBody(req, maxBytes);
@@ -457,6 +463,29 @@ export function createServer(o: {
           }
           const result = await o.host.stop(parsed.data.seat);
           sendJson(res, result.status ?? 200, result);
+          return;
+        }
+
+        // Tài liệu cho cuộc họp sắp mở (2026-11-14): upload từng file (base64), Core rút chữ; hoặc bỏ một file.
+        if (pathname === '/api/meeting/doc') {
+          const parsed = z.union([
+            z.object({ action: z.literal('add'), name: z.string().min(1).max(200), base64: z.string().min(1) }),
+            z.object({ action: z.literal('remove'), id: z.number().int().positive() }),
+          ]).safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: 'Invalid document request' });
+            return;
+          }
+          if (!o.host.meetingDocs) {
+            sendJson(res, 501, { error: 'Meetings not available' });
+            return;
+          }
+          if (parsed.data.action === 'remove') {
+            sendJson(res, 200, { ok: true, docs: o.host.meetingDocs.remove(parsed.data.id) });
+            return;
+          }
+          const r = await o.host.meetingDocs.add(parsed.data.name, Buffer.from(parsed.data.base64, 'base64'));
+          sendJson(res, r.ok ? 200 : r.status, r.ok ? { ok: true, doc: r.doc, docs: o.host.meetingDocs.list() } : { error: r.error });
           return;
         }
 

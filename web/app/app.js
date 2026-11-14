@@ -1383,6 +1383,8 @@
         setDisplay(attachImageGroup, to === 'team' || to === 'auto', 'flex');
         var quickWrap = document.getElementById('meet-quick-wrap');
         if (quickWrap) quickWrap.hidden = to !== 'meeting';
+        var docsWrap = document.getElementById('meet-docs-wrap');
+        if (docsWrap) docsWrap.hidden = to !== 'meeting';
       }
 
       if (recipientRadios) {
