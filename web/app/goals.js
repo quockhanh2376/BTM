@@ -106,7 +106,7 @@
             return;
           }
           if (String(it.kind).indexOf('meet-') === 0) {
-            d.renderMeetItem(li, it);
+            d.renderMeetItem(li, it, state);
             el.appendChild(li);
             return;
           }
@@ -127,6 +127,12 @@
           } else {
             head.textContent = who(it.seat, it.agent) + ' · ' + (SEAT_LABELS[it.seat] || it.seat) + ' · ' + formatHHmm(it.at)
               + (it.seat !== it.asked ? ' · ' + tx('ans.onBehalf', { seat: SEAT_LABELS[it.asked] || it.asked }) : '');
+          }
+          // Avatar nhỏ đầu tin (anh Zon 2026-11-14): anh Zon cho câu hỏi, agent trả lời cho câu đáp.
+          if (typeof withAvatar === 'function') {
+            var av = (state && state.settings && state.settings.avatars) || {};
+            var avAgent = it.kind === 'ask' ? 'owner' : (it.agent || seatAgent[it.seat]);
+            withAvatar(head, avAgent, it.kind === 'ask' ? 'Zon' : who(it.seat, it.agent), av);
           }
           var body = document.createElement('div');
           body.className = 'msg-body';

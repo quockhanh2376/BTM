@@ -195,3 +195,15 @@ describe('Meeting room: dọn phòng + nhận câu tranh luận (anh Zon 2026-11
     expect(p).toContain('chỉ dùng khi vấn đề liên quan tới project này');
   });
 });
+
+describe('Meeting room: avatar nhỏ đầu mỗi tin (anh Zon 2026-11-14)', () => {
+  const html = readWeb();
+  it('ảnh agent nếu có, không thì chữ cái đầu; anh Zon là "Z"; gắn đầu dòng tiêu đề ở tin hỏi đáp và lượt họp', () => {
+    expect(html).toContain("e.src = '/api/avatar/' + encodeURIComponent(agent) + '?v=' + encodeURIComponent(ver);");
+    expect(html).toContain("e.textContent = String(owner ? 'Z' : (label || agent || '?')).charAt(0).toUpperCase();");
+    expect(html).toContain("withAvatar(head, avAgent, it.kind === 'ask' ? 'Zon' : who(it.seat, it.agent), av);");
+    expect(html).toContain('d.renderMeetItem(li, it, state);');
+    expect(html).toMatch(/\.chat-log \.msg-avatar \{ width: calc\(22px \* var\(--chat-zoom, 1\)\)/);
+    expect(html.slice(html.indexOf('function chatAvatarEl'), html.indexOf('function meetEvidenceMark'))).not.toContain('innerHTML');
+  });
+});
