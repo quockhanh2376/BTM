@@ -2187,3 +2187,11 @@ describe('Skills: bước thêm vào BTM rõ ràng (2026-11-14)', () => {
     expect(html).toContain("tx('skills.notAdded', { n: pending })");
   });
 });
+
+describe('Kết quả tìm skill: nhiều cột, chữ to hơn (2026-11-14)', () => {
+  it('lưới tự chia cột theo độ rộng, chữ 14.4px, nút thêm trải hết hàng', () => {
+    const html = readWeb();
+    expect(html).toMatch(/\.skills-candidates \{ display: grid; grid-template-columns: repeat\(auto-fill, minmax\(340px, 1fr\)\);[^}]*font-size: 14\.4px; \}/);
+    expect(html).toContain('.skills-candidates > .skills-import-btn, .skills-candidates > .empty-placeholder { grid-column: 1 / -1; }');
+  });
+});

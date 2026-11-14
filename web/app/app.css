@@ -2545,7 +2545,9 @@
 /* Skills trong Settings (anh Zon 2026-11-14) */
 .skills-add { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
 .skills-url { flex: 1 1 240px; min-width: 160px; }
-.skills-candidates { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+/* Anh Zon 2026-11-14: kết quả tìm skill chia nhiều cột theo độ rộng màn hình, chữ to hơn 20% (12px → 14.4px). */
+.skills-candidates { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 6px 16px; font-size: 14.4px; }
+.skills-candidates > .skills-import-btn, .skills-candidates > .empty-placeholder { grid-column: 1 / -1; }
 .skill-cand { overflow-wrap: anywhere; }
 .skills-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; margin-top: 8px; }
 .skill-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; font-size: 12px; min-width: 0; }
