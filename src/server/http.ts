@@ -35,6 +35,7 @@ export interface HostApi {
   ): Promise<{ ok: boolean; error?: string }>;
   approve(): Promise<{ ok: boolean; error?: string }>;
   resume?(): Promise<{ ok: boolean; status?: number; error?: string }>;
+  delegateAnswers?(): Promise<{ ok: boolean; status?: number; error?: string }>;
   stop(seat?: Seat): { ok: boolean; status?: number; error?: string } | Promise<{ ok: boolean; status?: number; error?: string }>;
   command(
     to: Seat | 'team',
@@ -507,6 +508,17 @@ export function createServer(o: {
           } else {
             sendJson(res, 501, { error: 'Not implemented' });
           }
+          return;
+        }
+
+        // "Để Finn trả lời": PM trả lời câu hỏi đang mở (một lượt chỉ đọc), trả lời hết thì tự Resume.
+        if (pathname === '/api/questions/delegate') {
+          if (!o.host.delegateAnswers) {
+            sendJson(res, 501, { error: 'Not implemented' });
+            return;
+          }
+          const result = await o.host.delegateAnswers();
+          sendJson(res, result.ok ? 200 : (result.status || 400), result);
           return;
         }
 

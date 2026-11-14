@@ -141,6 +141,20 @@ export function devTicketPrompt(
   return lines.join('\n');
 }
 
+// Anh Zon 2026-11-14: "Để Finn trả lời" – PM trả lời câu hỏi đang mở thay anh, chỉ đọc, trung thực.
+export function pmAnswerPrompt(questions: Array<{ id: number; ticket: string; seat: string; text: string }>, agentName: string): string {
+  const list = questions
+    .map((q) => `- id ${q.id} (${q.ticket}, hỏi bởi ${q.seat}): ${q.text.replace(/\r?\n/g, ' ').trim()}`)
+    .join('\n');
+  return [
+    `Bạn là PM (${agentName}). Anh Zon giao bạn trả lời thay anh các câu hỏi Dev/QC đang hỏi. Lượt này CHỈ ĐỌC: không sửa, không tạo file, không chạy lệnh làm thay đổi repo, cấm git commit và push.`,
+    `Đọc team/tickets/<ID>.md, team/reports/<ID>-*.md, team/reports/*.json và code liên quan để trả lời. Câu trả lời ngắn, rõ, dựa trên bằng chứng trong repo (ghi file/dòng nếu có).`,
+    `Trung thực: chỉ trả lời điều bạn kiểm được từ repo và báo cáo. Việc phải chạy trên Windows, mở cổng mạng, bấm thử hay nhìn màn hình, hoặc cần quyết định của anh Zon thì đặt needs_owner: true và ghi lý do ngắn trong answer. Không bao giờ viết là anh Zon đã kiểm hay đã chạy.`,
+    `Các câu hỏi:\n${list}`,
+    `Cuối cùng in đúng một dòng JSON: {"answers":[{"id":<id>,"answer":"<trả lời>","needs_owner":<true|false>}]} gồm mọi id ở trên.`,
+  ].join('\n');
+}
+
 export function qcTicketPrompt(t: Ticket, base: string, agentName: string, ownerAnswers: string[] = []): string {
   const title = t.title.replace(/\r?\n/g, ' ').trim();
   const scope = t.scope.map((s) => s.replace(/\r?\n/g, ' ').trim()).join(', ');

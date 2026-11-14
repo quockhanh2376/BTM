@@ -277,3 +277,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | mic.service / mic.none | Trình duyệt chặn dịch vụ nhận diện, dùng Chrome hoặc Edge / Không thấy mic, qua RDP bật "Record from this computer" rồi kết nối lại | The browser blocks its speech service… / No microphone found… |
 | q.multiHint | Một câu trả lời chung cho cả {n} câu, hoặc ghi "1. … 2. …" để trả lời riêng. | One answer for all {n} questions, or write "1. … 2. …" to answer each one. |
 | q.clear | Xoá câu trả lời | Clear answer |
+| q.delegate / q.delegateTip / q.delegateSent / q.teamGuard / q.teamGuardOk / q.teamGuardCancel | Để {name} trả lời / … / {name} đang trả lời… / Đang có câu hỏi; tin cho Team sẽ tạo goal MỚI… / Tạo goal mới / Huỷ | Let {name} answer / … |

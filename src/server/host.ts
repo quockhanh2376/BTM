@@ -5,6 +5,7 @@ import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
 import type { Runner, TurnOutput } from '../runner/run.ts';
 import type { HostApi } from './http.ts';
 import { runSession, resumeSession, type SessionOutcome } from '../core/session.ts';
+import { pmAnswerQuestions, type DelegateResult } from '../core/delegate.ts';
 import { notify, type NotifyKind } from '../notify/notify.ts';
 import { directPrompt } from '../core/prompts.ts';
 import { git, commitAll } from '../git.ts';
@@ -32,6 +33,8 @@ export interface HostDeps {
   env: NodeJS.ProcessEnv;
   runSession?: typeof runSession;
   resumeSession?: typeof resumeSession;
+  /** Test truyền bản giả của lượt PM trả lời câu hỏi. */
+  pmAnswerQuestions?: typeof pmAnswerQuestions;
   approveGoal?: typeof approveGoalFn;
   publishGoal?: typeof publishGoal;
   monitor?: ReturnType<typeof createMonitor>;
@@ -44,6 +47,7 @@ export function createHost(d: HostDeps): HostApi & {
   setAutoApprove(enabled: boolean): void;
   setSeat(seat: Seat, agent: string): { ok: boolean; status?: number; error?: string };
   resume(): Promise<{ ok: boolean; status?: number; error?: string }>;
+  delegateAnswers(): Promise<{ ok: boolean; status?: number; error?: string }>;
   monitor: ReturnType<typeof createMonitor>;
 } {
   const monitor = d.monitor ?? createMonitor({
@@ -1101,12 +1105,50 @@ export function createHost(d: HostDeps): HostApi & {
     return pushRelease(project, n);
   }
 
+  // "Để Finn trả lời" (anh Zon 2026-11-14): một lượt PM chỉ đọc trả lời câu hỏi đang mở; trả lời hết thì tự Resume.
+  async function delegateAnswers(): Promise<{ ok: boolean; status?: number; error?: string }> {
+    if (isStopping || busy()) return { ok: false, status: 409, error: 'Session running' };
+    const activeProject = d.store.getActiveProject();
+    if (!activeProject) return { ok: false, status: 400, error: 'No active project' };
+    if (d.store.listQuestions(activeProject, 'open').length === 0) return { ok: false, status: 400, error: 'No open questions' };
+    const target = d.store.getLatestSession('needs_owner', activeProject);
+    if (!target) return { ok: false, status: 400, error: 'No paused session' };
+    const release = acquireLock(d.dataDir);
+    if (!release) return { ok: false, status: 409, error: 'Session running' };
+    isBusy = true;
+    activeReleaseLock = release;
+    const abortController = new AbortController();
+    currentAbortController = abortController;
+    (async () => {
+      let result: DelegateResult | null = null;
+      try {
+        mkdirSync(d.logDir, { recursive: true });
+        result = await (d.pmAnswerQuestions ?? pmAnswerQuestions)({
+          cfg: d.cfg, store: d.store, runner: d.runner, repo: activeProject, env: d.env, logDir: d.logDir,
+          signal: abortController.signal, gate: monitor.gate, refresh: monitor.refresh, monitor,
+        }, target.id);
+      } catch {
+        result = null;
+      } finally {
+        if (activeReleaseLock === release) { release(); activeReleaseLock = null; }
+        if (currentAbortController === abortController) currentAbortController = null;
+        isBusy = false;
+        const stopped = isStopping;
+        isStopping = false;
+        if (!stopped && result?.ok && result.left === 0) void resume();
+        else notifyIfIdle();
+      }
+    })();
+    return { ok: true };
+  }
+
   return {
     start,
     approve,
     approveGoal,
     retryRelease,
     resume,
+    delegateAnswers,
     stop,
     command,
     busy,

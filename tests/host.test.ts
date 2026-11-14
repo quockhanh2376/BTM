@@ -111,6 +111,22 @@ done_when: done
     expect(store.getSession(sid)?.status).toBe('out_of_turns');
   });
 
+  it('delegateAnswers: PM trả lời hết → tự Resume; còn câu chờ anh → không Resume', async () => {
+    const sid = store.createSession(['G1'], repoDir);
+    store.setSessionStatus(sid, 'needs_owner');
+    store.addQuestion(repoDir, 'GT-1', 'dev', 'jenny', 'Q?');
+    for (const left of [0, 1]) {
+      const resumeSession = vi.fn(async () => ({ status: 'needs_owner', sessionId: sid, tasks: {}, notes: [] }));
+      const pm = vi.fn(async () => ({ ok: true, answered: 1, left }));
+      const host = createHost({ cfg, store, runner: vi.fn() as any, logDir, dataDir, env: {}, resumeSession: resumeSession as any, pmAnswerQuestions: pm as any });
+      expect((await host.delegateAnswers()).ok).toBe(true);
+      for (let i = 0; i < 40 && (host.busy() || (left === 0 && resumeSession.mock.calls.length === 0)); i++) await new Promise((r) => setTimeout(r, 25));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(pm).toHaveBeenCalledTimes(1);
+      expect(resumeSession).toHaveBeenCalledTimes(left === 0 ? 1 : 0);
+    }
+  });
+
   it('resume() phiên needs_owner → chạy tiếp đúng phiên đó (không mở phiên mới)', async () => {
     const sid = store.createSession(['G1'], repoDir);
     store.setSessionStatus(sid, 'needs_owner');
