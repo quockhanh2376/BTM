@@ -133,6 +133,27 @@ function btmSkills(d) {
     re.type = 'button';
     re.addEventListener('click', function () { act({ action: 'recheck', id: s.id }); });
     actions.appendChild(re);
+    // Skill lấy từ GitHub: kiểm bản mới; có thì anh nhập lại (bản mới qua cổng bảo mật như skill mới).
+    if (/^https:\/\/github\.com\//.test(s.source)) {
+      var up = el('button', 'btn btn-sm btn-secondary', tx('skills.checkUpdate'));
+      up.type = 'button';
+      up.addEventListener('click', async function () {
+        up.disabled = true;
+        try {
+          var r = await postJson('/api/skills', { action: 'check-update', id: s.id });
+          if (!r.changed) { say(tx('skills.upToDate', { name: s.name }), false); return; }
+          if (await askOwner({ who: tx('skills.title'), text: tx('skills.newVersion', { name: s.name }), ok: tx('skills.addNew'), cancel: tx('ask.keepIt') })) {
+            var res = await act({ action: 'github-import', url: r.url, paths: [r.path] });
+            if (res) say(tx('skills.imported', { n: res.added.length }), false);
+          }
+        } catch (err) {
+          say(err.message, true);
+        } finally {
+          up.disabled = false;
+        }
+      });
+      actions.appendChild(up);
+    }
     var del = el('button', 'btn btn-sm btn-secondary', tx('skills.delete'));
     del.type = 'button';
     del.addEventListener('click', async function () {

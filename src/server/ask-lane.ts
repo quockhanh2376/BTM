@@ -7,6 +7,7 @@ import { askPrompt, lessonsPrompt } from '../core/prompts.ts';
 import { buildGoalDigest, knowledgeFor } from '../knowledge/digest.ts';
 import { appendLessons, lessonsFile, parseLessons, readLessons, sharedLessonsFile } from '../knowledge/lessons.ts';
 import { readProjectKey } from '../ticket/goal.ts';
+import { skillsFor } from '../skills/lane.ts';
 import { usableAccounts } from '../agents/accounts.ts';
 
 // Bước 3 (anh Zon 2026-11-14): câu hỏi / bàn kế hoạch chạy SONG SONG với phiên đang chạy.
@@ -88,7 +89,8 @@ export function createAskLane(d: {
       const logFile = join(d.logDir, `turn-${turnId}.log`);
       d.store.setTurnLog(turnId, logFile);
       const onBehalf = seat !== asked ? `\n(${asked.toUpperCase()} đang bận, bạn trả lời thay.)` : '';
-      const prompt = askPrompt(seat, item.text, knowledgeFor(d.store, d.cfg, project, item.text)) + onBehalf;
+      const skills = skillsFor(d.store, d.cfg.host.data_dir, project, seat, turnId);
+      const prompt = askPrompt(seat, item.text, knowledgeFor(d.store, d.cfg, project, item.text)) + onBehalf + (skills ? `\n\n${skills}` : '');
       const out = await d.runner(seat === 'audit' ? 'audit' : 'qc', agent, prompt, project, logFile, {
         account: usableAccounts(d.cfg, d.store, agent)[0]?.key,
         noImport: true,

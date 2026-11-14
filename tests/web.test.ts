@@ -2209,9 +2209,9 @@ describe('Skills: bước thêm vào BTM rõ ràng (2026-11-14)', () => {
 });
 
 describe('Kết quả tìm skill: nhiều cột, chữ to hơn (2026-11-14)', () => {
-  it('lưới tự chia cột theo độ rộng, chữ 14.4px, nút thêm trải hết hàng', () => {
+  it('lưới tự chia cột theo độ rộng, chữ 17.3px, nút thêm trải hết hàng', () => {
     const html = readWeb();
-    expect(html).toMatch(/\.skills-candidates \{ display: grid; grid-template-columns: repeat\(auto-fill, minmax\(340px, 1fr\)\);[^}]*font-size: 14\.4px; \}/);
+    expect(html).toMatch(/\.skills-candidates \{ display: grid; grid-template-columns: repeat\(auto-fill, minmax\(420px, 1fr\)\);[^}]*font-size: 17\.3px;[^}]*\}/);
     expect(html).toContain('.skills-candidates > .skills-import-btn, .skills-candidates > .empty-placeholder { grid-column: 1 / -1; }');
   });
 });

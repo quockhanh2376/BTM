@@ -40,10 +40,20 @@ export function projectSignals(repo: string): ProjectSignals {
 }
 
 /** Chữ skill cho prompt của một ghế ở một project (rỗng nếu không có skill bật). Lỗi → rỗng, không làm hỏng lượt. */
-export function skillsFor(store: Pick<Store, 'getSetting'>, dataDir: string, project: string, seat: Seat): string {
+export const turnSkillsKey = (turnId: number) => `turn_skills:${turnId}`;
+/** Skill đã đưa cho một lượt (để truy vết trên dòng thời gian ticket). */
+export function turnSkills(store: Pick<Store, 'getSetting'>, turnId: number): string[] {
+  return (store.getSetting(turnSkillsKey(turnId)) || '').split('\n').filter(Boolean);
+}
+
+/** turnId: ghi lại tên các skill đã đưa cho lượt đó (truy vết). */
+export function skillsFor(store: Pick<Store, 'getSetting'> & Partial<Pick<Store, 'setSetting'>>, dataDir: string, project: string, seat: Seat, turnId?: number): string {
   try {
     const key = readProjectKey(project);
-    return skillsBlock(activeSkills(readSkills(store), seat, key).map((s) => ({ name: s.name, text: skillText(dataDir, s.id) })).filter((x) => x.text));
+    const items = activeSkills(readSkills(store), seat, key).map((s) => ({ name: s.name, text: skillText(dataDir, s.id) })).filter((x) => x.text);
+    const block = skillsBlock(items);
+    if (block && turnId !== undefined) store.setSetting?.(turnSkillsKey(turnId), items.filter((it) => block.includes(`### Skill: ${it.name}\n`)).map((it) => it.name).join('\n'));
+    return block;
   } catch {
     return '';
   }
@@ -228,6 +238,19 @@ export function createSkillsLane(d: SkillsLaneDeps) {
     return readSkills(d.store);
   }
 
+  /** Skill lấy từ GitHub: tải lại file nguồn, so với bản đang lưu. Bản mới KHÔNG tự thay – anh nhập lại để qua cổng bảo mật. */
+  async function checkUpdate(id: number): Promise<{ ok: true; changed: boolean; url?: string; path?: string } | Fail> {
+    const cur = readSkills(d.store).find((s) => s.id === id);
+    if (!cur) return { ok: false, status: 404, error: 'Unknown skill' };
+    const m = /^(https:\/\/github\.com\/[^\s]+) · (.+)$/.exec(cur.source);
+    const g = m ? repoRef(m[1]!) : null;
+    if (!m || !g) return { ok: false, status: 400, error: 'This skill was pasted, there is no source to check' };
+    const body = await getText(`https://raw.githubusercontent.com/${g.owner}/${g.repo}/HEAD/${m[2]}`);
+    if (body === null) return { ok: false, status: 502, error: 'Could not download the source file' };
+    const same = body.replace(/\r\n/g, '\n').trim() === skillText(dataDir, id).trim();
+    return same ? { ok: true, changed: false } : { ok: true, changed: true, url: g.url, path: m[2]! };
+  }
+
   /** Kiểm lại từ đầu (vd sau khi Boss được bật): xoá kết quả cũ, tắt skill, về khu chờ. Core quét high thì vẫn bị từ chối. */
   function recheck(id: number): { ok: true } | Fail {
     const cur = readSkills(d.store).find((s) => s.id === id);
@@ -316,5 +339,5 @@ export function createSkillsLane(d: SkillsLaneDeps) {
     }
   }
 
-  return { add, search, importFound, listGithub, importGithub, update, remove, recheck, tick, running: () => inFlight, reviewers };
+  return { add, search, importFound, listGithub, importGithub, checkUpdate, update, remove, recheck, tick, running: () => inFlight, reviewers };
 }
