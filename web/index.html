@@ -1484,6 +1484,15 @@
     }
     .pipeline-bar .pipeline-step.stage-active { background-color: #2563EB; border-color: #2563EB; color: #FFFFFF; }
     .goal-group-title { font-size: 15px; line-height: 1.5; }
+    .goal-archive-btn { margin-left: auto; width: 28px; height: 28px; border: none; border-radius: 8px; background: transparent; color: var(--text-muted); font-size: 15px; cursor: pointer; flex-shrink: 0; }
+    .goal-archive-btn:hover { background: var(--badge-bg); color: var(--error-text); }
+    .goal-archive-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .goals-trash-bar { display: flex; justify-content: flex-end; margin-top: 10px; }
+    .goals-trash { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .goals-trash[hidden] { display: none; }
+    .trash-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; }
+    .trash-title { color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }
+    .trash-actions { display: flex; gap: 6px; }
     /* Bong bóng thoại của agent (2026-11-14): mỗi nhân vật một kiểu cố định (style-0..5), anh Zon style-owner */
     .chat-bubble {
       position: absolute; z-index: 60; max-width: 260px; padding: 8px 12px; font-size: 13px; font-weight: 600; line-height: 1.4;
@@ -1540,7 +1549,11 @@
     .pipeline-bar .pipeline-step[data-stage="audit"]:not(.stage-done)::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z'/%3E%3C/svg%3E") center / contain no-repeat; }
     .pipeline-bar .pipeline-step[data-stage="release"]:not(.stage-done)::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2'/%3E%3Cpath d='M9 15l-3-3c1-4 4-8 9-9 2 0 4 0 6 0 0 2 0 4 0 6-1 5-5 8-9 9z'/%3E%3Ccircle cx='15' cy='9' r='1.5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2'/%3E%3Cpath d='M9 15l-3-3c1-4 4-8 9-9 2 0 4 0 6 0 0 2 0 4 0 6-1 5-5 8-9 9z'/%3E%3Ccircle cx='15' cy='9' r='1.5'/%3E%3C/svg%3E") center / contain no-repeat; }
     .pipeline-bar .pipeline-arrow { font-size: 13px; color: var(--text-muted); padding: 0; }
-    .task-table .col-tags { white-space: nowrap; }
+    /* Khung hẹp: bảng giữ bề ngang tối thiểu và cuộn ngang, không bóp cột Title còn 1 ký tự. */
+    .task-tabpanel { overflow-x: auto; }
+    .task-table { min-width: 560px; }
+    .task-table .col-tags { white-space: normal; }
+    .task-table .col-tags .btn { margin-bottom: 4px; }
     .task-table .col-tags .btn { margin: 0 6px 0 0; }
     .task-table .col-tags .ticket-meta { margin: 0; }
     .task-table td.col-id { color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
@@ -2914,6 +2927,8 @@
           <div class="empty-placeholder" data-i18n="goals.empty">No goals yet</div>
         </div>
         <div id="folders-container" class="folders-container" role="tabpanel" hidden aria-live="polite"></div>
+        <div class="goals-trash-bar"><button type="button" id="goals-trash-toggle" class="btn btn-secondary btn-sm btn-tool" aria-expanded="false" aria-controls="goals-trash"><span id="goals-trash-label">Trash (0)</span></button></div>
+        <div id="goals-trash" class="goals-trash" hidden aria-live="polite"></div>
       </section>
 
       <!-- Nhật ký -->
@@ -3059,6 +3074,21 @@
           'energy.unavailable': 'Energy: unavailable',
           'energy.low': 'Low',
           'goals.title': 'Goals',
+          'trash.label': 'Trash ({n})',
+          'trash.empty': 'Trash is empty',
+          'trash.moveTip': 'Move G{n} to Trash',
+          'trash.askMove': 'Move G{n} to Trash?',
+          'trash.askMoveNote': 'It disappears from the board and its paused sessions stop. Tickets and its branch are kept; you can restore it from Trash.',
+          'trash.moveOk': 'Move to Trash',
+          'trash.moved': 'G{n} moved to Trash.',
+          'trash.meta': '{tickets} tickets · trashed {at}',
+          'trash.restore': 'Restore',
+          'trash.restored': 'G{n} restored. Press Resume to continue it.',
+          'trash.purge': 'Delete permanently',
+          'trash.askPurge': 'Delete G{n} permanently?',
+          'trash.askPurgeNote': 'This removes its tickets, history and branch from BTM and cannot be undone here. BTM keeps a backup file on the server first. main and GitHub are not touched.',
+          'trash.purgeOk': 'Delete permanently',
+          'trash.purged': 'G{n} deleted. A backup was saved on the server.',
           'mic.start': 'Voice input',
           'mic.stop': 'Stop voice input',
           'mic.lang': 'Voice language',
@@ -4552,6 +4582,27 @@
           titleSpan.textContent = 'G' + g.n + ' · ' + (g.title || '') + ' · ' + tx('goal.passed', { n: g.passed || 0, m: g.total || 0 });
           titleWrap.appendChild(titleSpan);
           header.appendChild(titleWrap);
+          // Thùng rác goal (anh Zon 2026-11-14): ✕ = vào thùng rác (ẩn, khôi phục được), PM hỏi lại trước.
+          var archiveBtn = document.createElement('button');
+          archiveBtn.type = 'button';
+          archiveBtn.className = 'goal-archive-btn';
+          archiveBtn.textContent = '✕';
+          archiveBtn.title = tx('trash.moveTip', { n: g.n });
+          archiveBtn.setAttribute('aria-label', tx('trash.moveTip', { n: g.n }));
+          archiveBtn.addEventListener('click', async function () {
+            var yes = await askAsSeat('pm', { text: tx('trash.askMove', { n: g.n }), note: tx('trash.askMoveNote'), ok: tx('trash.moveOk'), cancel: tx('ask.keepIt') });
+            if (!yes) return;
+            archiveBtn.disabled = true;
+            try {
+              var res = await postJson('/api/goals/' + g.n + '/archive', {});
+              showFeedback(topFeedback, res && res.error ? res.error : tx('trash.moved', { n: g.n }), Boolean(res && res.error));
+            } catch (err) {
+              showFeedback(topFeedback, err.message, true);
+            } finally {
+              archiveBtn.disabled = false;
+            }
+          });
+          header.appendChild(archiveBtn);
 
           // Nút Duyệt merge: chỉ hiện khi goal ở qc_done (không audit) hoặc audit_passed
           var canApprove = hasAuditSeat ? (g.state === 'audit_passed') : (g.state === 'qc_done' || g.state === 'audit_passed');
@@ -4696,7 +4747,7 @@
 
           var colTags = document.createElement('col');
           colTags.className = 'col-tags';
-          colTags.style.width = '170px';
+          colTags.style.width = '140px';
           colgroup.appendChild(colTags);
 
           var colFixes = document.createElement('col');
@@ -5579,6 +5630,75 @@
       pollSystem();
       setInterval(pollSystem, 10000);
 
+      // Thùng rác goal: danh sách, Khôi phục, Xoá hẳn (hỏi lần hai; BTM sao lưu trước khi xoá).
+      function setTrashCount(n) {
+        var l = document.getElementById('goals-trash-label');
+        if (l) l.textContent = tx('trash.label', { n: n || 0 });
+      }
+      async function loadTrash() {
+        var box = document.getElementById('goals-trash');
+        if (!box) return;
+        try {
+          var res = await fetch('/api/goals/trash', { cache: 'no-store' });
+          var rows = res.ok ? await res.json() : [];
+          clearChildren(box);
+          setTrashCount(rows.length);
+          if (!rows.length) {
+            var e = document.createElement('div');
+            e.className = 'empty-placeholder';
+            e.textContent = tx('trash.empty');
+            box.appendChild(e);
+            return;
+          }
+          rows.forEach(function (g) {
+            var row = document.createElement('div');
+            row.className = 'trash-row';
+            var t = document.createElement('div');
+            t.className = 'trash-title';
+            t.textContent = 'G' + g.n + ' · ' + (g.title || '') + ' · ' + tx('trash.meta', { tickets: g.tickets, at: formatDateTimeVN(g.archivedAt) });
+            row.appendChild(t);
+            var restore = document.createElement('button');
+            restore.type = 'button';
+            restore.className = 'btn btn-secondary btn-sm';
+            restore.textContent = tx('trash.restore');
+            restore.addEventListener('click', async function () {
+              var r = await postJson('/api/goals/' + g.n + '/restore', {});
+              showFeedback(topFeedback, r && r.error ? r.error : tx('trash.restored', { n: g.n }), Boolean(r && r.error));
+              loadTrash();
+            });
+            var purge = document.createElement('button');
+            purge.type = 'button';
+            purge.className = 'btn btn-secondary btn-sm btn-danger-outline';
+            purge.textContent = tx('trash.purge');
+            purge.addEventListener('click', async function () {
+              var yes = await askAsSeat('pm', { text: tx('trash.askPurge', { n: g.n }), note: tx('trash.askPurgeNote'), ok: tx('trash.purgeOk'), cancel: tx('ask.keepIt') });
+              if (!yes) return;
+              var r = await postJson('/api/goals/' + g.n + '/purge', {});
+              showFeedback(topFeedback, r && r.error ? r.error : tx('trash.purged', { n: g.n }), Boolean(r && r.error));
+              loadTrash();
+            });
+            var acts = document.createElement('div');
+            acts.className = 'trash-actions';
+            acts.appendChild(restore);
+            acts.appendChild(purge);
+            row.appendChild(acts);
+            box.appendChild(row);
+          });
+        } catch (err) {
+          showFeedback(topFeedback, err.message, true);
+        }
+      }
+      (function () {
+        var tb = document.getElementById('goals-trash-toggle');
+        var box = document.getElementById('goals-trash');
+        if (!tb || !box) return;
+        tb.addEventListener('click', function () {
+          box.hidden = !box.hidden;
+          tb.setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
+          if (!box.hidden) loadTrash();
+        });
+      })();
+
       // Tab Folder (anh Zon 2026-11-14): chỉ xem cấu trúc repo chính + thư mục làm việc từng account.
       function formatDateTimeVN(iso) {
         var d = new Date(iso);
@@ -6212,6 +6332,12 @@
 
         // Goals & Pipeline & Tickets
         renderGoals(state.goals, state.seats);
+        setTrashCount(state.trash);
+        var trashBox = document.getElementById('goals-trash');
+        if (trashBox && !trashBox.hidden && trashBox.getAttribute('data-count') !== String(state.trash || 0)) {
+          trashBox.setAttribute('data-count', String(state.trash || 0));
+          loadTrash();
+        }
 
         // Logs
         if (logList) {

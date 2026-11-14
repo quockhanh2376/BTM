@@ -21,6 +21,7 @@ import type { createMonitor } from '../energy/monitor.ts';
 import { approveGoal, type ApproveGoalResult } from '../ticket/goal.ts';
 import type { ReleaseInfo } from '../release/publish.ts';
 import { readFolders, type ExecAsync } from './folders.ts';
+import { archiveGoalAction, restoreGoalAction, purgeGoalAction } from './goal-trash.ts';
 
 export interface HostApi {
   start(
@@ -177,6 +178,17 @@ export function createServer(o: {
       // Tab Folder: chỉ xem cấu trúc repo chính + workspace từng account (tên file, không nội dung).
       if (method === 'GET' && pathname === '/api/folders') {
         sendJson(res, 200, await readFolders(o.cfg, o.store, o.foldersExec));
+        return;
+      }
+
+      // Thùng rác goal: danh sách goal đã vào thùng rác.
+      if (method === 'GET' && pathname === '/api/goals/trash') {
+        const project = o.store.getActiveProject();
+        const rows = project ? o.store.listArchivedGoals(project) : [];
+        sendJson(res, 200, rows.map((g) => ({
+          n: g.n, title: g.title, state: g.state, archivedAt: g.archived_at,
+          tickets: project ? o.store.listTickets(project, `G${g.n}`).length : 0,
+        })));
         return;
       }
 
@@ -508,6 +520,32 @@ export function createServer(o: {
           } else {
             sendJson(res, 501, { error: 'Not implemented' });
           }
+          return;
+        }
+
+        // Thùng rác goal: vào thùng rác / khôi phục / xoá hẳn (có sao lưu). Không cho khi có phiên chạy.
+        const trashMatch = pathname.match(/^\/api\/goals\/(\d{1,6})\/(archive|restore|purge)$/);
+        if (trashMatch) {
+          if (o.host.busy?.()) {
+            sendJson(res, 409, { error: 'Session running' });
+            return;
+          }
+          const project = o.store.getActiveProject();
+          if (!project) {
+            sendJson(res, 400, { error: 'No active project' });
+            return;
+          }
+          const n = parseInt(trashMatch[1]!, 10);
+          let result;
+          try {
+            result = trashMatch[2] === 'archive' ? archiveGoalAction(o.store, project, n)
+              : trashMatch[2] === 'restore' ? restoreGoalAction(o.store, project, n)
+              : purgeGoalAction(o.store, o.cfg, project, n);
+          } catch (err: any) {
+            sendJson(res, 500, { error: err?.message || 'Trash action failed' });
+            return;
+          }
+          sendJson(res, result.ok ? 200 : result.status, result);
           return;
         }
 

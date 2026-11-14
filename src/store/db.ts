@@ -59,6 +59,8 @@ export interface GoalRow {
   created_at: string;
   updated_at: string;
   reviewed_sha?: string | null;
+  /** Thùng rác goal (2026-11-14): có giá trị = goal đã vào thùng rác. */
+  archived_at?: string | null;
 }
 
 export interface TicketRow {
@@ -206,6 +208,16 @@ export interface Store {
   createGoal(project: string, title: string): { n: number; branch: string };
   getGoal(project: string, n: number): GoalRow | null;
   listGoals(project: string): GoalRow[];
+  /** Thùng rác goal: ẩn goal, kết thúc mọi phiên đang dừng của nó, đóng câu hỏi mở. Không đụng ticket/git. */
+  archiveGoal(project: string, n: number): void;
+  restoreGoal(project: string, n: number): void;
+  listArchivedGoals(project: string): GoalRow[];
+  /** Xoá hẳn mọi dòng DB của goal (goal, ticket, lịch sử, câu hỏi, ghi chú dòng, phiên chỉ của goal này + lượt). */
+  purgeGoal(project: string, n: number): void;
+  /** Dữ liệu goal để sao lưu trước khi xoá hẳn. */
+  exportGoal(project: string, n: number): Record<string, unknown>;
+  /** Phiên của các goal (theo số n) – để bỏ qua phiên của goal đã vào thùng rác. */
+  sessionGoalNumbers(sessionId: number): number[];
   setGoalState(project: string, n: number, state: GoalState, by: string, reason?: string, reviewedSha?: string | null): void;
   upsertTicket(project: string, t: Ticket): void;
   getTicketState(project: string, id: string): { state: TicketState; fix_rounds: number; base_sha: string | null } | null;
@@ -539,6 +551,9 @@ export function openStore(file: string): Store {
   if (!hasReviewedSha) {
     db.exec('ALTER TABLE goals ADD COLUMN reviewed_sha TEXT');
   }
+  if (!goalCols.some((c) => c.name.toLowerCase() === 'archived_at')) {
+    db.exec('ALTER TABLE goals ADD COLUMN archived_at TEXT');
+  }
 
   const setActiveProjectStmt = db.prepare(`
     INSERT INTO active_project (id, path) VALUES (1, ?)
@@ -774,17 +789,32 @@ export function openStore(file: string): Store {
   `);
 
   const getGoalStmt = db.prepare(`
-    SELECT n, title, state, branch, created_at, updated_at, reviewed_sha
+    SELECT n, title, state, branch, created_at, updated_at, reviewed_sha, archived_at
     FROM goals
     WHERE project = ? AND n = ?
   `);
 
   const listGoalsStmt = db.prepare(`
-    SELECT n, title, state, branch, created_at, updated_at, reviewed_sha
+    SELECT n, title, state, branch, created_at, updated_at, reviewed_sha, archived_at
     FROM goals
     WHERE project = ?
     ORDER BY n ASC
   `);
+  // goals_json lưu cả dạng ["1"] lẫn [2] → so theo số.
+  const goalNumsOf = (json: string): number[] => {
+    try {
+      const v = JSON.parse(json);
+      return Array.isArray(v) ? v.map((x) => parseInt(String(x).replace(/^G/i, ''), 10)).filter((x) => Number.isFinite(x)) : [];
+    } catch {
+      return [];
+    }
+  };
+  const sessionsOfGoal = (project: string, n: number): number[] =>
+    (db.prepare('SELECT id, goals_json FROM sessions WHERE project = ?').all(project) as Array<{ id: number; goals_json: string }>)
+      .filter((r) => { const g = goalNumsOf(r.goals_json); return g.length > 0 && g.every((x) => x === n); })
+      .map((r) => r.id);
+  const ticketIdsOfGoal = (project: string, n: number): string[] =>
+    (db.prepare('SELECT id FROM tickets WHERE project = ? AND goal = ?').all(project, `G${n}`) as Array<{ id: string }>).map((r) => r.id);
 
   const updateGoalStateStmt = db.prepare(`
     UPDATE goals SET state = ?, updated_at = ? WHERE project = ? AND n = ?
@@ -867,7 +897,9 @@ export function openStore(file: string): Store {
 
   const createGoalTx = db.transaction((project: string, title: string) => {
     const row = getMaxGoalNStmt.get(project) as { max_n: number } | undefined;
-    const n = (row?.max_n ?? 0) + 1;
+    // Số goal = ID duy nhất, không dùng lại kể cả sau khi xoá hẳn (nhánh, ticket, log, bản sao lưu mang số này).
+    const floor = db.prepare('SELECT value FROM settings WHERE key = ?').get(`goal_n_floor:${project}`) as { value: string } | undefined;
+    const n = Math.max(row?.max_n ?? 0, floor ? parseInt(floor.value, 10) || 0 : 0) + 1;
     const branch = goalBranch(n, title);
     const now = new Date().toISOString();
     insertGoalStmt.run(project, n, title, branch, now, now);
@@ -1422,6 +1454,71 @@ export function openStore(file: string): Store {
 
     listGoals(project: string): GoalRow[] {
       return listGoalsStmt.all(project) as GoalRow[];
+    },
+
+    archiveGoal(project: string, n: number): void {
+      db.transaction(() => {
+        db.prepare('UPDATE goals SET archived_at = ? WHERE project = ? AND n = ?').run(new Date().toISOString(), project, n);
+        const now = new Date().toISOString();
+        for (const id of sessionsOfGoal(project, n)) {
+          db.prepare(`UPDATE sessions SET status = 'refused', ended_at = COALESCE(ended_at, ?) WHERE id = ? AND status IN ('needs_owner','stopped','out_of_turns','awaiting_approval')`).run(now, id);
+        }
+        const ids = ticketIdsOfGoal(project, n);
+        if (ids.length) {
+          db.prepare(`UPDATE questions SET state = 'used' WHERE project = ? AND state = 'open' AND ticket IN (${ids.map(() => '?').join(',')})`).run(project, ...ids);
+        }
+      })();
+    },
+
+    restoreGoal(project: string, n: number): void {
+      db.prepare('UPDATE goals SET archived_at = NULL WHERE project = ? AND n = ?').run(project, n);
+    },
+
+    listArchivedGoals(project: string): GoalRow[] {
+      return (listGoalsStmt.all(project) as GoalRow[]).filter((g) => g.archived_at);
+    },
+
+    exportGoal(project: string, n: number): Record<string, unknown> {
+      const ids = ticketIdsOfGoal(project, n);
+      const inIds = ids.length ? `(${ids.map(() => '?').join(',')})` : '(NULL)';
+      const sids = sessionsOfGoal(project, n);
+      const inS = sids.length ? `(${sids.map(() => '?').join(',')})` : '(NULL)';
+      return {
+        goal: db.prepare('SELECT * FROM goals WHERE project = ? AND n = ?').get(project, n),
+        tickets: db.prepare(`SELECT * FROM tickets WHERE project = ? AND id IN ${inIds}`).all(project, ...ids),
+        ticket_history: db.prepare(`SELECT * FROM ticket_history WHERE project = ? AND ticket_id IN ${inIds}`).all(project, ...ids),
+        questions: db.prepare(`SELECT * FROM questions WHERE project = ? AND ticket IN ${inIds}`).all(project, ...ids),
+        line_notes: db.prepare(`SELECT * FROM line_notes WHERE project = ? AND ticket IN ${inIds}`).all(project, ...ids),
+        sessions: db.prepare(`SELECT * FROM sessions WHERE id IN ${inS}`).all(...sids),
+        turns: db.prepare(`SELECT * FROM turns WHERE session_id IN ${inS}`).all(...sids),
+      };
+    },
+
+    purgeGoal(project: string, n: number): void {
+      db.transaction(() => {
+        const ids = ticketIdsOfGoal(project, n);
+        if (ids.length) {
+          const q = `(${ids.map(() => '?').join(',')})`;
+          db.prepare(`DELETE FROM ticket_history WHERE project = ? AND ticket_id IN ${q}`).run(project, ...ids);
+          db.prepare(`DELETE FROM questions WHERE project = ? AND ticket IN ${q}`).run(project, ...ids);
+          db.prepare(`DELETE FROM line_notes WHERE project = ? AND ticket IN ${q}`).run(project, ...ids);
+          db.prepare(`DELETE FROM tickets WHERE project = ? AND id IN ${q}`).run(project, ...ids);
+        }
+        for (const sid of sessionsOfGoal(project, n)) {
+          for (const t of ['turns', 'task_states', 'session_tasks', 'handoff_failures']) db.prepare(`DELETE FROM ${t} WHERE session_id = ?`).run(sid);
+          db.prepare('DELETE FROM sessions WHERE id = ?').run(sid);
+        }
+        db.prepare('DELETE FROM goals WHERE project = ? AND n = ?').run(project, n);
+        const key = `goal_n_floor:${project}`;
+        const cur = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+        db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+          .run(key, String(Math.max(n, cur ? parseInt(cur.value, 10) || 0 : 0)));
+      })();
+    },
+
+    sessionGoalNumbers(sessionId: number): number[] {
+      const r = db.prepare('SELECT goals_json FROM sessions WHERE id = ?').get(sessionId) as { goals_json: string } | undefined;
+      return r ? goalNumsOf(r.goals_json) : [];
     },
 
     setGoalState(
