@@ -13,7 +13,8 @@ import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerUser } from '../isolation/worker.ts';
 import { readAgentModels } from '../energy/monitor.ts';
 import { effectiveSeats, resolveSeats, type Store, type GoalState, type QueueItem, type AccountLabel } from '../store/db.ts';
-import { accountKey, accountLastKey, pickAccount, usableAccounts } from '../agents/accounts.ts';
+import { accountKey, accountLastKey, pickAccount, toolOfAccountKey, usableAccounts } from '../agents/accounts.ts';
+import { READ_ONLY_SEATS } from '../runner/argv.ts';
 import { usageLimitedKey } from '../agents/usage-limit.ts';
 import { loadTickets, type Ticket, type TicketState, type TicketType, type TicketSize } from '../ticket/ticket.ts';
 import { readProjectKey } from '../ticket/goal.ts';
@@ -155,6 +156,8 @@ export interface AccountCard {
 export interface AccountItem {
   key: string;
   slug: string;
+  /** Công cụ của tài khoản (một Worker có thể dùng nhiều công cụ, 2026-11-14). */
+  tool: Tool;
   email: string | null;
   label: AccountLabel;
   active: boolean;
@@ -347,7 +350,7 @@ function userOf(cfg: Config, key: string): string | null {
 // Plan 7: trạng thái từng tài khoản. in_use = tài khoản lượt kế sẽ dùng; next = tài khoản dùng được kế tiếp.
 function accountItems(store: Store, cfg: Config, agent: string, now: Date): AccountItem[] {
   const rows = store.listAccounts(agent);
-  const list = rows.length ? rows : [{ agent, slug: 'default', email: null, label: 'none' as AccountLabel, active: true, ord: 0, created_at: '' }];
+  const list = rows.length ? rows : [{ agent, slug: 'default', email: null, label: 'none' as AccountLabel, active: true, ord: 0, created_at: '', tool: null }];
   const usable = usableAccounts(cfg, store, agent, now).map((a) => a.key);
   return list.map((a): AccountItem => {
     const key = accountKey(agent, a.slug);
@@ -365,7 +368,7 @@ function accountItems(store: Store, cfg: Config, agent: string, now: Date): Acco
             : usable[1] === key
               ? 'next'
               : 'free';
-    return { key, slug: a.slug, email: a.email, label: a.label, active: a.active, status, resetsAt: limited ? until : null, user: userOf(cfg, key), login, energy: getSeatEnergy(store, key, cfg) };
+    return { key, slug: a.slug, tool: a.tool ?? cfg.agents[agent]!.tool, email: a.email, label: a.label, active: a.active, status, resetsAt: limited ? until : null, user: userOf(cfg, key), login, energy: getSeatEnergy(store, key, cfg) };
   });
 }
 
@@ -413,18 +416,19 @@ function createDefaultSeats(cfg: Config, store: Store): SeatCard[] {
     const candidates = Object.entries(cfg.agents)
       .filter(([_, a]) => a.can_sit.includes(seat))
       .map(([name]) => name);
+    const idleAccount = pickAccount(cfg, store, agent, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) })?.key || agent;
     return {
       seat,
       agent,
-      tool,
+      tool: toolOfAccountKey(cfg, store, idleAccount) ?? tool,
       status: 'idle',
       ticket: null,
       taskId: null,
       since: null,
       turns: 0,
       lastLine: '',
-      energy: getSeatEnergy(store, pickAccount(cfg, store, agent)?.key || agent, cfg),
-      login: getSeatLogin(store, pickAccount(cfg, store, agent)?.key || agent),
+      energy: getSeatEnergy(store, idleAccount, cfg),
+      login: getSeatLogin(store, idleAccount),
       candidates,
       ...seatExtras(cfg, store, effSeats, seat, agent),
     };
@@ -734,7 +738,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     const lastTurn = seatTurns.length > 0 ? seatTurns[seatTurns.length - 1] : null;
 
     // Plan 7: đang chạy → tài khoản lượt này; rảnh → tài khoản lượt kế sẽ dùng.
-    const seatAccount = (status === 'running' ? store.getSetting(accountLastKey(agent)) : pickAccount(cfg, store, agent)?.key) || agent;
+    const seatAccount = (status === 'running' ? store.getSetting(accountLastKey(agent)) : pickAccount(cfg, store, agent, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) })?.key) || agent;
     const ticket = (status === 'running' && runningTurn?.seat === seat) ? (runningTurn.task_id ?? null) : null;
     const since = lastTurn?.started_at ?? null;
     const turnsCount = store.countTurns(s.id, seat);
@@ -743,7 +747,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     return {
       seat,
       agent,
-      tool,
+      tool: toolOfAccountKey(cfg, store, seatAccount) ?? tool,
       status,
       ticket,
       taskId: ticket,

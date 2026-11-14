@@ -1,3 +1,4 @@
+import { READ_ONLY_SEATS } from '../runner/argv.ts';
 import { realpathSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatSync, rmSync, readdirSync } from 'node:fs';
 import { relative, isAbsolute, join, basename } from 'node:path';
 import type { Config, Seat } from '../config.ts';
@@ -151,7 +152,7 @@ async function processGoal(
     const list = [...base, ...boss];
     return list.filter((a) => {
       if (!Object.hasOwn(d.cfg.agents, a) || !d.cfg.agents[a]!.can_sit.includes(seat)) return false;
-      return pickAccount(d.cfg, d.store, a) !== null;
+      return pickAccount(d.cfg, d.store, a, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) }) !== null;
     });
   }
 
@@ -168,7 +169,7 @@ async function processGoal(
         continue;
       }
       // Plan 7: thử lần lượt tài khoản dùng được của agent (giới hạn/đăng nhập), rồi gate energy theo tài khoản.
-      const accounts = usableAccounts(d.cfg, d.store, agent);
+      const accounts = usableAccounts(d.cfg, d.store, agent, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) });
       if (accounts.length === 0) {
         const resets = soonestReset(d.store, agent);
         reasons.push(resets ? `usage_limited:${agent} resets ${formatHHmm(resets)}` : `usage_limited:${agent}`);

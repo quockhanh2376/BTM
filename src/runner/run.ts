@@ -2,8 +2,9 @@ import { issueTurnToken, revokeTurnToken, MB_PROXY_PORT } from '../mb/proxy.ts';
 import { spawn } from 'node:child_process';
 import { appendFileSync, createWriteStream, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import type { Config, Seat } from '../config.ts';
+import type { Config, Seat, Tool } from '../config.ts';
 import { buildArgv } from './argv.ts';
+import { canRunOnSeat } from '../agents/accounts.ts';
 import { agentEffort, agentModel } from '../agents/model.ts';
 import { workerKillAll, workerReset, wrapForWorker } from '../isolation/worker.ts';
 import { agyActiveSince, importTurn, isIsolated, readWorkerOut, STATUS_FILE, syncWorkspace, workerOutFile, workspacePath, type TurnImport } from '../isolation/trusted.ts';
@@ -449,7 +450,9 @@ export function makeRunner(
     agyActiveSince: (c, a, s) => agyActiveSince(c, a, s),
   },
   /** Store: model/effort chọn trên dashboard ghi đè config. */
-  settings?: { getSetting(key: string): string | null } | null
+  settings?: { getSetting(key: string): string | null } | null,
+  /** Công cụ của tài khoản theo khoá (một Worker có thể dùng nhiều công cụ, 2026-11-14); không có → công cụ của Worker. */
+  toolOf?: (accountKey: string) => Tool | null
 ): Runner {
   return async (
     seat: Seat,
@@ -464,15 +467,21 @@ export function makeRunner(
       throw new Error(`Agent '${agentId}' not found in config`);
     }
 
+    // Plan 7: chạy dưới user của tài khoản được chọn (khoá tài khoản; mặc định = agent id).
+    const w = options?.account ?? agentId;
+    // Công cụ của lượt = công cụ của TÀI KHOẢN (Finn có thể có tài khoản Antigravity). Model/effort của Worker chỉ áp dụng khi
+    // tài khoản dùng đúng công cụ chính của Worker; công cụ khác thì dùng mặc định của công cụ đó.
+    const tool: Tool = toolOf?.(w) ?? agent.tool;
+    if (!canRunOnSeat(tool, seat, agent.tool)) throw new Error(`agy_cannot_sit_read_only:${agentId}`);
+    const ownTool = tool === agent.tool;
+
     // Kế hoạch 8: agy đo tiến độ bằng bước mới thay cho giờ cố định: còn ra bước thì chạy tới max_minutes,
     // im idle_minutes thì cắt. Chỉ khi cách ly (đọc được thư mục agy qua worker).
-    const agyProgress = agent.tool === 'antigravity-cli' && isIsolated(cfg) && isolation.agyActiveSince ? cfg.turn.agy_progress : undefined;
+    const agyProgress = tool === 'antigravity-cli' && isIsolated(cfg) && isolation.agyActiveSince ? cfg.turn.agy_progress : undefined;
     const timeoutMin = agyProgress ? agyProgress.max_minutes : cfg.turn.timeout_minutes[seat];
     const timeoutMs = timeoutMin * 60 * 1000;
     const allow = cfg.runner.agy_allow_commands;
 
-    // Plan 7: chạy dưới user của tài khoản được chọn (khoá tài khoản; mặc định = agent id). Model/effort vẫn theo Worker.
-    const w = options?.account ?? agentId;
     const absLogFile = resolve(logFile);
     mkdirSync(dirname(absLogFile), { recursive: true });
     const isolated = isIsolated(cfg);
@@ -486,14 +495,14 @@ export function makeRunner(
     const runCwd = isolated ? workspacePath(cfg, w, cwd) : cwd;
     if (!isolated) excludeStatusFile(cwd);
 
-    const cliArgv = buildArgv(agent.tool, prompt, {
+    const cliArgv = buildArgv(tool, prompt, {
       seat,
       timeoutMin,
       allow,
       outFile,
       images: options?.images,
-      model: agentModel(cfg, settings, agentId),
-      effort: agentEffort(cfg, settings, agentId),
+      model: ownTool ? agentModel(cfg, settings, agentId) : undefined,
+      effort: ownTool ? agentEffort(cfg, settings, agentId) : undefined,
     });
     // Boss (decision 0003): agent chỉ cầm mã tạm của lượt; cổng trung gian 127.0.0.1 thay bằng key Z.ai thật.
     // shortcut: mã tạm nằm trong argv (ps thấy được khi lượt khác chạy song song) – chỉ dùng được qua cổng nội bộ trong lượt này.
@@ -519,7 +528,7 @@ export function makeRunner(
         env: process.env,
         signal: options?.signal ?? defaultSignal,
         onKill: isolated ? () => killAll(cfg, w) : undefined,
-        idleTimeoutMs: (cfg.turn.idle_minutes?.[agent.tool] ?? 0) * 60 * 1000,
+        idleTimeoutMs: (cfg.turn.idle_minutes?.[tool] ?? 0) * 60 * 1000,
         ...(agyProgress ? {
           progress: {
             idleMs: agyProgress.idle_minutes * 60 * 1000,

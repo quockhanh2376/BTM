@@ -2,7 +2,7 @@
 import { mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
-import type { Seat } from '../config.ts';
+import type { Seat, Tool } from '../config.ts';
 import type { EnergyReading, EnergyWindow } from '../energy/quota.ts';
 import type { LoginHealth, LoginState } from '../energy/login.ts';
 import type { Ticket, TicketState, TicketType, TicketSize } from '../ticket/ticket.ts';
@@ -34,6 +34,8 @@ export interface AccountRow {
   active: boolean;
   ord: number;
   created_at: string;
+  /** Công cụ của tài khoản này; null = công cụ của Worker (tài khoản cũ). */
+  tool: Tool | null;
 }
 
 export interface QuestionRow {
@@ -179,7 +181,7 @@ export interface Store {
   ensureDefaultAccounts(agents: string[]): void;
   listAccounts(agent?: string): AccountRow[];
   getAccount(agent: string, slug: string): AccountRow | null;
-  addAccount(agent: string, slug: string, opts: { email?: string | null; label?: AccountLabel; active: boolean }): AccountRow;
+  addAccount(agent: string, slug: string, opts: { email?: string | null; label?: AccountLabel; active: boolean; tool?: Tool | null }): AccountRow;
   updateAccount(agent: string, slug: string, patch: Partial<Pick<AccountRow, 'email' | 'label' | 'active'>>): void;
   moveAccount(agent: string, slug: string, dir: 'up' | 'down'): void;
   /** Plan 6 Task 3: ghi chú dòng của anh trên diff ticket. */

@@ -9,7 +9,8 @@ import { loadTickets, checkReady, type Ticket, type TicketState, TicketError } f
 import { readProjectKey } from '../ticket/goal.ts';
 import { runGate } from '../gate/gate.ts';
 import { detectUsageLimit, usageLimitedKey } from '../agents/usage-limit.ts';
-import { accountLastKey, isUsable, pickAccount, slugOfKey, soonestReset, usableAccounts } from '../agents/accounts.ts';
+import { accountLastKey, canRunOnSeat, isUsable, pickAccount, slugOfKey, soonestReset, toolOfAccountKey, usableAccounts } from '../agents/accounts.ts';
+import { READ_ONLY_SEATS } from '../runner/argv.ts';
 import { notify as sendNotify, type NotifyEvent } from '../notify/notify.ts';
 import { formatHHmm } from '../energy/monitor.ts';
 import { git, commitAll, headSha } from '../git.ts';
@@ -365,7 +366,8 @@ export function withUsageLimit(d: SessionDeps): SessionDeps {
     runner: async (seat, agentId, prompt, cwd, logFile, options) => {
       const pre = chosen.get(agentId);
       chosen.delete(agentId);
-      const key = pre && isUsable(d.store, pre, new Date()) ? pre : pickAccount(d.cfg, d.store, agentId)?.key;
+      const preTool = pre ? toolOfAccountKey(d.cfg, d.store, pre) : null;
+      const key = pre && isUsable(d.store, pre, new Date()) && (!preTool || canRunOnSeat(preTool, seat, d.cfg.agents[agentId]!.tool)) ? pre : pickAccount(d.cfg, d.store, agentId, new Date(), { readOnly: READ_ONLY_SEATS.has(seat) })?.key;
       if (!key) throw new Error(soonestReset(d.store, agentId) ? `usage_limit_hit:${agentId}` : `no_usable_account:${agentId}`);
       const prev = d.store.getSetting(accountLastKey(agentId));
       if (prev && prev !== key) {
@@ -373,7 +375,7 @@ export function withUsageLimit(d: SessionDeps): SessionDeps {
       }
       d.store.setSetting(accountLastKey(agentId), key);
       const out = await run(seat, agentId, prompt, cwd, logFile, { ...options, account: key });
-      const tool = d.cfg.agents[agentId]?.tool;
+      const tool = toolOfAccountKey(d.cfg, d.store, key) ?? d.cfg.agents[agentId]?.tool;
       const hit = tool ? detectUsageLimit(tool, out, new Date()) : null;
       if (hit) {
         d.store.setSetting(usageLimitedKey(key), hit.resetsAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString());

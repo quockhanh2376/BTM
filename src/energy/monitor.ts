@@ -10,7 +10,7 @@ import { listModels, ZAI_MODELS } from '../agents/models.ts';
 import { mbStatus, readMbKey } from '../mb/vault.ts';
 import { fetchZaiQuota } from '../mb/quota.ts';
 import { usageLimitedKey } from '../agents/usage-limit.ts';
-import { activeAccountKeys, agentOfAccount } from '../agents/accounts.ts';
+import { activeAccountKeys, agentOfAccount, toolOfAccountKey } from '../agents/accounts.ts';
 import type { NotifyEvent } from '../notify/notify.ts';
 
 export interface MonitorDeps {
@@ -120,7 +120,8 @@ export function createMonitor(d: MonitorDeps): {
         checkedAt.set(agent, d.now().getTime());
         return;
       }
-      const energyReading = await d.readEnergy(agent, agentCfg.tool, {
+      const tool = toolOfAccountKey(d.cfg, d.store, agent) ?? agentCfg.tool;
+      const energyReading = await d.readEnergy(agent, tool, {
         run: runnerFor(agent),
         codexHome: codexHomeFor(agent),
         now: d.now,
@@ -139,7 +140,7 @@ export function createMonitor(d: MonitorDeps): {
       const agyQuotaOk = energyReading.status === 'fresh';
       const agyQuotaOutput = energyReading.note;
 
-      const loginHealth = await d.checkLogin(agent, agentCfg.tool, {
+      const loginHealth = await d.checkLogin(agent, tool, {
         run: runnerFor(agent),
         env,
         cfg: d.cfg,
@@ -154,7 +155,8 @@ export function createMonitor(d: MonitorDeps): {
       }
 
       // Danh sách model cho ô chọn trên dashboard: đọc dưới user của agent, tối đa 6 giờ/lần, lỗi thì giữ bản cũ.
-      if (loginHealth.state === 'ok' || loginHealth.state === 'expiring') {
+      // Danh sách model là của công cụ chính của Worker; tài khoản công cụ khác không ghi đè.
+      if ((loginHealth.state === 'ok' || loginHealth.state === 'expiring') && tool === agentCfg.tool) {
         const cached = readAgentModels(d.store, owner!); // Plan 7: danh sách model theo Worker, không theo tài khoản
         if (!cached || d.now().getTime() - cached.at > MODELS_TTL_MS) {
           try {

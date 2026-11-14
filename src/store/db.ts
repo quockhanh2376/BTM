@@ -1,7 +1,7 @@
 import { mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
-import type { Seat } from '../config.ts';
+import type { Seat, Tool } from '../config.ts';
 import type { EnergyReading, EnergyWindow } from '../energy/quota.ts';
 import type { LoginHealth, LoginState } from '../energy/login.ts';
 import type { Ticket, TicketState, TicketType, TicketSize } from '../ticket/ticket.ts';
@@ -24,6 +24,7 @@ function toAccount(r: any): AccountRow {
     active: Number(r.active) === 1,
     ord: Number(r.ord),
     created_at: String(r.created_at),
+    tool: r.tool === null || r.tool === undefined ? null : (String(r.tool) as Tool),
   };
 }
 
@@ -753,8 +754,8 @@ export function openStore(file: string): Store {
 
     addAccount(agent, slug, opts): AccountRow {
       const max = db.prepare('SELECT MAX(ord) AS m FROM accounts WHERE agent = ?').get(agent) as { m: number | null };
-      db.prepare('INSERT INTO accounts (agent, slug, email, label, active, ord, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(agent, slug, opts.email ?? null, opts.label ?? 'none', opts.active ? 1 : 0, (max.m ?? -1) + 1, new Date().toISOString());
+      db.prepare('INSERT INTO accounts (agent, slug, email, label, active, ord, created_at, tool) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(agent, slug, opts.email ?? null, opts.label ?? 'none', opts.active ? 1 : 0, (max.m ?? -1) + 1, new Date().toISOString(), opts.tool ?? null);
       return toAccount(db.prepare('SELECT * FROM accounts WHERE agent = ? AND slug = ?').get(agent, slug));
     },
 

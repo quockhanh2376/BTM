@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { toolOfAccountKey } from './agents/accounts.ts';
 import { startMbProxy } from './mb/proxy.ts';
 import { parseArgs } from 'node:util';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -83,7 +84,7 @@ export async function serve(
   const store = openStore(dbPath);
   store.ensureDefaultAccounts(Object.keys(cfg.agents)); // Plan 7: user hiện có = tài khoản default của Worker
 
-  const runner = effectiveDeps?.runner ?? makeRunner(cfg, undefined, undefined, undefined, undefined, store);
+  const runner = effectiveDeps?.runner ?? makeRunner(cfg, undefined, undefined, undefined, undefined, store, (key) => toolOfAccountKey(cfg, store, key));
   const hostFactory = effectiveDeps?.createHost ?? createHost;
   const serverFactory = effectiveDeps?.createServer ?? createServer;
 
@@ -589,7 +590,7 @@ Options:
             }
 
             activeSessionId = latestAwaiting.id;
-            const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal, undefined, undefined, undefined, store);
+            const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal, undefined, undefined, undefined, store, (key) => toolOfAccountKey(cfg, store, key));
             const resumeFn = effectiveDeps?.resumeSession ?? resumeSession;
 
             const outcome = await resumeFn(
@@ -626,7 +627,7 @@ Options:
             return exitCode;
           }
 
-          const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal, undefined, undefined, undefined, store);
+          const runner = effectiveDeps?.runner ?? makeRunner(cfg, abortController.signal, undefined, undefined, undefined, store, (key) => toolOfAccountKey(cfg, store, key));
           const sessionFn = effectiveDeps?.runSession ?? runSession;
 
           const outcome = await sessionFn(

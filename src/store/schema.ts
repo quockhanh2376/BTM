@@ -158,6 +158,7 @@ export function migrate(db: Database.Database): void {
       active INTEGER NOT NULL,
       ord INTEGER NOT NULL,
       created_at TEXT NOT NULL,
+      tool TEXT,
       PRIMARY KEY (agent, slug)
     );
 
@@ -195,6 +196,12 @@ export function migrate(db: Database.Database): void {
   const questionCols = db.pragma('table_info(questions)') as Array<{ name: string }>;
   if (!questionCols.some((c) => c.name.toLowerCase() === 'image')) {
     db.exec('ALTER TABLE questions ADD COLUMN image TEXT');
+  }
+
+  // Anh Zon 2026-11-14: một Worker dùng nhiều công cụ → công cụ gắn theo tài khoản (null = công cụ của Worker).
+  const accountCols = db.pragma('table_info(accounts)') as Array<{ name: string }>;
+  if (!accountCols.some((c) => c.name.toLowerCase() === 'tool')) {
+    db.exec('ALTER TABLE accounts ADD COLUMN tool TEXT');
   }
 
   const goalCols = db.pragma('table_info(goals)') as Array<{ name: string }>;
