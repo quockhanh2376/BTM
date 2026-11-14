@@ -8,8 +8,8 @@
     :root {
       --bg: #F5F7FB;
       --card-bg: #FFFFFF;
-      --text: #0F172A;
-      --text-muted: #3F4A5C;
+      --text: #060B17;
+      --text-muted: #2B3445;
       --accent: #2563EB;
       --running-bg: #DCE6FB;
       --running-text: #1E3F99;
@@ -21,7 +21,7 @@
       --border: #D8DEE8;
       --border-subtle: #EEF0F4;
       --badge-bg: #EEF2F7;
-      --badge-text: #334155;
+      --badge-text: #1E293B;
       --live-bg: #DCFCE7;
       --inuse-bg: #DBEAFE;
       --inuse-text: #1E40AF;
@@ -1458,6 +1458,7 @@
     .inbox-section .inbox-toggle { font-size: 18px; font-weight: 700; }
     .inbox-section .inbox-count { font-size: 13px; font-weight: 500; color: var(--text-muted); }
     .log-list.log-full { max-height: none; }
+    .log-list.log-only-err .log-item:not(.log-err) { display: none; }
     .log-panel .log-item { align-items: center; padding: 8px 10px; background-color: var(--badge-bg); border: none; font-size: 13px; }
     .log-panel .log-item:nth-child(even) { background-color: transparent; }
     .log-panel .log-time { padding: 2px 8px; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; }
@@ -1473,6 +1474,37 @@
     }
     .pipeline-bar .pipeline-step.stage-active { background-color: #2563EB; border-color: #2563EB; color: #FFFFFF; }
     .goal-group-title { font-size: 15px; line-height: 1.5; }
+    /* Mẫu anh Zon (2026-11-14, lần 2): nút đầu khối có viền, chấm xanh trước số note, icon từng chặng, cột Tags, lọc log */
+    .sec-head .btn.btn-tool { min-height: 36px; padding: 6px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); font-weight: 600; }
+    .sec-head .btn.btn-tool.sec-primary { background: #2563EB; border-color: #2563EB; color: #FFFFFF; }
+    .sec-head .btn.btn-tool.btn-accent-outline { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+    .sec-tools .inbox-actions .btn { min-height: 36px; padding: 6px 14px; border-radius: 10px; font-weight: 600; }
+    .inbox-section .inbox-count { display: inline-flex; align-items: center; gap: 6px; }
+    .inbox-section .inbox-count:not(:empty)::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #22C55E; }
+    .notes-list .note-report { font-family: var(--font-mono); font-size: 13px; }
+    .goals-container .pipeline-bar { padding: 8px 10px; border-radius: 12px; gap: 4px; flex-wrap: wrap; row-gap: 6px; overflow: visible; }
+    .pipeline-bar .pipeline-step { padding: 6px 12px; font-size: 13px; }
+    .sec-head .btn.btn-tool, .sec-tools .inbox-actions .btn { border-color: color-mix(in srgb, var(--text-muted) 45%, var(--border)); }
+    .pipeline-bar .pipeline-step:not(.stage-done)::before { content: ''; width: 16px; height: 16px; flex-shrink: 0; background-color: currentColor; }
+    .pipeline-bar .pipeline-step[data-stage="intake"]:not(.stage-done)::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z'/%3E%3C/svg%3E") center / contain no-repeat; }
+    .pipeline-bar .pipeline-step[data-stage="plan"]:not(.stage-done)::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6h11M9 12h11M9 18h11'/%3E%3Cpath d='M4 6h.01M4 12h.01M4 18h.01'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6h11M9 12h11M9 18h11'/%3E%3Cpath d='M4 6h.01M4 12h.01M4 18h.01'/%3E%3C/svg%3E") center / contain no-repeat; }
+    .pipeline-bar .pipeline-step[data-stage="build"]:not(.stage-done)::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m16 18 6-6-6-6M8 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m16 18 6-6-6-6M8 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat; }
+    .pipeline-bar .pipeline-step[data-stage="verify"]:not(.stage-done)::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") center / contain no-repeat; }
+    .pipeline-bar .pipeline-step[data-stage="audit"]:not(.stage-done)::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z'/%3E%3C/svg%3E") center / contain no-repeat; }
+    .pipeline-bar .pipeline-step[data-stage="release"]:not(.stage-done)::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2'/%3E%3Cpath d='M9 15l-3-3c1-4 4-8 9-9 2 0 4 0 6 0 0 2 0 4 0 6-1 5-5 8-9 9z'/%3E%3Ccircle cx='15' cy='9' r='1.5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2'/%3E%3Cpath d='M9 15l-3-3c1-4 4-8 9-9 2 0 4 0 6 0 0 2 0 4 0 6-1 5-5 8-9 9z'/%3E%3Ccircle cx='15' cy='9' r='1.5'/%3E%3C/svg%3E") center / contain no-repeat; }
+    .pipeline-bar .pipeline-arrow { font-size: 13px; color: var(--text-muted); padding: 0; }
+    .task-table .col-tags { white-space: nowrap; }
+    .task-table .col-tags .btn { margin: 0 6px 0 0; }
+    .task-table .col-tags .ticket-meta { margin: 0; }
+    .task-table td.col-id { color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+    .task-table th { color: var(--text); font-weight: 700; }
+    .task-table td { color: var(--text); }
+    .log-panel .log-item { border-bottom: 1px solid var(--border-subtle); border-radius: 8px; }
+    .log-panel .log-time { min-width: 64px; text-align: center; }
+    .log-panel .log-text { color: var(--text); }
+    .log-panel .log-item.log-err .log-text { color: var(--error-text); font-weight: 600; }
+    .log-tools { display: flex; gap: 8px; align-items: center; }
+    .log-filter { min-height: 36px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; }
     /* Tab trạng thái: nền nhạt theo màu trạng thái như mẫu; tab đang chọn giữ nền đặc */
     .task-tab[data-state="pending"]:not([aria-selected="true"]) { background: color-mix(in srgb, var(--tab-pending) 10%, var(--card-bg)); color: var(--text); }
     .task-tab[data-state="in_dev"]:not([aria-selected="true"]) { background: color-mix(in srgb, var(--tab-in-dev) 10%, var(--card-bg)); color: var(--text); }
@@ -2811,7 +2843,10 @@
       <section class="card log-panel" id="logs-section">
         <div class="sec-head">
           <h2 class="section-title sec-title"><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h6"/></svg></span><span data-i18n="log.title">Log</span></h2>
+          <div class="log-tools">
+          <select id="log-filter" class="log-filter" aria-label="Log filter"><option value="all" data-i18n="log.filterAll">Filter: All</option><option value="err" data-i18n="log.filterErr">Errors only</option></select>
           <button id="log-full" class="btn btn-secondary btn-sm btn-tool" type="button" aria-controls="log-list" aria-expanded="false"><span data-i18n="log.full">View full logs</span> →</button>
+          </div>
         </div>
         <div class="log-list" id="log-list">
           <div class="empty-placeholder" data-i18n="log.empty">No log entries</div>
@@ -2926,6 +2961,9 @@
           'energy.unavailable': 'Energy: unavailable',
           'energy.low': 'Low',
           'goals.title': 'Goals',
+          'goal.col.tags': 'Tags',
+          'log.filterAll': 'Filter: All',
+          'log.filterErr': 'Errors only',
           'folders.tab': 'Folder',
           'folders.refresh': 'Refresh',
           'folders.loading': 'Loading folders…',
@@ -4394,6 +4432,11 @@
           colGoal.className = 'col-goal';
           colgroup.appendChild(colGoal);
 
+          var colTags = document.createElement('col');
+          colTags.className = 'col-tags';
+          colTags.style.width = '170px';
+          colgroup.appendChild(colTags);
+
           var colFixes = document.createElement('col');
           colFixes.className = 'col-fixes';
           colFixes.style.width = '80px';
@@ -4420,6 +4463,12 @@
           thGoal.className = 'col-goal';
           thGoal.textContent = tx('goal.col.title');
           trHead.appendChild(thGoal);
+
+          var thTags = document.createElement('th');
+          thTags.scope = 'col';
+          thTags.className = 'col-tags';
+          thTags.textContent = tx('goal.col.tags');
+          trHead.appendChild(thTags);
 
           var thFixes = document.createElement('th');
           thFixes.scope = 'col';
@@ -4452,7 +4501,7 @@
             if (filtered.length === 0) {
               var trEmpty = document.createElement('tr');
               var tdEmpty = document.createElement('td');
-              tdEmpty.colSpan = 4;
+              tdEmpty.colSpan = 5;
               tdEmpty.className = 'empty-placeholder';
               tdEmpty.textContent = tx('goal.noTickets');
               trEmpty.appendChild(tdEmpty);
@@ -4478,10 +4527,12 @@
               // Format: #<number>/<of> · <tiêu đề>
               titleSpan.textContent = '#' + t.number + '/' + t.of + ' · ' + (t.title || '');
               tdTitle.appendChild(titleSpan);
+              tr.appendChild(tdTitle);
+              var tdTags = document.createElement('td');
+              tdTags.className = 'col-tags';
               var diffBtn = document.createElement('button');
               diffBtn.type = 'button';
               diffBtn.className = 'btn btn-secondary btn-sm';
-              diffBtn.style.marginLeft = '8px';
               diffBtn.textContent = tx('diff.open');
               diffBtn.setAttribute('aria-label', tx('diff.openFor', { ticket: t.id }));
               (function (ticketId) {
@@ -4490,12 +4541,11 @@
                   openDiff(ticketId);
                 });
               })(t.id);
-              tdTitle.appendChild(diffBtn);
+              tdTags.appendChild(diffBtn);
 
               if (t.type || t.size) {
                 var meta = document.createElement('span');
                 meta.className = 'ticket-meta';
-                meta.style.marginLeft = '8px';
                 if (t.type) {
                   var typeBadge = document.createElement('span');
                   typeBadge.className = 'badge ticket-badge';
@@ -4508,9 +4558,9 @@
                   sizeBadge.textContent = t.size;
                   meta.appendChild(sizeBadge);
                 }
-                tdTitle.appendChild(meta);
+                tdTags.appendChild(meta);
               }
-              tr.appendChild(tdTitle);
+              tr.appendChild(tdTags);
 
               var tdFixes = document.createElement('td');
               tdFixes.className = 'col-fixes';
@@ -4530,7 +4580,7 @@
               trHistory.style.display = 'none';
 
               var tdHistory = document.createElement('td');
-              tdHistory.colSpan = 4;
+              tdHistory.colSpan = 5;
               tdHistory.style.padding = '0';
 
               var historyPanel = document.createElement('div');
@@ -5412,6 +5462,15 @@
         document.getElementById('folders-refresh').addEventListener('click', loadFolders);
       })();
 
+      // Lọc log (mẫu anh Zon): chỉ ẩn/hiện dòng đã có, không đổi dữ liệu.
+      function isLogError(t) { return /^(error|timeout|rejected|command_denied|fail)/i.test(String(t || '')); }
+      function logFilterValue() { var f = document.getElementById('log-filter'); return f ? f.value : 'all'; }
+      (function () {
+        var f = document.getElementById('log-filter');
+        var ll = document.getElementById('log-list');
+        if (f && ll) f.addEventListener('change', function () { ll.classList.toggle('log-only-err', f.value === 'err'); });
+      })();
+
       function renderSnapshot(state) {
         agentNames = (state && state.settings && state.settings.names) || {};
         agentAvatars = (state && state.settings && state.settings.avatars) || {};
@@ -5477,6 +5536,7 @@
 
         // Logs
         if (logList) {
+          logList.classList.toggle('log-only-err', logFilterValue() === 'err');
           clearChildren(logList);
           var logs = Array.isArray(state.log) ? state.log : [];
           if (logs.length === 0) {
@@ -5504,6 +5564,7 @@
               text.className = 'log-text';
               text.textContent = item.text || '';
               row.appendChild(text);
+              if (isLogError(item.text)) row.classList.add('log-err');
 
               logList.appendChild(row);
             });
