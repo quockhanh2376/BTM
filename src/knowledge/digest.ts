@@ -18,12 +18,22 @@ const vn = (iso: string | null | undefined) =>
 const dur = (ms: number) => { const m = Math.round(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m}m`; };
 const one = (s: string | null | undefined, n: number) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
-/** Đọc báo cáo audit của goal (nhánh goal, rồi main). */
-function auditReport(project: string, branch: string, main: string, n: number): string {
+/** Mọi lần audit của goal (file báo cáo bị ghi đè mỗi lần → đọc từng phiên bản trong lịch sử git, cũ trước). */
+function auditHistory(project: string, branch: string, main: string, n: number): string[] {
+  const file = `team/reports/G${n}-audit.md`;
   for (const ref of [`refs/heads/${branch}`, `refs/heads/${main}`]) {
-    try { return git(project, 'show', `${ref}:team/reports/G${n}-audit.md`); } catch { /* chưa có */ }
+    let shas: string[] = [];
+    try { shas = git(project, 'log', '--format=%H', '--reverse', ref, '--', file).split(/\s+/).filter(Boolean); } catch { continue; }
+    if (!shas.length) continue;
+    return shas.slice(-4).map((sha, i) => {
+      let body = '';
+      try { body = git(project, 'show', `${sha}:${file}`); } catch { return ''; }
+      const verdict = /Verdict:\s*(\w+)/i.exec(body)?.[1] ?? '?';
+      const findings = body.split(/\r?\n/).filter((l) => /^\s*-\s*\[/.test(l)).map((l) => one(l.replace(/^\s*-\s*/, ''), 260));
+      return `- Lần ${i + 1}: ${verdict}${findings.length ? ` — ${findings.join(' ; ')}` : ''}`;
+    }).filter(Boolean);
   }
-  return '';
+  return [];
 }
 
 export function buildGoalDigest(store: Store, cfg: Config, project: string, n: number): string | null {
@@ -40,7 +50,7 @@ export function buildGoalDigest(store: Store, cfg: Config, project: string, n: n
   ];
   for (const tk of tickets) {
     const back = store.ticketHistory(project, tk.id).filter((h) => h.to_state === 'returned' || h.to_state === 'failed' || h.to_state === 'blocked')
-      .map((h) => one(h.reason, 60)).slice(-3);
+      .map((h) => one(h.reason, 60)).filter(Boolean).slice(-3);
     lines.push(`- ${tk.id} #${tk.number}/${tk.of} ${one(tk.title, 70)} → ${tk.state}, sửa ${tk.fix_rounds} vòng${back.length ? `; trả về vì: ${back.join(' | ')}` : ''}`);
   }
   const ids = new Set(tickets.map((x) => x.id));
@@ -49,11 +59,8 @@ export function buildGoalDigest(store: Store, cfg: Config, project: string, n: n
     lines.push('', '## Hỏi – đáp với anh Zon');
     for (const q of qa.slice(-8)) lines.push(`- ${q.ticket} hỏi: ${one(q.text, 110)} → đáp: ${one(q.answer, 140)}`);
   }
-  const audit = auditReport(project, g.branch, cfg.git?.protected_branch || 'main', n);
-  if (audit) {
-    const body = audit.split(/\r?\n/).slice(1).filter((l) => l.trim()).join(' ');
-    lines.push('', '## Audit bảo mật', one(body, 600));
-  }
+  const audits = auditHistory(project, g.branch, cfg.git?.protected_branch || 'main', n);
+  if (audits.length) lines.push('', '## Audit bảo mật', ...audits);
   const rel = readRelease(store, project, n);
   if (rel) lines.push('', `## Release: ${rel.ok ? 'ok' : `lỗi ${rel.error ?? ''}`} · ${rel.tag} · ${rel.url} · ${vn(rel.at)}`);
   lines.push('', `Báo cáo chi tiết: team/reports/<ID>-dev.md, <ID>-qc.json, G${n}-audit.md (nhánh ${g.branch}).`);

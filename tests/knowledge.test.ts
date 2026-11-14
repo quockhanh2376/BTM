@@ -58,3 +58,23 @@ describe('Kho kiến thức: nhật ký goal nén (2026-11-14)', () => {
     expect(askPrompt('audit', 'q')).not.toContain('Kho kiến thức team');
   });
 });
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+describe('Kho kiến thức: lịch sử audit', () => {
+  it('giữ phát hiện của lần audit fail dù file báo cáo đã bị ghi đè bởi lần pass', () => {
+    const t = setup();
+    const commit = (body: string, msg: string) => {
+      mkdirSync(join(t.repo, 'team', 'reports'), { recursive: true });
+      writeFileSync(join(t.repo, 'team', 'reports', 'G1-audit.md'), body);
+      execFileSync('git', ['add', '-A'], { cwd: t.repo });
+      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@x', 'commit', '-q', '-m', msg], { cwd: t.repo });
+    };
+    commit('G1 · x · bruno-Audit\nVerdict: fail\n\n## Findings\n- [MEDIUM] GT-0001: server.js:45 null byte DoS\n', 'G1: audit fail');
+    commit('G1 · x · bruno-Audit\nVerdict: pass\n\n## Findings\nOK\n', 'G1: audit pass');
+    const d = buildGoalDigest(t.store, t.cfg, t.repo, 1)!;
+    expect(d).toContain('- Lần 1: fail — [MEDIUM] GT-0001: server.js:45 null byte DoS');
+    expect(d).toContain('- Lần 2: pass');
+    expect(d).not.toMatch(/trả về vì:\s*\|/);
+  });
+});
