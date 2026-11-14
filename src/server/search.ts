@@ -7,8 +7,9 @@ import { buildSnapshot } from './snapshot.ts';
 import { readAnswers } from './ask-lane.ts';
 import { buildGoalDigest } from '../knowledge/digest.ts';
 import { projectLessonsFile, readLessons, sharedLessonsFile } from '../knowledge/lessons.ts';
+import { buildProjectMap } from '../knowledge/map.ts';
 
-export type SearchKind = 'goal' | 'ticket' | 'qa' | 'history' | 'log' | 'lesson';
+export type SearchKind = 'goal' | 'ticket' | 'qa' | 'history' | 'log' | 'lesson' | 'map';
 export interface SearchHit { kind: SearchKind; title: string; text: string; at?: string }
 
 export const SEARCH_MAX_HITS = 30;
@@ -86,6 +87,10 @@ export function searchBtm(store: Store, cfg: Config, query: string): SearchHit[]
   const lessonLines = new Set([projectLessonsFile(cfg.host.data_dir, project) ?? '', sharedLessonsFile(cfg.host.data_dir)]
     .flatMap((f) => (f ? readLessons(f) : '').split(/\r?\n/).filter((l) => l.startsWith('- '))));
   for (const l of lessonLines) items.push({ kind: 'lesson', title: 'Lesson', text: l.slice(2) });
+  // Bản đồ project: mỗi file một mục (tìm "logic.js", tên hàm, ticket đã sửa).
+  for (const l of buildProjectMap(store, project).split(/\r?\n/)) {
+    if (l.startsWith('- ') && !/^- G\d+ /.test(l)) items.push({ kind: 'map', title: 'Map', text: l.slice(2) });
+  }
   // shortcut: chỉ log của phiên gần nhất (50 dòng như Snapshot); lỗi phiên cũ đã nằm trong nhật ký goal.
   for (const l of snap.log) items.push({ kind: 'log', title: l.who, text: l.text, at: l.at });
 
