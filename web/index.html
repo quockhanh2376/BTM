@@ -5595,6 +5595,7 @@
 
       // ===== Bong bóng thoại (anh Zon 2026-11-14) – chỉ giao diện, không đụng backend =====
       // Spec: docs/superpowers/specs/2026-11-14-agent-chat-bubbles-design.md
+      var CHAT_SHOW_MS = 7000; // anh Zon: hiện lâu hơn 5 s để kịp đọc
       var CHAT_LINES = {
         en: {
           assign: ['{to}, {ticket} is all yours!', '{to}, here comes {ticket}. Have fun!', 'New ticket for you, {to}: {ticket}.', '{to}, can you take {ticket}?', '{ticket} is ready to build, {to}!'],
@@ -5781,8 +5782,8 @@
         document.body.appendChild(el);
         chatPlace(el, anchor);
         if (waiting) { chatWaiting[target] = el; return; }
-        chatTimers.push(setTimeout(function () { el.classList.add('chat-fade'); }, 4000));
-        chatTimers.push(setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 4600));
+        chatTimers.push(setTimeout(function () { el.classList.add('chat-fade'); }, CHAT_SHOW_MS));
+        chatTimers.push(setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, CHAT_SHOW_MS + 600));
       }
       // Một cuộc thoại = các bước {target, text|waiting, delay}; các cuộc xếp hàng, không chồng nhau.
       function chatRun(steps) {
@@ -5797,7 +5798,7 @@
             if (st.then) st.then();
           }, start - chatNow() + (st.delay || 0)));
         });
-        chatBusyUntil = start + last + 4600;
+        chatBusyUntil = start + last + CHAT_SHOW_MS + 600;
       }
       function chatPlay(events, snap) {
         if (chatMode === 'off') return;
@@ -5833,7 +5834,7 @@
             vars.text = chatTrim(e.text, 70);
             chatRun([
               { target: e.seat, text: pickChatLine('question', vars, L), delay: 0, allowRunning: true },
-              { target: e.seat, waiting: true, delay: 4700 }
+              { target: e.seat, waiting: true, delay: CHAT_SHOW_MS + 700 }
             ]);
           } else if (e.type === 'answered') {
             vars.to = chatName(snap, e.seat);
@@ -5869,7 +5870,7 @@
         var t = 1500;
         if (giver && idle.indexOf(giver) >= 0 && giver !== asker) {
           steps.push({ target: giver, text: pickChatLine('checkGiver', vars, L), delay: t });
-          t += 2000;
+          t += 2500;
         }
         if (checker && checker !== asker) {
           steps.push({ target: checker, text: pickChatLine('checkFinn', vars, L), delay: t });
