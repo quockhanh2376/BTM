@@ -13,7 +13,7 @@ import { renderMeetingHtml, renderMeetingMd } from '../../meeting/core.ts';
 import { agentNameKey } from '../../agents/names.ts';
 import { projectSignals, readSkills, skillText } from '../../skills/lane.ts';
 import { fitsProject } from '../../skills/core.ts';
-import { readStandards, readUiDefaults, StandardsSchema, UiDefaultsSchema, STANDARDS_KEY, UI_DEFAULTS_KEY, TIMEZONES } from '../../standards.ts';
+import { readChatSettings, readStandards, readUiDefaults, ChatSettingsSchema, StandardsSchema, UiDefaultsSchema, CHAT_KEY, STANDARDS_KEY, UI_DEFAULTS_KEY, TIMEZONES } from '../../standards.ts';
 import { readFileSync } from 'node:fs';
 
 export async function handleGoalsGet(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
@@ -73,7 +73,7 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
 
   // Settings (2026-11-14): chuẩn cho mọi project + mặc định dashboard.
   if (method === 'GET' && pathname === '/api/standards') {
-    sendJson(res, 200, { standards: readStandards(o.store), ui: readUiDefaults(o.store), timezones: TIMEZONES });
+    sendJson(res, 200, { standards: readStandards(o.store), ui: readUiDefaults(o.store), chat: readChatSettings(o.store), timezones: TIMEZONES });
     return true;
   }
 
@@ -144,14 +144,15 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
 export async function handleGoalsPost(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
   // Settings (2026-11-14): lưu chuẩn cho mọi project + mặc định dashboard (cả hai, hoặc một trong hai).
   if (pathname === '/api/standards') {
-    const parsed = z.object({ standards: StandardsSchema.optional(), ui: UiDefaultsSchema.optional() }).safeParse(body);
-    if (!parsed.success || (!parsed.data.standards && !parsed.data.ui)) {
+    const parsed = z.object({ standards: StandardsSchema.optional(), ui: UiDefaultsSchema.optional(), chat: ChatSettingsSchema.optional() }).safeParse(body);
+    if (!parsed.success || (!parsed.data.standards && !parsed.data.ui && !parsed.data.chat)) {
       sendJson(res, 400, { error: 'Invalid settings' });
       return true;
     }
     if (parsed.data.standards) o.store.setSetting(STANDARDS_KEY, JSON.stringify(parsed.data.standards));
     if (parsed.data.ui) o.store.setSetting(UI_DEFAULTS_KEY, JSON.stringify(parsed.data.ui));
-    sendJson(res, 200, { ok: true, standards: readStandards(o.store), ui: readUiDefaults(o.store) });
+    if (parsed.data.chat) o.store.setSetting(CHAT_KEY, JSON.stringify(parsed.data.chat));
+    sendJson(res, 200, { ok: true, standards: readStandards(o.store), ui: readUiDefaults(o.store), chat: readChatSettings(o.store) });
     return true;
   }
 

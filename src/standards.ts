@@ -31,6 +31,20 @@ export const StandardsSchema = z.object({
 });
 export type Standards = z.infer<typeof StandardsSchema>;
 
+// Chat lúc rảnh (anh Zon 2026-11-14): tối đa mấy agent cùng nói một lượt, khoảng nghỉ ngẫu nhiên giữa hai lượt.
+export const CHAT_KEY = 'chat_settings';
+const range = (min: number, max: number) => z.tuple([z.number().min(min).max(max), z.number().min(min).max(max)]).transform(([a, b]) => [Math.min(a, b), Math.max(a, b)] as [number, number]);
+export const ChatSettingsSchema = z.object({
+  /** Tối đa số agent cùng nói trong một lượt tán gẫu (1–3). */
+  speakers: z.number().int().min(1).max(3),
+  /** Vui vẻ: nghỉ ngẫu nhiên giữa hai lượt, tính bằng giây (10–600). */
+  livelySec: range(10, 600),
+  /** Bình thường: nghỉ ngẫu nhiên giữa hai lượt, tính bằng phút (1–60). */
+  normalMin: range(1, 60),
+});
+export type ChatSettings = z.infer<typeof ChatSettingsSchema>;
+export const DEFAULT_CHAT: ChatSettings = { speakers: 3, livelySec: [30, 60], normalMin: [5, 8] };
+
 export const UiDefaultsSchema = z.object({ lang: z.enum(['en', 'vi']), theme: z.enum(['light', 'dark', 'system']) });
 export type UiDefaults = z.infer<typeof UiDefaultsSchema>;
 
@@ -47,6 +61,7 @@ function read<T>(store: Pick<Store, 'getSetting'>, key: string, schema: z.ZodTyp
   }
 }
 export const readStandards = (store: Pick<Store, 'getSetting'>) => read(store, STANDARDS_KEY, StandardsSchema, DEFAULT_STANDARDS);
+export const readChatSettings = (store: Pick<Store, 'getSetting'>) => read(store, CHAT_KEY, ChatSettingsSchema as unknown as z.ZodType<ChatSettings>, DEFAULT_CHAT);
 export const readUiDefaults = (store: Pick<Store, 'getSetting'>) => read(store, UI_DEFAULTS_KEY, UiDefaultsSchema, DEFAULT_UI);
 
 /** Các chuẩn đang bật, mỗi chuẩn một dòng (đưa vào prompt). */

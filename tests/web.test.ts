@@ -1757,7 +1757,7 @@ describe('Chat bubbles (2026-11-14)', () => {
   });
 
   it('người chờ nói chuyện về project (2–4 phút, mỗi agent một tiếng nói)', () => {
-    expect(html).toContain('var chatNextChit = chatNow() + minutesIn(chatMoodCfg(moodNow()).chit);');
+    expect(html).toContain('var chatNextChit = chatNow() + minutesIn(chatMoodCfg(moodNow(), chatOpt).chit);');
     expect(html).toContain("pickChatLine('projectChit', pv, chatMode)");
     expect(html).toContain('seenAgent[s.agent] = true;');
   });
@@ -2152,5 +2152,28 @@ describe('Find skills trên dashboard (2026-11-14)', () => {
     expect(html).toContain("action: 'search-import'");
     expect(html).toContain('id="skills-hints"');
     expect(html).toContain("if (/^https?:/i.test(q) || q.indexOf('@') >= 0) throw err;");
+  });
+});
+
+describe('Settings: chat lúc rảnh + lỗi tay nắm ô Command (2026-11-14)', () => {
+  const html = readWeb();
+  it('nhịp chat theo cài đặt: Vui vẻ tính bằng giây, Bình thường bằng phút, số người nói tối đa; không có cài đặt thì như cũ', () => {
+    const lib = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return { chatMoodCfg, capSpeakers, livelyTalkPlan };')() as any;
+    const opt = { speakers: 2, livelySec: [20, 40], normalMin: [10, 15] };
+    expect(lib.chatMoodCfg('lively', opt)).toMatchObject({ chit: [20 / 60, 40 / 60], speakers: 2 });
+    expect(lib.chatMoodCfg('normal', opt)).toMatchObject({ chit: [10, 15], speakers: 2 });
+    expect(lib.chatMoodCfg('lively')).toMatchObject({ chit: [0.5, 1], speakers: 3 });
+    expect(lib.chatMoodCfg('normal', null)).toMatchObject({ chit: [5, 8], speakers: 3 });
+    const steps = [{ target: 'owner' }, { target: 'pm' }, { target: 'dev' }, { target: 'pm' }, { target: 'qc' }];
+    expect(lib.capSpeakers(steps, 2).map((s: any) => s.target)).toEqual(['owner', 'pm', 'dev', 'pm']);
+    expect(lib.capSpeakers(steps, 1).map((s: any) => s.target)).toEqual(['owner', 'pm', 'pm']);
+    for (let i = 0; i < 50; i++) expect(lib.livelyTalkPlan(['pm', 'dev', 'qc', 'audit'], null, 1)).toHaveLength(1);
+    for (let i = 0; i < 50; i++) expect(lib.livelyTalkPlan(['pm', 'dev', 'qc', 'audit'], null, 2).length).toBeLessThanOrEqual(2);
+  });
+
+  it('trang Settings có ô số người nói + khoảng nghỉ; ô Command không còn tay nắm đổi cỡ', () => {
+    for (const id of ['chat-speakers', 'chat-lively-min', 'chat-lively-max', 'chat-normal-min', 'chat-normal-max']) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain("if (JSON.stringify(opt) !== JSON.stringify(chatOpt)) { chatOpt = opt; rescheduleMood(); }");
+    expect(html).toMatch(/\.cmd-composer \.cmd-composer-text \{\s*resize: none;/);
   });
 });
