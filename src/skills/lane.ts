@@ -61,6 +61,22 @@ export interface SkillsLaneDeps {
 }
 type Fail = { ok: false; status: number; error: string };
 export interface GithubCandidate { path: string; name: string; description: string; license: string; chars: number }
+/** Kết quả tìm trên skills.sh: repo nguồn + tên skill + lượt cài; trust theo ngưỡng của find-skills (≥1000 ok, ≥100 cẩn thận, còn lại rủi ro). */
+export interface FoundSkill { source: string; skillId: string; name: string; installs: number; trust: 'ok' | 'caution' | 'risky' }
+export const SKILLS_SEARCH_URL = 'https://skills.sh/api/search';
+const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+const SKILL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
+
+/** "https://github.com/o/r", "o/r" hoặc "o/r@skill" → repo (+ skill). Không phải dạng đó (vd từ khoá) → null. */
+export function repoRef(input: string): { owner: string; repo: string; url: string; skill?: string } | null {
+  const text = String(input || '').trim();
+  const viaUrl = parseGithubUrl(text);
+  if (viaUrl) return viaUrl;
+  const m = /^([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100}?)(?:@([A-Za-z0-9][A-Za-z0-9._-]{0,80}))?$/.exec(text);
+  if (!m) return null;
+  const repo = m[2]!.replace(/\.git$/i, '');
+  return { owner: m[1]!, repo, url: `https://github.com/${m[1]}/${repo}`, ...(m[3] ? { skill: m[3] } : {}) };
+}
 
 export function createSkillsLane(d: SkillsLaneDeps) {
   let inFlight = false;
@@ -106,18 +122,66 @@ export function createSkillsLane(d: SkillsLaneDeps) {
   }
 
   /** Liệt kê các SKILL.md trong repo GitHub công khai (chưa nhập gì). */
-  async function listGithub(url: string): Promise<{ ok: true; repo: string; candidates: GithubCandidate[] } | Fail> {
-    const g = parseGithubUrl(url);
-    if (!g) return { ok: false, status: 400, error: 'Not a GitHub repository link' };
-    const treeJson = await getText(`https://api.github.com/repos/${g.owner}/${g.repo}/git/trees/HEAD?recursive=1`);
+  /** Đường dẫn các SKILL.md trong repo (bỏ bản sao trong thư mục ẩn như .openclaw/…). */
+  async function skillPaths(owner: string, repo: string): Promise<string[]> {
+    const treeJson = await getText(`https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`);
     let paths: string[] = [];
     try {
       const tree = (JSON.parse(treeJson ?? '{}') as { tree?: Array<{ path?: unknown; type?: unknown }> }).tree;
       if (Array.isArray(tree)) paths = tree.filter((t) => t.type === 'blob' && typeof t.path === 'string').map((t) => String(t.path));
     } catch { /* cây lỗi */ }
-    // Bỏ bản sao trong thư mục ẩn (.openclaw/…); chỉ lấy SKILL.md.
-    const files = paths.filter((p) => /(^|\/)SKILL\.md$/i.test(p) && !p.split('/').some((seg) => seg.startsWith('.'))).slice(0, 30);
-    if (!files.length) return { ok: false, status: 404, error: 'No SKILL.md found (private repo, wrong link, or no network)' };
+    return paths.filter((p) => /(^|\/)SKILL\.md$/i.test(p) && !p.split('/').some((seg) => seg.startsWith('.')));
+  }
+  /** SKILL.md của một skill theo tên thư mục (…/<skillId>/SKILL.md). */
+  const pathOf = (paths: string[], skillId: string) => paths.find((p) => p.toLowerCase().split('/').slice(-2, -1)[0] === skillId.toLowerCase());
+
+  /** Tìm skill theo từ khoá trên skills.sh (chỉ gửi từ khoá). */
+  async function search(query: string): Promise<{ ok: true; found: FoundSkill[] } | Fail> {
+    const q = String(query || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    if (q.length < 2) return { ok: false, status: 400, error: 'Type at least 2 characters' };
+    const body = await getText(`${SKILLS_SEARCH_URL}?q=${encodeURIComponent(q)}&limit=20`);
+    if (body === null) return { ok: false, status: 502, error: 'Could not reach skills.sh' };
+    let items: unknown[] = [];
+    try { const v = (JSON.parse(body) as { skills?: unknown }).skills; if (Array.isArray(v)) items = v; } catch { /* không phải JSON */ }
+    const found: FoundSkill[] = [];
+    for (const it of items as Array<Record<string, unknown>>) {
+      const source = String(it?.source ?? '');
+      const skillId = String(it?.skillId ?? '');
+      if (!REPO_RE.test(source) || !SKILL_ID_RE.test(skillId)) continue;
+      const installs = Math.max(0, Math.floor(Number(it?.installs) || 0));
+      found.push({ source, skillId, name: String(it?.name ?? skillId).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 80), installs, trust: installs >= 1000 ? 'ok' : installs >= 100 ? 'caution' : 'risky' });
+      if (found.length >= 20) break;
+    }
+    return { ok: true, found };
+  }
+
+  /** Nhập các skill đã chọn từ kết quả tìm: tải SKILL.md từ repo nguồn → khu chờ (cổng bảo mật). */
+  async function importFound(items: Array<{ source: string; skillId: string }>): Promise<{ ok: true; added: Skill[]; failed: Array<{ path: string; error: string }> }> {
+    const added: Skill[] = [];
+    const failed: Array<{ path: string; error: string }> = [];
+    const trees = new Map<string, string[]>();
+    for (const it of items.slice(0, 20)) {
+      const label = `${it.source}@${it.skillId}`;
+      if (!REPO_RE.test(it.source) || !SKILL_ID_RE.test(it.skillId)) { failed.push({ path: label, error: 'Invalid skill reference' }); continue; }
+      const [owner, repo] = it.source.split('/') as [string, string];
+      if (!trees.has(it.source)) trees.set(it.source, await skillPaths(owner, repo));
+      const path = pathOf(trees.get(it.source)!, it.skillId);
+      if (!path) { failed.push({ path: label, error: 'SKILL.md not found in the repository' }); continue; }
+      const body = await getText(`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${path}`);
+      if (!body) { failed.push({ path: label, error: 'Could not download' }); continue; }
+      const r = add(body, `https://github.com/${it.source} · ${path}`);
+      if (r.ok) added.push(r.skill); else failed.push({ path: label, error: r.error });
+    }
+    return { ok: true, added, failed };
+  }
+
+  async function listGithub(url: string): Promise<{ ok: true; repo: string; candidates: GithubCandidate[] } | Fail> {
+    const g = repoRef(url);
+    if (!g) return { ok: false, status: 400, error: 'Not a GitHub repository link' };
+    const all = await skillPaths(g.owner, g.repo);
+    // "owner/repo@skill" → chỉ skill đó.
+    const files = (g.skill ? [pathOf(all, g.skill)].filter((p): p is string => Boolean(p)) : all).slice(0, 30);
+    if (!files.length) return { ok: false, status: 404, error: g.skill ? `Skill "${g.skill}" not found in that repository` : 'No SKILL.md found (private repo, wrong link, or no network)' };
     const candidates: GithubCandidate[] = [];
     for (const path of files) {
       const body = await getText(`https://raw.githubusercontent.com/${g.owner}/${g.repo}/HEAD/${path}`);
@@ -129,7 +193,7 @@ export function createSkillsLane(d: SkillsLaneDeps) {
   }
 
   async function importGithub(url: string, paths: string[]): Promise<{ ok: true; added: Skill[]; failed: Array<{ path: string; error: string }> } | Fail> {
-    const g = parseGithubUrl(url);
+    const g = repoRef(url);
     if (!g) return { ok: false, status: 400, error: 'Not a GitHub repository link' };
     const added: Skill[] = [];
     const failed: Array<{ path: string; error: string }> = [];
@@ -252,5 +316,5 @@ export function createSkillsLane(d: SkillsLaneDeps) {
     }
   }
 
-  return { add, listGithub, importGithub, update, remove, recheck, tick, running: () => inFlight, reviewers };
+  return { add, search, importFound, listGithub, importGithub, update, remove, recheck, tick, running: () => inFlight, reviewers };
 }

@@ -475,6 +475,8 @@ export function createServer(o: {
           const parsed = z.discriminatedUnion('action', [
             z.object({ action: z.literal('paste'), text: z.string().min(1).max(20000) }),
             z.object({ action: z.literal('github-list'), url: z.string().min(1).max(300) }),
+            z.object({ action: z.literal('search'), query: z.string().min(1).max(200) }),
+            z.object({ action: z.literal('search-import'), items: z.array(z.object({ source: z.string().max(150), skillId: z.string().max(90) })).min(1).max(20) }),
             z.object({ action: z.literal('github-import'), url: z.string().min(1).max(300), paths: z.array(z.string().max(300)).min(1).max(30) }),
             z.object({ action: z.literal('update'), id: z.number().int().positive(), seats: z.array(seat).max(4).optional(), projects: z.union([z.literal('all'), z.array(z.string().max(20)).max(50)]).optional(), on: z.boolean().optional() }),
             z.object({ action: z.literal('recheck'), id: z.number().int().positive() }),
@@ -492,6 +494,8 @@ export function createServer(o: {
           const p = parsed.data;
           const r = p.action === 'paste' ? lane.add(p.text, 'pasted')
             : p.action === 'github-list' ? await lane.listGithub(p.url)
+            : p.action === 'search' ? await lane.search(p.query)
+            : p.action === 'search-import' ? await lane.importFound(p.items)
             : p.action === 'github-import' ? await lane.importGithub(p.url, p.paths)
             : p.action === 'update' ? lane.update(p.id, { seats: p.seats, projects: p.projects, on: p.on })
             : p.action === 'recheck' ? lane.recheck(p.id)

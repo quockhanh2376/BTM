@@ -14,6 +14,26 @@ function skillChecks(s) {
   return out;
 }
 
+// Ô Find skills nhận gì: link GitHub / "owner/repo" / "owner/repo@skill" → 'repo'; còn lại là từ khoá (thuần, test được).
+function skillsInputKind(q) {
+  q = String(q || '').trim();
+  if (/^https?:\/\/github\.com\//i.test(q)) return 'repo';
+  return /^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+(@[A-Za-z0-9][A-Za-z0-9._-]*)?$/.test(q) ? 'repo' : 'keyword';
+}
+// Từ khoá gợi ý theo project đang mở (thuần, test được).
+function skillKeywordHints(project) {
+  var exts = (project && project.exts) || [];
+  var has = function (re) { return exts.some(function (e) { return re.test(e); }); };
+  var out = [];
+  if (has(/^(html|css|jsx|tsx|vue|svelte)$/)) out.push('frontend design');
+  if (has(/^(jsx|tsx)$/)) out.push('react');
+  if (has(/^(ts|tsx)$/)) out.push('typescript');
+  else if (has(/^(js|mjs|cjs)$/)) out.push('javascript');
+  if (has(/^py$/)) out.push('python');
+  if (project && project.hasTests) out.push('testing');
+  return out.concat(['code review', 'security review', 'debugging']).slice(0, 7);
+}
+
 function btmSkills(d) {
   var postJson = d.postJson, askOwner = d.askOwner, agentLabel = d.agentLabel, SEAT_LABELS = d.SEAT_LABELS;
   var $ = function (id) { return document.getElementById(id); };
@@ -131,6 +151,7 @@ function btmSkills(d) {
       if (who) who.textContent = data.reviewers.length >= 2 ? tx('skills.reviewers', { a: data.reviewers[0], b: data.reviewers[1] }) : tx('skills.reviewersMissing');
       if (!data.skills.length) list.appendChild(el('div', 'empty-placeholder', tx('skills.empty')));
       data.skills.forEach(function (s) { list.appendChild(renderSkill(s, data)); });
+      renderHints(data.project);
       // Đang có skill chờ kiểm → tự nạp lại mỗi 10 giây.
       if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
       if (data.skills.some(function (s) { return s.status === 'checking'; })) pollTimer = setTimeout(load, 10000);
@@ -147,43 +168,102 @@ function btmSkills(d) {
     if (r) { ta.value = ''; say(tx('skills.added', { name: r.skill.name }), false); }
   });
 
+  // Find skills (anh Zon 2026-11-14): một ô nhận từ khoá (tìm trên skills.sh), "owner/repo@skill" hoặc link repo GitHub.
   var findBtn = $('skills-url-btn');
+  var findInput = $('skills-url');
   var cands = $('skills-candidates');
-  if (findBtn && cands) findBtn.addEventListener('click', async function () {
-    var url = $('skills-url').value.trim();
-    if (!url) return;
+  var clearCands = function () { while (cands.firstChild) cands.removeChild(cands.firstChild); };
+  function finishImport(res) {
+    if (!res) return;
+    say(tx('skills.imported', { n: res.added.length }) + (res.failed.length ? ' · ' + res.failed.map(function (f) { return f.path + ': ' + f.error; }).join('; ') : ''), res.failed.length > 0);
+    clearCands();
+  }
+  function addImportButton(collect) {
+    var imp = el('button', 'btn btn-sm btn-primary', tx('skills.import'));
+    imp.type = 'button';
+    imp.addEventListener('click', async function () {
+      var picked = Array.prototype.slice.call(cands.querySelectorAll('input:checked'));
+      if (picked.length) finishImport(await act(collect(picked)));
+    });
+    cands.appendChild(imp);
+  }
+  // Kết quả tìm theo từ khoá: tên · repo · lượt cài · mức tin.
+  function showFound(found) {
+    clearCands();
+    if (!found.length) { cands.appendChild(el('div', 'empty-placeholder', tx('skills.noResults'))); return; }
+    found.forEach(function (f) {
+      var lab = el('label', 'skill-cand trust-' + f.trust);
+      var cb = el('input');
+      cb.type = 'checkbox';
+      cb.dataset.source = f.source;
+      cb.dataset.skill = f.skillId;
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' ' + f.name + ' · ' + f.source + ' · ' + tx('skills.installs', { n: f.installs.toLocaleString('en-US') })
+        + (f.trust === 'ok' ? '' : ' · ' + tx(f.trust === 'caution' ? 'skills.trustCaution' : 'skills.trustRisky'))));
+      cands.appendChild(lab);
+    });
+    addImportButton(function (picked) {
+      return { action: 'search-import', items: picked.map(function (x) { return { source: x.dataset.source, skillId: x.dataset.skill }; }) };
+    });
+  }
+  // Các SKILL.md trong một repo.
+  function showRepo(url, list) {
+    clearCands();
+    list.forEach(function (c) {
+      var lab = el('label', 'skill-cand');
+      var cb = el('input');
+      cb.type = 'checkbox';
+      cb.value = c.path;
+      cb.disabled = c.chars > 8000;
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' ' + c.name + ' · ' + c.chars + (c.chars > 8000 ? ' ' + tx('skills.tooLong') : '') + (c.license ? ' · ' + c.license : '') + (c.description ? ' — ' + c.description : '')));
+      cands.appendChild(lab);
+    });
+    addImportButton(function (picked) { return { action: 'github-import', url: url, paths: picked.map(function (x) { return x.value; }) }; });
+  }
+  async function find() {
+    var q = findInput.value.trim();
+    if (!q) return;
     findBtn.disabled = true;
-    while (cands.firstChild) cands.removeChild(cands.firstChild);
+    clearCands();
+    say(tx('skills.searching'), false);
     try {
-      var r = await postJson('/api/skills', { action: 'github-list', url: url });
-      r.candidates.forEach(function (c) {
-        var lab = el('label', 'skill-cand');
-        var cb = el('input');
-        cb.type = 'checkbox';
-        cb.value = c.path;
-        cb.disabled = c.chars > 8000;
-        lab.appendChild(cb);
-        lab.appendChild(document.createTextNode(' ' + c.name + ' · ' + c.chars + (c.chars > 8000 ? ' ' + tx('skills.tooLong') : '') + (c.license ? ' · ' + c.license : '') + (c.description ? ' — ' + c.description : '')));
-        cands.appendChild(lab);
-      });
-      var imp = el('button', 'btn btn-sm btn-primary', tx('skills.import'));
-      imp.type = 'button';
-      imp.addEventListener('click', async function () {
-        var paths = Array.prototype.slice.call(cands.querySelectorAll('input:checked')).map(function (x) { return x.value; });
-        if (!paths.length) return;
-        var res = await act({ action: 'github-import', url: url, paths: paths });
-        if (res) {
-          say(tx('skills.imported', { n: res.added.length }) + (res.failed.length ? ' · ' + res.failed.map(function (f) { return f.path + ': ' + f.error; }).join('; ') : ''), res.failed.length > 0);
-          while (cands.firstChild) cands.removeChild(cands.firstChild);
+      if (skillsInputKind(q) === 'repo') {
+        try {
+          var r = await postJson('/api/skills', { action: 'github-list', url: q });
+          showRepo(q, r.candidates);
+          say('', false);
+          return;
+        } catch (err) {
+          // Link GitHub thật mà lỗi thì báo lỗi; dạng "a/b" có thể chỉ là từ khoá (vd "ci/cd") → tìm theo từ khoá.
+          if (/^https?:/i.test(q) || q.indexOf('@') >= 0) throw err;
         }
-      });
-      cands.appendChild(imp);
+      }
+      var s = await postJson('/api/skills', { action: 'search', query: q });
+      showFound(s.found);
+      say('', false);
     } catch (err) {
       say(err.message, true);
     } finally {
       findBtn.disabled = false;
     }
-  });
+  }
+  if (findBtn && findInput && cands) {
+    findBtn.addEventListener('click', find);
+    findInput.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); find(); } });
+  }
+  // Gợi ý từ khoá theo project đang mở (đuôi file, có giao diện, có test).
+  function renderHints(project) {
+    var box = $('skills-hints');
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    skillKeywordHints(project).forEach(function (k) {
+      var b = el('button', 'skill-hint', k);
+      b.type = 'button';
+      b.addEventListener('click', function () { findInput.value = k; find(); });
+      box.appendChild(b);
+    });
+  }
 
   load();
   return { load: load };

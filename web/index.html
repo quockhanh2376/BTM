@@ -707,9 +707,10 @@
           <label class="settings-row settings-col" for="skills-paste"><span data-i18n="skills.paste">Paste a SKILL.md</span>
             <textarea id="skills-paste" class="form-textarea settings-custom" rows="4" maxlength="8000" spellcheck="false"></textarea></label>
           <div class="settings-row"><button type="button" id="skills-paste-btn" class="btn btn-secondary btn-sm" data-i18n="skills.pasteBtn">Check and add</button></div>
-          <label class="settings-row" for="skills-url"><span data-i18n="skills.url">Or a public GitHub repo</span>
-            <input type="url" id="skills-url" class="settings-select skills-url" placeholder="https://github.com/owner/repo" autocomplete="off" spellcheck="false">
+          <label class="settings-row" for="skills-url"><span data-i18n="skills.url">Find skills</span>
+            <input type="text" id="skills-url" class="settings-select skills-url" placeholder="Keyword, owner/repo@skill, or GitHub link" data-i18n-placeholder="skills.urlPh" autocomplete="off" spellcheck="false">
             <button type="button" id="skills-url-btn" class="btn btn-secondary btn-sm" data-i18n="skills.urlBtn">Find skills</button></label>
+          <div id="skills-hints" class="skills-hints"></div>
           <div id="skills-candidates" class="skills-candidates"></div>
         </div>
         <span id="skills-feedback" class="settings-feedback" aria-live="polite"></span>
