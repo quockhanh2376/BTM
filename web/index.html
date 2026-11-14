@@ -539,6 +539,9 @@
     .pill-idle { background: var(--badge-bg); color: var(--badge-text); }
     .agents-tools { display: flex; align-items: center; gap: 8px; }
     .agents-view select { border: none; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+    /* Danh sách xổ xuống của Windows dùng nền riêng: đặt màu cho từng mục để chữ luôn đọc được (lỗi Chat: VI/Off mờ ở dark). */
+    select option { background-color: var(--card-bg); color: var(--text); }
+    [data-theme="dark"] select { color-scheme: dark; }
     .seat-card .seat-avatar { width: 36px; height: 36px; flex-basis: 36px; }
     .seat-card { padding: 14px; gap: 10px; }
     .seat-card .seat-title { font-size: 16px; }
