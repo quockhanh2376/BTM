@@ -1655,14 +1655,14 @@
       }
       setInterval(tickSeatElapsed, 1000);
 
-      // Đầu khu Agents: tổng số ghế + số Live / Waiting / Idle (mẫu anh Zon 2026-11-14).
+      // Đầu khu Agents: tổng số ghế + số Live / Waiting (chip Idle đã thay bằng nút không khí team, 2026-11-14).
       function renderAgentCounts(seats) {
         var list = Array.isArray(seats) ? seats : [];
         var n = { running: 0, waiting: 0, idle: 0 };
         list.forEach(function (x) { n[x.status === 'running' ? 'running' : (x.status === 'waiting' ? 'waiting' : 'idle')]++; });
         var t = document.getElementById('agents-count');
         if (t) t.textContent = tx('agents.title', { n: list.length });
-        [['agents-live', n.running], ['agents-waiting', n.waiting], ['agents-idle', n.idle]].forEach(function (p) {
+        [['agents-live', n.running], ['agents-waiting', n.waiting]].forEach(function (p) {
           var el = document.getElementById(p[0]);
           if (el) el.textContent = String(p[1]);
         });

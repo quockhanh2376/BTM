@@ -259,7 +259,8 @@
         <h2 id="agents-count">Agents</h2>
         <span class="agents-pill pill-live"><span class="pill-dot"></span><span id="agents-live">0</span>&nbsp;<span data-i18n="seat.live">Live</span></span>
         <span class="agents-pill pill-waiting"><span class="pill-dot"></span><span id="agents-waiting">0</span>&nbsp;<span data-i18n="seat.waiting">Waiting</span></span>
-        <span class="agents-pill pill-idle"><span class="pill-dot"></span><span id="agents-idle">0</span>&nbsp;<span data-i18n="seat.idle">Idle</span></span>
+        <!-- Không khí cả team (anh Zon 2026-11-14) thay chip Idle: Vui vẻ / Bình thường; bàn kế hoạch thì tự Vui vẻ. -->
+        <button type="button" id="chat-mood" class="agents-pill pill-mood" role="switch" aria-checked="false">🙂 Normal</button>
       </div>
       <div class="agents-tools">
         <label class="agents-view btn btn-secondary btn-sm btn-tool"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span data-i18n="agents.view">View:</span>

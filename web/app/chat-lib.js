@@ -129,4 +129,18 @@ function timeKind(hour) {
   if (hour >= 20 && hour <= 23) return 'timeEvening';
   return 'timeLate';
 }
+// Không khí team (anh Zon 2026-11-14): "lively" nói nhiều, đùa; "normal" ít hơn, chuyên nghiệp, không tán gẫu khi có người đang làm.
+// Đơn vị: phút cho chit/check, ms cho thought.
+function chatMoodCfg(mood) {
+  return mood === 'lively'
+    ? { chit: [1, 2], check: [3, 5], thoughtMs: [30000, 15000], chitWhileWork: true, third: 0.9 }
+    : { chit: [5, 8], check: [8, 10], thoughtMs: [120000, 60000], chitWhileWork: false, third: 0.3 };
+}
+// Đang bàn kế hoạch / phản biện ([plan] gửi làn hỏi đáp, chưa xong) → tự bật lively.
+function chatDiscussing(snap) {
+  return ((snap && snap.queue) || []).some(function (q) {
+    return String(q.to).indexOf('ask-') === 0 && q.to !== 'ask-lessons' && /^\[plan\]/i.test(String(q.text || '')) &&
+      (q.status === 'queued' || q.status === 'running');
+  });
+}
 // end chat-lib
