@@ -1,25 +1,24 @@
 import type { createSkillsLane } from '../skills/lane.ts';
-import { cleanKey, mbStatus, removeMbKey, saveMbKey, setMbEnabled } from '../mb/vault.ts';
 import { searchBtm } from './search.ts';
 import { createSystemReader } from './system.ts';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
-import { AGENT_NAME_RE, AVATAR_MAX_BYTES, agentAvatarKey, agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
 import type { Socket } from 'node:net';
 import { readFileSync, existsSync, mkdirSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join, relative, isAbsolute, dirname } from 'node:path';
-import { z } from 'zod';
-import { EffortSchema, ModelSchema, type Config, type Seat } from '../config.ts';
-import { agentEffortKey, agentModelKey } from '../agents/model.ts';
-import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
+import type { Config, Seat } from '../config.ts';
+import type { Store } from '../store/db.ts';
 import { buildSnapshot } from './snapshot.ts';
 import { commitAll } from '../git.ts';
-import { inboxPath, detectImage, readInboxFile, removeInboxFromMain } from './inbox.ts';
-import { protectedShaKey } from '../core/guard.ts';
-import { activeAccountKeys } from '../agents/accounts.ts';
 import { handleAccountsGet, handleAccountsPost, IMPORT_MAX_BYTES } from './accounts-api.ts';
 import { handleGoalsGet, handleGoalsPost } from './routes/goals.ts';
 import { handleTicketsGet, handleTicketsPost } from './routes/tickets.ts';
 import { handleQuestionsPost } from './routes/questions.ts';
+import { handleNotesGet, handleNotesPost } from './routes/notes.ts';
+import { handleSeatsGet, handleSeatsPost } from './routes/seats.ts';
+import { handleSessionPost } from './routes/session.ts';
+import { handleMeetingGet, handleMeetingPost } from './routes/meeting.ts';
+import { handleSkillsGet, handleSkillsPost } from './routes/skills.ts';
+import { handleSettingsGet, handleSettingsPost } from './routes/settings.ts';
 import type { AdminExec } from '../isolation/account-admin.ts';
 import type { SpawnFn } from '../agents/login-flow.ts';
 import type { createMonitor } from '../energy/monitor.ts';
@@ -216,6 +215,9 @@ export function createServer(o: {
       }
 
       if (await handleGoalsGet(method, pathname, undefined, o, res, sendJson)) return;
+      if (await handleSkillsGet(method, pathname, undefined, o, res, sendJson)) return;
+      if (await handleSettingsGet(method, pathname, undefined, o, res, sendJson)) return;
+      if (await handleMeetingGet(method, pathname, undefined, o, res, sendJson)) return;
 
       // Ô Search (chỉ đọc, không lưu): ?q=… → { hits }.
       if (method === 'GET' && pathname === '/api/search') {
@@ -230,72 +232,8 @@ export function createServer(o: {
         return;
       }
 
-      // Avatar của Worker (chỉ ảnh đã kiểm magic bytes khi lưu; kiểm lại khi trả).
-      const avatarMatch = pathname.match(/^\/api\/avatar\/([a-z0-9_-]{1,40})$/);
-      if (method === 'GET' && avatarMatch) {
-        const agent = avatarMatch[1]!;
-        const b64 = Object.hasOwn(o.cfg.agents, agent) ? o.store.getSetting(agentAvatarKey(agent)) : null;
-        const buf = b64 ? Buffer.from(b64, 'base64') : null;
-        const det = buf ? detectImage(buf) : null;
-        if (!buf || !det) {
-          sendJson(res, 404, { error: 'Not found' });
-          return;
-        }
-        res.writeHead(200, { 'Content-Type': det.mime, 'Content-Length': buf.length, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=3600' });
-        res.end(buf);
-        return;
-      }
-
-      // Note image route
-      const noteImageMatch = pathname.match(/^\/api\/notes\/([^/]+)\/image$/);
-      if (method === 'GET' && noteImageMatch) {
-        const rawId = noteImageMatch[1];
-        const noteId = Number(rawId.replace(/^N-/, ''));
-        if (isNaN(noteId)) {
-          sendJson(res, 404, { error: 'Not found' });
-          return;
-        }
-        const activeProject = o.store.getActiveProject();
-        if (!activeProject) {
-          sendJson(res, 404, { error: 'Not found' });
-          return;
-        }
-        const note = o.store.getNote(noteId);
-        if (!note || note.project !== activeProject || !note.image) {
-          sendJson(res, 404, { error: 'Not found' });
-          return;
-        }
-
-        const validNameRegex = new RegExp(`^(N-)?${noteId}\\.(png|jpg|webp)$`);
-        if (!validNameRegex.test(note.image)) {
-          sendJson(res, 404, { error: 'Not found' });
-          return;
-        }
-
-        const imgBuf = readInboxFile(activeProject, note.image);
-        if (!imgBuf) {
-          sendJson(res, 404, { error: 'Not found' });
-          return;
-        }
-
-        const detected = detectImage(imgBuf);
-        if (!detected) {
-          sendJson(res, 404, { error: 'Not found' });
-          return;
-        }
-
-        if (!note.image.endsWith(`.${detected.ext}`)) {
-          sendJson(res, 404, { error: 'Not found' });
-          return;
-        }
-
-        res.writeHead(200, {
-          'Content-Type': detected.mime,
-          'Content-Length': imgBuf.length,
-        });
-        res.end(imgBuf);
-        return;
-      }
+      if (await handleSeatsGet(method, pathname, undefined, o, res, sendJson)) return;
+      if (await handleNotesGet(method, pathname, undefined, o, res, sendJson)) return;
 
       if (await handleTicketsGet(method, pathname, undefined, o, res, sendJson)) return;
 
@@ -404,466 +342,22 @@ export function createServer(o: {
         }
 
         // Dispatch endpoints
-        if (pathname === '/api/session') {
-          const SessionSchema = z.object({
-            goals: z
-              .array(z.string().trim().min(1))
-              .min(1)
-              .max(o.cfg.session.max_goals),
-          });
-          const parsed = SessionSchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
-            return;
-          }
-          const result = await o.host.start(parsed.data.goals);
-          sendJson(res, 200, result);
-          return;
-        }
-
-        if (pathname === '/api/approve') {
-          const ApproveSchema = z.object({}).passthrough();
-          const parsed = ApproveSchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid body' });
-            return;
-          }
-          const result = await o.host.approve();
-          sendJson(res, 200, result);
-          return;
-        }
+        if (await handleSessionPost(method, pathname, body, o, res, sendJson)) return;
 
         if (await handleGoalsPost(method, pathname, body, o, res, sendJson)) return;
-
-        if (pathname === '/api/resume') {
-          const ResumeSchema = z.object({}).passthrough();
-          const parsed = ResumeSchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid body' });
-            return;
-          }
-          if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-          if (o.host.resume) {
-            const result = await o.host.resume();
-            sendJson(res, result.ok ? 200 : (result.status || 400), result);
-          } else {
-            sendJson(res, 501, { error: 'Not implemented' });
-          }
-          return;
-        }
+        if (await handleSettingsPost(method, pathname, body, o, res, sendJson)) return;
 
         if (await handleQuestionsPost(method, pathname, body, o, res, sendJson)) return;
 
-        if (pathname === '/api/stop') {
-          const StopSchema = z.object({ seat: z.enum(['pm', 'dev', 'qc', 'audit']).optional() }).passthrough();
-          const parsed = StopSchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid body' });
-            return;
-          }
-          const result = await o.host.stop(parsed.data.seat);
-          sendJson(res, result.status ?? 200, result);
-          return;
-        }
-
-        // Skill cho agent (2026-11-14): dán / liệt kê + nhập từ GitHub / chỉnh ghế + project + bật tắt / kiểm lại / xoá.
-        if (pathname === '/api/skills') {
-          const seat = z.enum(['pm', 'dev', 'qc', 'audit']);
-          const parsed = z.discriminatedUnion('action', [
-            z.object({ action: z.literal('paste'), text: z.string().min(1).max(20000) }),
-            z.object({ action: z.literal('github-list'), url: z.string().min(1).max(300) }),
-            z.object({ action: z.literal('search'), query: z.string().min(1).max(200) }),
-            z.object({ action: z.literal('search-import'), items: z.array(z.object({ source: z.string().max(150), skillId: z.string().max(90) })).min(1).max(20) }),
-            z.object({ action: z.literal('github-import'), url: z.string().min(1).max(300), paths: z.array(z.string().max(300)).min(1).max(30) }),
-            z.object({ action: z.literal('update'), id: z.number().int().positive(), seats: z.array(seat).max(4).optional(), projects: z.union([z.literal('all'), z.array(z.string().max(20)).max(50)]).optional(), on: z.boolean().optional() }),
-            z.object({ action: z.literal('recheck'), id: z.number().int().positive() }),
-            z.object({ action: z.literal('delete'), id: z.number().int().positive() }),
-          ]).safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid skills request' });
-            return;
-          }
-          const lane = o.host.skills;
-          if (!lane) {
-            sendJson(res, 501, { error: 'Skills not available' });
-            return;
-          }
-          const p = parsed.data;
-          const r = p.action === 'paste' ? lane.add(p.text, 'pasted')
-            : p.action === 'github-list' ? await lane.listGithub(p.url)
-            : p.action === 'search' ? await lane.search(p.query)
-            : p.action === 'search-import' ? await lane.importFound(p.items)
-            : p.action === 'github-import' ? await lane.importGithub(p.url, p.paths)
-            : p.action === 'update' ? lane.update(p.id, { seats: p.seats, projects: p.projects, on: p.on })
-            : p.action === 'recheck' ? lane.recheck(p.id)
-            : { ok: true as const, skills: lane.remove(p.id) };
-          sendJson(res, r.ok ? 200 : r.status, r.ok ? r : { error: r.error });
-          return;
-        }
-
-        // Tài liệu cho cuộc họp sắp mở (2026-11-14): upload từng file (base64), Core rút chữ; hoặc bỏ một file.
-        if (pathname === '/api/meeting/doc') {
-          const parsed = z.union([
-            z.object({ action: z.literal('add'), name: z.string().min(1).max(200), base64: z.string().min(1) }),
-            z.object({ action: z.literal('remove'), id: z.number().int().positive() }),
-          ]).safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid document request' });
-            return;
-          }
-          if (!o.host.meetingDocs) {
-            sendJson(res, 501, { error: 'Meetings not available' });
-            return;
-          }
-          if (parsed.data.action === 'remove') {
-            sendJson(res, 200, { ok: true, docs: o.host.meetingDocs.remove(parsed.data.id) });
-            return;
-          }
-          const r = await o.host.meetingDocs.add(parsed.data.name, Buffer.from(parsed.data.base64, 'base64'));
-          sendJson(res, r.ok ? 200 : r.status, r.ok ? { ok: true, doc: r.doc, docs: o.host.meetingDocs.list() } : { error: r.error });
-          return;
-        }
-
-        // Họp tranh luận (2026-11-14): mở / dừng / tiếp tục (kèm ghi chú) / kết luận luôn / đóng.
-        if (pathname === '/api/meeting') {
-          const parsed = z.object({
-            action: z.enum(['start', 'stop', 'resume', 'conclude', 'close']),
-            topic: z.string().trim().max(4000).optional(),
-            quick: z.boolean().optional(),
-            note: z.string().max(1000).optional(),
-          }).safeParse(body);
-          if (!parsed.success || (parsed.data.action === 'start' && !parsed.data.topic)) {
-            sendJson(res, 400, { error: 'Invalid meeting request' });
-            return;
-          }
-          if (!o.host.meeting) {
-            sendJson(res, 501, { error: 'Meetings not available' });
-            return;
-          }
-          const r = await o.host.meeting(parsed.data.action, parsed.data);
-          sendJson(res, r.ok ? 200 : r.status, r.ok ? r : { error: r.error });
-          return;
-        }
-
-        if (pathname === '/api/command') {
-          const seatKeys = Object.keys(effectiveSeats(o.cfg, o.store));
-          const allowedSeats = [...seatKeys, 'team', ...seatKeys.map((k) => `ask-${k}`)];
-          const CommandSchema = z.object({
-            to: z.string().refine((val) => allowedSeats.includes(val), { message: 'Invalid recipient' }),
-            text: z.string().trim().min(1).max(2000),
-          });
-          const parsed = CommandSchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
-            return;
-          }
-          const result = await o.host.command(parsed.data.to as Seat | 'team' | `ask-${Seat}`, parsed.data.text);
-          sendJson(res, 200, result);
-          return;
-        }
-
-        if (pathname === '/api/team-note') {
-          const TeamNoteSchema = z.object({
-            text: z.string().trim().min(1).max(2000),
-            image: z
-              .object({
-                name: z.string().min(1),
-                base64: z.string().min(1),
-              })
-              .optional(),
-          });
-          const parsed = TeamNoteSchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
-            return;
-          }
-
-          const activeProject = o.store.getActiveProject();
-          if (!activeProject) {
-            sendJson(res, 400, { error: 'No active project' });
-            return;
-          }
-
-          if (o.host.busy && o.host.busy()) {
-            sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-
-          let imgBuf: Buffer | null = null;
-          let ext: 'png' | 'jpg' | 'webp' | null = null;
-
-          if (parsed.data.image) {
-            try {
-              imgBuf = Buffer.from(parsed.data.image.base64, 'base64');
-            } catch {
-              sendJson(res, 400, { error: 'Invalid base64 image data' });
-              return;
-            }
-
-            if (imgBuf.length > 5 * 1024 * 1024) {
-              sendJson(res, 413, { error: 'Image exceeds 5 MB limit' });
-              return;
-            }
-
-            const detected = detectImage(imgBuf);
-            if (!detected) {
-              sendJson(res, 415, { error: 'Unsupported image format' });
-              return;
-            }
-            ext = detected.ext;
-          }
-
-          try {
-            inboxPath(activeProject, 'N-0');
-          } catch (err: any) {
-            sendJson(res, 400, { error: err?.message || 'team/inbox must be inside project' });
-            return;
-          }
-
-          const createdNoteId = o.store.createNote(activeProject, parsed.data.text, null);
-          const imageName = ext ? `N-${createdNoteId}.${ext}` : null;
-          if (imageName) {
-            o.store.setNoteImage(createdNoteId, imageName);
-          }
-
-          const imageOpt = (ext && imgBuf) ? { ext, bytes: imgBuf } : undefined;
-          const initialGoal = `Team note N-${createdNoteId}: ${parsed.data.text.slice(0, 200)}`;
-          let result: { ok: boolean; error?: string };
-          try {
-            result = await o.host.start([initialGoal], {
-              noteId: createdNoteId,
-              text: parsed.data.text,
-              image: imageOpt,
-              note: {
-                noteId: createdNoteId,
-                text: parsed.data.text,
-                image: imageOpt,
-              },
-            });
-          } catch (err: any) {
-            try {
-              o.store.deleteNote(createdNoteId);
-            } catch {}
-            sendJson(res, 400, { error: err?.message || 'Error starting session' });
-            return;
-          }
-
-          if (!result.ok) {
-            try {
-              o.store.deleteNote(createdNoteId);
-            } catch {}
-            if (result.error === 'Session running') {
-              sendJson(res, 409, { error: 'Session running' });
-              return;
-            }
-            sendJson(res, 400, { error: result.error || 'Failed to start session' });
-            return;
-          }
-
-          sendJson(res, 200, { id: createdNoteId, note: `N-${createdNoteId}`, ...result });
-          return;
-        }
-
-        // Boss key (decision 0003): set / enable / disable / remove. Trả trạng thái, KHÔNG BAO GIỜ trả key.
-        if (pathname === '/api/mb') {
-          const b = (body ?? {}) as { action?: unknown; key?: unknown };
-          if (b.action === 'set') {
-            const key = cleanKey(b.key);
-            if (!key) {
-              sendJson(res, 400, { error: 'Key must be 20-300 printable characters without spaces' });
-              return;
-            }
-            saveMbKey(o.store, o.cfg.host.data_dir, key);
-          } else if (b.action === 'enable' || b.action === 'disable') {
-            setMbEnabled(o.store, b.action === 'enable');
-          } else if (b.action === 'remove') {
-            removeMbKey(o.store);
-          } else {
-            sendJson(res, 400, { error: 'action must be set|enable|disable|remove' });
-            return;
-          }
-          const monitor = o.monitor ?? (o.host as any)?.monitor;
-          try { await monitor?.refresh?.(Object.keys(o.cfg.agents).filter((a) => o.cfg.agents[a]!.provider === 'zai'), true); } catch {}
-          sendJson(res, 200, mbStatus(o.store));
-          return;
-        }
-
-        if (pathname === '/api/settings') {
-          const SettingsSchema = z.object({
-            autoApprove: z.boolean(),
-          });
-          const parsed = SettingsSchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
-            return;
-          }
-          if (o.host.setAutoApprove) {
-            await o.host.setAutoApprove(parsed.data.autoApprove);
-          }
-          sendJson(res, 200, { ok: true, autoApprove: parsed.data.autoApprove });
-          return;
-        }
-
-        if (pathname === '/api/energy/refresh') {
-          const RefreshSchema = z.object({}).passthrough();
-          const parsed = RefreshSchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid body' });
-            return;
-          }
-          const monitor = o.monitor ?? (o.host as any)?.monitor;
-          if (monitor) {
-            await monitor.refresh(activeAccountKeys(o.cfg, o.store), true);
-          }
-          sendJson(res, 200, { ok: true });
-          return;
-        }
-
-        // Xoá ghi chú team: dòng DB + file trên main (lịch sử git giữ nguyên). Chỉ khi rảnh.
-        if (pathname === '/api/notes/delete') {
-          const parsed = z
-            .object({ ids: z.array(z.number().int().positive()).min(1).max(500).optional(), all: z.literal(true).optional() })
-            .refine((b) => !!b.ids !== !!b.all, 'ids or all')
-            .safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid body' });
-            return;
-          }
-          if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-          const activeProject = o.store.getActiveProject();
-          if (!activeProject) {
-            sendJson(res, 400, { error: 'No active project' });
-            return;
-          }
-          const picked = parsed.data.all
-            ? o.store.listNotes(activeProject, 1_000_000)
-            : parsed.data.ids!.map((id) => o.store.getNote(id)).filter((n) => n?.project === activeProject);
-          // Ghi chú đang mở của phiên còn chờ/Resume được: phiên đó vẫn đọc note + ảnh → không xoá.
-          const inUse = (n: (typeof picked)[number]) => {
-            if (n?.status !== 'open' || !n.session_id) return false;
-            const st = o.store.getSession(n.session_id)?.status;
-            return st === 'running' || st === 'needs_owner' || st === 'stopped' || st === 'out_of_turns';
-          };
-          const skipped = picked.filter(inUse).map((n) => n!.id);
-          const rows = picked.filter((n) => !inUse(n));
-          if (rows.length === 0) {
-            if (skipped.length) {
-              sendJson(res, 409, { error: `Notes in use by a waiting session: ${skipped.map((i) => `N-${i}`).join(', ')}` });
-              return;
-            }
-            sendJson(res, 404, { error: 'No notes' });
-            return;
-          }
-          const names = rows.flatMap((n) => [`N-${n!.id}.md`, ...(n!.image ? [n!.image] : [])]);
-          const pinKey = protectedShaKey(activeProject);
-          let result: { mainSha: string; removed: string[] };
-          try {
-            result = removeInboxFromMain(activeProject, names, o.cfg.git?.protected_branch || 'main', o.store.getSetting(pinKey)?.trim() || '');
-          } catch (err: any) {
-            const msg = String(err?.message || err);
-            sendJson(res, 409, { error: msg === 'dirty' ? 'Working tree is dirty' : msg === 'protected_branch_moved' ? 'protected_branch_moved' : 'Delete failed' });
-            return;
-          }
-          o.store.setSetting(pinKey, result.mainSha);
-          for (const n of rows) o.store.deleteNote(n!.id);
-          sendJson(res, 200, { ok: true, deleted: rows.map((n) => n!.id), skipped, removed: result.removed });
-          return;
-        }
+        if (await handleSkillsPost(method, pathname, body, o, res, sendJson)) return;
+        if (await handleMeetingPost(method, pathname, body, o, res, sendJson)) return;
+        if (await handleNotesPost(method, pathname, body, o, res, sendJson)) return;
 
         if (handleAccountsPost(pathname, body, accountsCtx, res, sendJson)) return;
 
         if (await handleTicketsPost(method, pathname, body, o, res, sendJson)) return;
 
-        if (pathname === '/api/agent') {
-          const AgentBodySchema = z.object({
-            agent: z.string(),
-            model: z.union([z.literal(''), ModelSchema]).optional(),
-            effort: EffortSchema.optional(),
-            name: z.string().transform((x) => x.trim()).refine((x) => x === '' || AGENT_NAME_RE.test(x)).optional(),
-            avatar: z.string().max(Math.ceil(AVATAR_MAX_BYTES / 3) * 4).regex(/^[A-Za-z0-9+/]*={0,2}$/).optional(),
-          }).strict();
-          const parsed = AgentBodySchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: 'Invalid model, effort or name' });
-            return;
-          }
-          const { agent, model, effort, name, avatar } = parsed.data;
-          if (!Object.hasOwn(o.cfg.agents, agent)) {
-            sendJson(res, 400, { error: `Unknown agent "${agent}"` });
-            return;
-          }
-          // Đổi tên chỉ là hiển thị: được đổi cả lúc phiên đang chạy. '' = về tên gốc.
-          if ((name !== undefined || avatar !== undefined) && model === undefined && effort === undefined) {
-            if (avatar !== undefined && avatar !== '' && !detectImage(Buffer.from(avatar, 'base64'))) {
-              sendJson(res, 400, { error: 'Avatar must be PNG, JPEG or WebP' });
-              return;
-            }
-            if (name !== undefined) o.store.setSetting(agentNameKey(agent), name);
-            if (avatar !== undefined) {
-              o.store.setSetting(agentAvatarKey(agent), avatar);
-              o.store.setSetting(agentAvatarVerKey(agent), avatar ? String(Date.now()) : '');
-            }
-            sendJson(res, 200, { ok: true, agent });
-            return;
-          }
-          if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-          if (model !== undefined) o.store.setSetting(agentModelKey(agent), model);
-          if (effort !== undefined) o.store.setSetting(agentEffortKey(agent), effort);
-          sendJson(res, 200, { ok: true, agent, model: model ?? null, effort: effort ?? null });
-          return;
-        }
-
-        if (pathname === '/api/seat') {
-          const SeatBodySchema = z.object({
-            seat: z.string(),
-            agent: z.string(),
-          });
-          const parsed = SeatBodySchema.safeParse(body);
-          if (!parsed.success) {
-            sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
-            return;
-          }
-          if (o.host.busy?.()) {
-            sendJson(res, 409, { error: 'Session running' });
-            return;
-          }
-          const { seat, agent } = parsed.data;
-          if (!Object.hasOwn(o.cfg.seats, seat)) {
-            sendJson(res, 400, { error: `Invalid seat "${seat}"` });
-            return;
-          }
-          if (!Object.hasOwn(o.cfg.agents, agent)) {
-            sendJson(res, 400, { error: `${agent} can't sit in ${seat}` });
-            return;
-          }
-          const agentCfg = o.cfg.agents[agent];
-          if (!agentCfg || !agentCfg.can_sit.includes(seat as Seat)) {
-            sendJson(res, 400, { error: `${agent} can't sit in ${seat}` });
-            return;
-          }
-          if (o.host.setSeat) {
-            const result = await o.host.setSeat(seat as Seat, agent);
-            if (!result.ok) {
-              sendJson(res, result.status || 400, { error: result.error });
-              return;
-            }
-          } else {
-            const current = effectiveSeats(o.cfg, o.store)[seat as Seat];
-            o.store.setSetting(seatSettingKey(o.store.getActiveProject(), seat as Seat), agent);
-            console.log(`${seat} seat: ${current} → ${agent}`);
-          }
-          sendJson(res, 200, { ok: true, seat, agent });
-          return;
-        }
+        if (await handleSeatsPost(method, pathname, body, o, res, sendJson)) return;
 
         // Other POST paths
         sendJson(res, 404, { error: 'Not found' });

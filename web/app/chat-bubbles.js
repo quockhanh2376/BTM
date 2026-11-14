@@ -225,14 +225,23 @@
           var runner = null;
           (chatSnap.seats || []).forEach(function (s) { if (!runner && s.status === 'running' && s.agent) runner = s; });
           var goal = (chatSnap.goals || [])[0];
-          // Vui vẻ (anh Zon 2026-11-14): phần lớn lượt dùng bộ câu vui, 1–3 người cùng nói; còn lại dùng các kiểu cũ.
+          // Vui vẻ (anh Zon 2026-11-14): phần lớn lượt dùng bộ câu vui, 1–5 người cùng nói (theo Settings); còn lại dùng các kiểu cũ.
           if (moodNow() === 'lively' && idle.length >= 1 && Math.random() < 0.65) {
-            var who = livelyTalkPlan(idle, null, cfg.speakers);
-            var second = who[1] && (chatSnap.seats || []).filter(function (x) { return x.seat === who[1]; })[0];
-            var lv = { to: second ? agentLabel(second.agent) : (chatMode === 'vi' ? 'anh Zon' : 'Zon') };
+            // Boss không ngồi ghế nào vẫn có thẻ riêng (thẻ thứ 5) → cũng được góp chuyện.
+            var bossAcc = (chatSnap.accounts || []).filter(function (a) { return a.provider === 'zai'; })[0];
+            var pool = bossAcc && !seenAgent[bossAcc.agent] ? idle.concat(['backup']) : idle;
+            var who = livelyTalkPlan(pool, null, cfg.speakers);
+            var nameOfTarget = function (t) {
+              if (t === 'backup') return agentLabel(bossAcc.agent);
+              var st = (chatSnap.seats || []).filter(function (x) { return x.seat === t; })[0];
+              return st ? agentLabel(st.agent) : '';
+            };
+            var lv = { to: (who[1] && nameOfTarget(who[1])) || (chatMode === 'vi' ? 'anh Zon' : 'Zon') };
             var lt = [{ target: who[0], text: pickChatLine('livelyChit', lv, chatMode), delay: 0 }];
-            if (who[1]) lt.push({ target: who[1], text: pickChatLine('livelyAck', lv, chatMode), delay: 1800 });
-            if (who[2]) lt.push({ target: who[2], text: pickChatLine('livelyThird', lv, chatMode), delay: 3600 });
+            // Người thứ 2 đáp, từ người thứ 3 trở đi chen vào; mỗi người cách nhau 1,8 giây.
+            who.slice(1).forEach(function (t, i) {
+              lt.push({ target: t, text: pickChatLine(i === 0 ? 'livelyAck' : 'livelyThird', lv, chatMode), delay: 1800 * (i + 1) });
+            });
             chatRun(lt);
             return;
           }
