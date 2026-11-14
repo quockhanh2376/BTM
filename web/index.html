@@ -2127,6 +2127,13 @@
     }
 
     /* Đính kèm ảnh trong khung lệnh */
+    /* Nút Mic trong ô Command (anh Zon 2026-11-14): nhận diện giọng nói có sẵn của Chrome/Edge */
+    .mic-group { display: inline-flex; align-items: center; gap: 2px; }
+    .mic-group[hidden] { display: none; }
+    .mic-lang { border: none; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+    #mic-btn.recording { color: #FFFFFF; background: #DC2626; animation: mic-pulse 1.2s infinite; }
+    @keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .5); } 50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); } }
+
     .attach-image-group {
       display: flex;
       align-items: center;
@@ -2470,6 +2477,10 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                 <span class="sr-only" data-i18n="cmd.attach">Attach image</span>
               </label>
+              <span id="mic-group" class="mic-group" hidden>
+                <button type="button" id="mic-btn" class="cmd-icon-btn" aria-pressed="false" title="Voice input" data-i18n-title="mic.start"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span class="sr-only" data-i18n="mic.start">Voice input</span></button>
+                <select id="mic-lang" class="mic-lang" aria-label="Voice language" data-i18n-aria="mic.lang"><option value="vi-VN">VI</option><option value="en-US">EN</option></select>
+              </span>
               <input type="file" id="note-image-input" accept="image/png,image/jpeg,image/webp" class="sr-only">
               <div id="image-preview-wrap" class="image-preview-wrap" style="display: none;">
                 <img id="image-preview" class="image-preview-thumb" alt="Attached image preview" data-i18n-alt="cmd.preview">
@@ -3026,6 +3037,12 @@
           'energy.unavailable': 'Energy: unavailable',
           'energy.low': 'Low',
           'goals.title': 'Goals',
+          'mic.start': 'Voice input',
+          'mic.stop': 'Stop voice input',
+          'mic.lang': 'Voice language',
+          'mic.listening': 'Listening… speak now, click the mic again to stop.',
+          'mic.blocked': 'Microphone is blocked. Allow it in the browser address bar.',
+          'mic.error': 'Voice input stopped: {err}',
           'cmd.nothingToResume': 'Nothing to resume: the session is not paused.',
           'chat.aria': 'Chat bubbles',
           'chat.en': 'Chat: EN',
@@ -6715,6 +6732,51 @@
       var cmdTextArea = document.getElementById('cmd-text');
 
       if (cmdTextArea) {
+        // Nút Mic (anh Zon 2026-11-14): Web Speech API có sẵn trong Chrome/Edge, chữ hiện dần vào ô Command,
+        // anh xem lại rồi tự gửi. Trình duyệt không hỗ trợ thì ẩn nút. Âm thanh do trình duyệt gửi đi nhận diện.
+        (function () {
+          var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+          var group = document.getElementById('mic-group');
+          var btn = document.getElementById('mic-btn');
+          var lang = document.getElementById('mic-lang');
+          if (!SR || !group || !btn || !lang) return;
+          group.hidden = false;
+          try { var ml = window.localStorage.getItem('btm.micLang'); if (ml === 'vi-VN' || ml === 'en-US') lang.value = ml; } catch (e) {}
+          lang.addEventListener('change', function () { try { window.localStorage.setItem('btm.micLang', lang.value); } catch (e) {} });
+          var rec = null;
+          var base = '';
+          function setOn(on) {
+            btn.classList.toggle('recording', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btn.title = tx(on ? 'mic.stop' : 'mic.start');
+          }
+          btn.addEventListener('click', function () {
+            if (rec) { rec.stop(); return; }
+            rec = new SR();
+            rec.lang = lang.value;
+            rec.interimResults = true;
+            rec.continuous = true;
+            base = cmdTextArea.value.replace(/\s+$/, '');
+            rec.onresult = function (ev) {
+              var heard = '';
+              for (var i = 0; i < ev.results.length; i++) heard += ev.results[i][0].transcript;
+              cmdTextArea.value = (base ? base + ' ' : '') + heard.trim();
+            };
+            rec.onerror = function (ev) {
+              showFeedback(cmdFeedback, ev.error === 'not-allowed' || ev.error === 'service-not-allowed' ? tx('mic.blocked') : tx('mic.error', { err: ev.error }), true);
+            };
+            rec.onend = function () { rec = null; setOn(false); cmdTextArea.focus(); };
+            try {
+              rec.start();
+              setOn(true);
+              showFeedback(cmdFeedback, tx('mic.listening'), false);
+            } catch (err) {
+              rec = null;
+              setOn(false);
+              showFeedback(cmdFeedback, tx('mic.error', { err: err.message }), true);
+            }
+          });
+        })();
         // Ctrl+Enter (Cmd+Enter trên Mac) = bấm Send.
         cmdTextArea.addEventListener('keydown', function (e) {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && cmdSendBtn && !cmdSendBtn.disabled) { e.preventDefault(); cmdSendBtn.click(); }

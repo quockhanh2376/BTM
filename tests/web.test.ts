@@ -1732,6 +1732,16 @@ describe('Chat bubbles (2026-11-14)', () => {
     expect(html).toContain("var rr = await postJson('/api/resume', {});");
   });
 
+  it('nút Mic: chỉ hiện khi trình duyệt có SpeechRecognition, chọn vi-VN/en-US, chữ vào ô Command (không tự gửi)', () => {
+    expect(html).toContain('<span id="mic-group" class="mic-group" hidden>');
+    expect(html).toContain('var SR = window.SpeechRecognition || window.webkitSpeechRecognition;');
+    expect(html).toContain('<option value="vi-VN">VI</option><option value="en-US">EN</option>');
+    const fn = html.slice(html.indexOf('var SR = window.SpeechRecognition'), html.indexOf('// Ctrl+Enter (Cmd+Enter'));
+    expect(fn).toContain('cmdTextArea.value = ');
+    expect(fn).not.toContain('cmdSendBtn.click()');
+    expect(fn).not.toContain('innerHTML');
+  });
+
   it('Ctrl+Enter = Send ở ô Command và ô trả lời', () => {
     expect(html).toContain("if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && cmdSendBtn && !cmdSendBtn.disabled) { e.preventDefault(); cmdSendBtn.click(); }");
     expect(html).toContain("if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !btn.disabled) { e.preventDefault(); btn.click(); }");
