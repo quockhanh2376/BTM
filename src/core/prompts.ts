@@ -75,6 +75,8 @@ export function pmTicketPrompt(
     hasOpenspec?: boolean;
     auditFindings?: AuditFinding[];
     docsTicket?: boolean;
+    /** Bài học từ các goal trước (2026-11-14), đã giới hạn độ dài. */
+    lessons?: string;
   }
 ): string {
   const cleanTitle = g.title.replace(/\r?\n/g, ' ').trim();
@@ -90,6 +92,10 @@ export function pmTicketPrompt(
     `acceptance và done_when chỉ mô tả kết quả sản phẩm kiểm tra được; KHÔNG ghi quy trình git vì Core tự lo.`,
     `Chỉ ghi file vào team/tickets/, không sửa file khác, cấm git commit và push.`,
   ];
+
+  if (opts?.lessons?.trim()) {
+    lines.push(`Bài học từ các goal trước (tham khảo, tránh lặp lỗi cũ):\n${opts.lessons.trim()}`);
+  }
 
   if (opts?.docsTicket) {
     lines.push(`Ticket cuối cùng (number = of) luôn là ticket tài liệu: type chore, scope [README.md, CHANGELOG.md, package.json]; README ghi cách cài, chạy, test trên Windows; CHANGELOG thêm mục cho ${goalId}; package.json có "version" dạng x.y.z (bản đầu 1.0.0). Ticket này có depends_on là mọi ticket khác của goal.`);
@@ -169,6 +175,18 @@ export function devTicketPrompt(
 }
 
 // Anh Zon 2026-11-14: "Để Finn trả lời" – PM trả lời câu hỏi đang mở thay anh, chỉ đọc, trung thực.
+// Bài học sau goal (anh Zon 2026-11-14): lượt PM chỉ đọc, trả JSON; Core ghi file bài học.
+export function lessonsPrompt(n: number, digest: string, existing: string): string {
+  return [
+    `Bạn là PM của team BTM (chỉ đọc). Goal G${n} vừa được anh Zon duyệt. Dưới đây là nhật ký nén của goal (do BTM ghi):`,
+    digest.trim(),
+    existing.trim() ? `Bài học đã có (đừng lặp lại):\n${existing.trim()}` : '',
+    `Có thể đọc team/tickets/, team/reports/ và lịch sử git để kiểm. Chỉ đọc, không sửa hay tạo file, cấm git commit và push.`,
+    `Rút tối đa 10 bài học ngắn (mỗi câu ≤ 300 ký tự, tiếng Việt) giúp goal sau làm nhanh hơn, ít bị trả về hơn: lỗi hay gặp, chỗ dễ hỏng, cách kiểm, quy ước của project. Chỉ ghi điều có bằng chứng trong nhật ký/báo cáo.`,
+    `Dòng cuối cùng của câu trả lời là đúng một khối JSON: {"lessons":["…","…"]}`,
+  ].filter(Boolean).join('\n');
+}
+
 export function pmAnswerPrompt(questions: Array<{ id: number; ticket: string; seat: string; text: string }>, agentName: string): string {
   const list = questions
     .map((q) => `- id ${q.id} (${q.ticket}, hỏi bởi ${q.seat}): ${q.text.replace(/\r?\n/g, ' ').trim()}`)

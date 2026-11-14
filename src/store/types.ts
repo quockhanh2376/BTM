@@ -79,6 +79,17 @@ export interface TicketRow {
   updated_at: string;
 }
 
+export interface TicketTurnRow {
+  id: number;
+  seat: string;
+  agent: string;
+  started_at: string;
+  ended_at: string | null;
+  result: string | null;
+  error: string | null;
+  log_file: string | null;
+}
+
 export interface TicketHistoryRow {
   id: number;
   project: string;
@@ -212,13 +223,17 @@ export interface Store {
   /** Phiên của các goal (theo số n) – để bỏ qua phiên của goal đã vào thùng rác. */
   sessionGoalNumbers(sessionId: number): number[];
   /** Thời gian goal (anh Zon 2026-11-14): các lượt thuộc phiên chỉ của goal này. */
-  goalTurns(project: string, n: number): Array<{ seat: string; started_at: string; ended_at: string | null }>;
+  goalTurns(project: string, n: number): Array<{ seat: string; agent: string; started_at: string; ended_at: string | null }>;
   setGoalState(project: string, n: number, state: GoalState, by: string, reason?: string, reviewedSha?: string | null): void;
   upsertTicket(project: string, t: Ticket): void;
   getTicketState(project: string, id: string): { state: TicketState; fix_rounds: number; base_sha: string | null } | null;
   setTicketState(project: string, id: string, to: TicketState, by: string, reason: string, fixRounds?: number, baseSha?: string | null): void;
   listTickets(project: string, goal?: string): TicketRow[];
   ticketHistory(project: string, id: string): TicketHistoryRow[];
+  /** Truy vết ticket (anh Zon 2026-11-14): mọi lượt có task_id = ticket, thuộc phiên của project. */
+  ticketTurns(project: string, ticketId: string): TicketTurnRow[];
+  /** File log của một lượt thuộc project (null nếu không có / project khác). */
+  turnLogFile(project: string, turnId: number): string | null;
   nextTicketSeq(project: string): number;
   bumpTicketSeq(project: string, usedMax: number): void;
 

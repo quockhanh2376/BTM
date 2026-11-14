@@ -1184,17 +1184,30 @@
         loadingEl.textContent = tx('history.loading');
         containerEl.appendChild(loadingEl);
         try {
-          var res = await fetch('/api/tickets/' + encodeURIComponent(ticketId) + '/history');
+          // Truy vết (anh Zon 2026-11-14): tổng + đổi trạng thái + lượt chạy (ai, ghế, bao lâu, kết quả, log).
+          var res = await fetch('/api/tickets/' + encodeURIComponent(ticketId) + '/trace');
           if (!res.ok) throw new Error(tx('history.cannotLoad'));
-          var list = await res.json();
+          var trace = await res.json();
+          var list = (trace && trace.events) || [];
           clearChildren(containerEl);
-          if (!Array.isArray(list) || list.length === 0) {
+          if (list.length === 0) {
             var emptyEl = document.createElement('div');
             emptyEl.className = 'empty-placeholder';
             emptyEl.textContent = tx('history.empty');
             containerEl.appendChild(emptyEl);
             return;
           }
+          var tot = trace.totals || {};
+          var totEl = document.createElement('div');
+          totEl.className = 'history-totals';
+          totEl.textContent = tx('history.totals', {
+            turns: tot.turns || 0,
+            agent: goalsUi.formatDuration(tot.agentMs || 0),
+            seats: Object.keys(tot.bySeat || {}).map(function (k) { return (SEAT_LABELS[k] || k) + ' ' + goalsUi.formatDuration(tot.bySeat[k]); }).join(' · '),
+            fix: tot.fixRounds || 0,
+            ret: tot.returns || 0
+          });
+          containerEl.appendChild(totEl);
           list.forEach(function (h) {
             var entry = document.createElement('div');
             entry.className = 'history-entry';
@@ -1204,6 +1217,42 @@
             timeEl.textContent = formatTime(h.at);
             entry.appendChild(timeEl);
 
+            if (h.kind === 'turn') {
+              var turnEl = document.createElement('span');
+              turnEl.className = 'history-trans';
+              turnEl.textContent = tx('history.turn', {
+                seat: SEAT_LABELS[h.seat] || h.seat,
+                agent: agentLabel(h.agent),
+                dur: goalsUi.formatDuration(h.ms || 0),
+                result: h.endedAt ? (h.result || '?') + (h.error ? ' – ' + h.error : '') : tx('history.running')
+              });
+              entry.appendChild(turnEl);
+              containerEl.appendChild(entry);
+              if (!h.hasLog) return;
+              var logBtn = document.createElement('button');
+              logBtn.type = 'button';
+              logBtn.className = 'history-log-btn';
+              logBtn.textContent = tx('history.log');
+              entry.appendChild(logBtn);
+              var pre = document.createElement('pre');
+              pre.className = 'history-log';
+              pre.hidden = true;
+              containerEl.appendChild(pre);
+              logBtn.addEventListener('click', async function () {
+                if (!pre.hidden) { pre.hidden = true; logBtn.textContent = tx('history.log'); return; }
+                pre.hidden = false;
+                logBtn.textContent = tx('history.logHide');
+                pre.textContent = tx('history.loading');
+                try {
+                  var lr = await fetch('/api/turns/' + encodeURIComponent(h.id) + '/log');
+                  pre.textContent = lr.ok ? await lr.text() : tx('history.cannotLoad');
+                } catch (e) {
+                  pre.textContent = tx('history.cannotLoad');
+                }
+              });
+              return;
+            }
+
             var whoEl = document.createElement('span');
             whoEl.className = 'history-who';
             whoEl.textContent = '[' + (h.by || 'system') + ']';
@@ -1211,7 +1260,7 @@
 
             var transEl = document.createElement('span');
             transEl.className = 'history-trans';
-            transEl.textContent = (h.from_state || 'none') + ' → ' + (h.to_state || 'none');
+            transEl.textContent = (h.from || 'none') + ' → ' + (h.to || 'none');
             entry.appendChild(transEl);
 
             if (h.reason) {
@@ -1983,6 +2032,44 @@
         });
       })();
 
+      // Bài học (anh Zon 2026-11-14): mở ra thì nạp file; Save ghi cả hai ô.
+      (function () {
+        var tb = document.getElementById('lessons-toggle');
+        var box = document.getElementById('lessons-box');
+        var own = document.getElementById('lessons-project');
+        var shared = document.getElementById('lessons-shared');
+        var save = document.getElementById('lessons-save');
+        var fb = document.getElementById('lessons-feedback');
+        if (!tb || !box || !own || !shared || !save || !fb) return;
+        tb.addEventListener('click', async function () {
+          box.hidden = !box.hidden;
+          tb.setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
+          if (box.hidden) return;
+          fb.textContent = '';
+          try {
+            var r = await fetch('/api/lessons');
+            var b = r.ok ? await r.json() : { project: '', shared: '' };
+            own.value = b.project || '';
+            shared.value = b.shared || '';
+            if (!own.value && !shared.value) fb.textContent = tx('lessons.empty');
+          } catch (e) {
+            fb.textContent = tx('history.cannotLoad');
+          }
+        });
+        save.addEventListener('click', async function () {
+          save.disabled = true;
+          try {
+            await postJson('/api/lessons', { scope: 'project', text: own.value });
+            await postJson('/api/lessons', { scope: 'shared', text: shared.value });
+            fb.textContent = tx('lessons.saved');
+          } catch (e) {
+            fb.textContent = e.message;
+          } finally {
+            save.disabled = false;
+          }
+        });
+      })();
+
       // Tab Folder: web/app/folders.js (nạp trước file này).
       btmFolders({ clearChildren: clearChildren, agentLabel: agentLabel });
 
@@ -2500,7 +2587,7 @@
         if (!input || !panel || !list) return; // panel: khung Results (luôn hiện)
         var timer = null;
         var seq = 0;
-        var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log' };
+        var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log', lesson: 'search.kind.lesson' };
         // Ô Results luôn hiện (anh Zon 2026-11-14); trống → dòng hướng dẫn.
         function hide() { seq++; clearChildren(list); count.textContent = ''; list.appendChild(line('empty-placeholder', tx('search.hint'))); }
         function line(cls, text) { var d = document.createElement('div'); d.className = cls; d.textContent = text; return d; }

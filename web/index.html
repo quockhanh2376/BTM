@@ -649,8 +649,16 @@
           <div class="empty-placeholder" data-i18n="goals.empty">No goals yet</div>
         </div>
         <div id="folders-container" class="folders-container" role="tabpanel" hidden aria-live="polite"></div>
-        <div class="goals-trash-bar"><button type="button" id="goals-trash-toggle" class="btn btn-secondary btn-sm btn-tool" aria-expanded="false" aria-controls="goals-trash"><span id="goals-trash-label">Trash (0)</span></button></div>
+        <div class="goals-trash-bar"><button type="button" id="goals-trash-toggle" class="btn btn-secondary btn-sm btn-tool" aria-expanded="false" aria-controls="goals-trash"><span id="goals-trash-label">Trash (0)</span></button><button type="button" id="lessons-toggle" class="btn btn-secondary btn-sm btn-tool" aria-expanded="false" aria-controls="lessons-box" data-i18n="lessons.button">Lessons</button></div>
         <div id="goals-trash" class="goals-trash" hidden aria-live="polite"></div>
+        <!-- Bài học (anh Zon 2026-11-14): PM viết sau mỗi goal; anh xem / sửa. -->
+        <div id="lessons-box" class="lessons-box" hidden>
+          <label class="lessons-label" for="lessons-project" data-i18n="lessons.project">This project</label>
+          <textarea id="lessons-project" class="lessons-text" rows="8" maxlength="20000" spellcheck="false"></textarea>
+          <label class="lessons-label" for="lessons-shared" data-i18n="lessons.shared">All projects</label>
+          <textarea id="lessons-shared" class="lessons-text" rows="8" maxlength="20000" spellcheck="false"></textarea>
+          <div class="lessons-actions"><button type="button" id="lessons-save" class="btn btn-primary btn-sm" data-i18n="lessons.save">Save lessons</button><span id="lessons-feedback" class="lessons-feedback" aria-live="polite"></span></div>
+        </div>
       </section>
 
       <!-- Nhật ký -->
