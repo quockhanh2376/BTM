@@ -3,34 +3,13 @@
 import type { ServerResponse } from 'node:http';
 import type { ServerOpts, SendJson } from '../http.ts';
 import { z } from 'zod';
-import { approveGoal, readProjectKey, type ApproveGoalResult } from '../../ticket/goal.ts';
-import { projectLessonsFile, readLessons, sharedLessonsFile, writeLessons, LESSONS_EDIT_MAX } from '../../knowledge/lessons.ts';
+import { approveGoal, type ApproveGoalResult } from '../../ticket/goal.ts';
 import { archiveGoalAction, restoreGoalAction, purgeGoalAction } from '../goal-trash.ts';
 import { buildGoalDigest, saveGoalDigest } from '../../knowledge/digest.ts';
 import { saveProjectMap, buildProjectMap } from '../../knowledge/map.ts';
-import { readMeetings, readStagedDocs } from '../../meeting/lane.ts';
-import { renderMeetingHtml, renderMeetingMd } from '../../meeting/core.ts';
-import { agentNameKey } from '../../agents/names.ts';
-import { projectSignals, readSkills, skillText } from '../../skills/lane.ts';
-import { fitsProject } from '../../skills/core.ts';
-import { readChatSettings, readStandards, readUiDefaults, ChatSettingsSchema, StandardsSchema, UiDefaultsSchema, CHAT_KEY, STANDARDS_KEY, UI_DEFAULTS_KEY, TIMEZONES } from '../../standards.ts';
 import { readFileSync } from 'node:fs';
 
 export async function handleGoalsGet(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
-  // Bài học (2026-11-14): file của project + file chung.
-  if (method === 'GET' && pathname === '/api/lessons') {
-    const project = o.store.getActiveProject();
-    if (!project) {
-      sendJson(res, 404, { error: 'No active project' });
-      return true;
-    }
-    sendJson(res, 200, {
-      project: readLessons(projectLessonsFile(o.cfg.host.data_dir, project) ?? ''),
-      shared: readLessons(sharedLessonsFile(o.cfg.host.data_dir)),
-    });
-    return true;
-  }
-
   // Thùng rác goal: danh sách goal đã vào thùng rác.
   if (method === 'GET' && pathname === '/api/goals/trash') {
     const project = o.store.getActiveProject();
@@ -39,74 +18,6 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
       n: g.n, title: g.title, state: g.state, archivedAt: g.archived_at,
       tickets: project ? o.store.listTickets(project, `G${g.n}`).length : 0,
     })));
-    return true;
-  }
-
-  // Skill cho agent (2026-11-14): thư viện + gợi ý cho project đang mở + ai kiểm bảo mật; xem toàn văn một skill.
-  if (method === 'GET' && pathname === '/api/skills') {
-    const project = o.store.getActiveProject();
-    let key = '';
-    try { key = project ? readProjectKey(project) : ''; } catch { key = ''; }
-    const sig = project ? projectSignals(project) : { exts: [], hasUi: false, hasTests: false };
-    const skills = readSkills(o.store);
-    const nameOf = (agent: string) => o.store.getSetting(agentNameKey(agent)) || agent;
-    sendJson(res, 200, {
-      skills,
-      project: { key, hasUi: sig.hasUi, hasTests: sig.hasTests, exts: sig.exts.slice(0, 30) },
-      suggested: skills.filter((s) => fitsProject(s.name, s.description, sig)).map((s) => s.id),
-      reviewers: (o.host.skills?.reviewers() ?? []).map(nameOf),
-    });
-    return true;
-  }
-  const skillTextMatch = method === 'GET' ? pathname.match(/^\/api\/skills\/(\d{1,6})\/text$/) : null;
-  if (skillTextMatch) {
-    const id = parseInt(skillTextMatch[1]!, 10);
-    const text = readSkills(o.store).some((s) => s.id === id) ? skillText(o.cfg.host.data_dir, id) : '';
-    if (!text) {
-      sendJson(res, 404, { error: 'Unknown skill' });
-      return true;
-    }
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
-    res.end(text);
-    return true;
-  }
-
-  // Settings (2026-11-14): chuẩn cho mọi project + mặc định dashboard.
-  if (method === 'GET' && pathname === '/api/standards') {
-    sendJson(res, 200, { standards: readStandards(o.store), ui: readUiDefaults(o.store), chat: readChatSettings(o.store), timezones: TIMEZONES });
-    return true;
-  }
-
-  // Họp (2026-11-14): tài liệu đang chờ; danh sách cuộc họp; xuất biên bản (md / html – html in ra PDF hoặc mở bằng Word).
-  if (method === 'GET' && pathname === '/api/meeting/docs') {
-    const project = o.store.getActiveProject();
-    sendJson(res, 200, { docs: project ? readStagedDocs(o.store, project) : [] });
-    return true;
-  }
-  if (method === 'GET' && pathname === '/api/meetings') {
-    const project = o.store.getActiveProject();
-    sendJson(res, 200, { meetings: (project ? readMeetings(o.store, project) : []).map((m) => ({ id: m.id, topic: m.topic.slice(0, 200), status: m.status, createdAt: m.createdAt })) });
-    return true;
-  }
-  const exportMatch = method === 'GET' ? pathname.match(/^\/api\/meetings\/(\d{1,6})\/export\.(md|html)$/) : null;
-  if (exportMatch) {
-    const project = o.store.getActiveProject();
-    const m = project ? readMeetings(o.store, project).find((x) => x.id === parseInt(exportMatch[1]!, 10)) : null;
-    if (!m) {
-      sendJson(res, 404, { error: 'Unknown meeting' });
-      return true;
-    }
-    const nameOf = (agent: string) => o.store.getSetting(agentNameKey(agent)) || agent;
-    const html = exportMatch[2] === 'html';
-    res.writeHead(200, {
-      'Content-Type': html ? 'text/html; charset=utf-8' : 'text/markdown; charset=utf-8',
-      'Content-Disposition': `attachment; filename="meeting-M${m.id}.${exportMatch[2]}"`,
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff',
-      // Biên bản chứa chữ của agent: file HTML tải về không được chạy script hay tải gì từ ngoài.
-      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
-    });
-    res.end(html ? renderMeetingHtml(m, nameOf) : renderMeetingMd(m, nameOf));
     return true;
   }
 
@@ -142,42 +53,6 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
 }
 
 export async function handleGoalsPost(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
-  // Settings (2026-11-14): lưu chuẩn cho mọi project + mặc định dashboard (cả hai, hoặc một trong hai).
-  if (pathname === '/api/standards') {
-    const parsed = z.object({ standards: StandardsSchema.optional(), ui: UiDefaultsSchema.optional(), chat: ChatSettingsSchema.optional() }).safeParse(body);
-    if (!parsed.success || (!parsed.data.standards && !parsed.data.ui && !parsed.data.chat)) {
-      sendJson(res, 400, { error: 'Invalid settings' });
-      return true;
-    }
-    if (parsed.data.standards) o.store.setSetting(STANDARDS_KEY, JSON.stringify(parsed.data.standards));
-    if (parsed.data.ui) o.store.setSetting(UI_DEFAULTS_KEY, JSON.stringify(parsed.data.ui));
-    if (parsed.data.chat) o.store.setSetting(CHAT_KEY, JSON.stringify(parsed.data.chat));
-    sendJson(res, 200, { ok: true, standards: readStandards(o.store), ui: readUiDefaults(o.store), chat: readChatSettings(o.store) });
-    return true;
-  }
-
-  // Anh Zon sửa bài học (2026-11-14).
-  if (pathname === '/api/lessons') {
-    const parsed = z.object({ scope: z.enum(['project', 'shared']), text: z.string().max(LESSONS_EDIT_MAX) }).safeParse(body);
-    if (!parsed.success) {
-      sendJson(res, 400, { error: 'Invalid lessons' });
-      return true;
-    }
-    const project = o.store.getActiveProject();
-    if (!project) {
-      sendJson(res, 404, { error: 'No active project' });
-      return true;
-    }
-    const file = parsed.data.scope === 'shared' ? sharedLessonsFile(o.cfg.host.data_dir) : projectLessonsFile(o.cfg.host.data_dir, project);
-    if (!file) {
-      sendJson(res, 400, { error: 'Project has no key (team/project.yaml)' });
-      return true;
-    }
-    writeLessons(file, parsed.data.text.replace(/\r\n/g, '\n'));
-    sendJson(res, 200, { ok: true });
-    return true;
-  }
-
   if (pathname === '/api/goal/approve') {
     const GoalApproveSchema = z.object({
       goal: z.string().regex(/^G?(\d+)$/i, { message: 'Invalid goal format, expected G<n>' }),
