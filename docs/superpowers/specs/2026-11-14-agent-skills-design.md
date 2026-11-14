@@ -7,7 +7,7 @@ Thêm hướng dẫn cách làm (skill) cho đúng ghế, đúng project; BTM l�
 
 ## Thư viện (dùng chung mọi project)
 - Thêm bằng: dán nội dung `SKILL.md`, hoặc link repo GitHub công khai (Core tải các `SKILL.md`, liệt kê, anh tick).
-- Chỉ lưu CHỮ + nguồn + phiên bản (ngày tải); không tải / không chạy script, hook, file đính kèm. ≤ 8.000 ký tự / skill.
+- Chỉ lưu CHỮ + nguồn + phiên bản (ngày tải); không tải / không chạy script, hook, file đính kèm. ≤ 30.000 ký tự / skill (nới từ 8.000 ngày 2026-11-14 vì skill thật dài hơn).
 
 ## Cổng bảo mật (skill ở khu chờ, chưa ai dùng được)
 0. **Core quét** (không AI): tải-rồi-chạy (`curl|sh`…), chuỗi mã hoá dài, "bỏ qua chỉ dẫn trước", gửi dữ liệu / token ra ngoài, xoá phá (`rm -rf`), ký tự ẩn, nhắc script. Mức `high` → từ chối luôn.
@@ -22,7 +22,7 @@ Cả hai `safe` → `approved`. Một bên `unsafe` → `rejected` + lý do. Kh�
 - Skill `approved` vào thư viện ở trạng thái TẮT; anh bật.
 
 ## Áp dụng
-Lượt của ghế nào → chỉ skill đang bật của ghế + project đó, ≤ 6.000 ký tự / lượt. Ưu tiên: quy định BTM → chuẩn Settings → skill. Skill không cấp thêm quyền / lệnh.
+Lượt của ghế nào → chỉ skill đang bật của ghế + project đó, ≤ 30.000 ký tự / lượt. Ưu tiên: quy định BTM → chuẩn Settings → skill. Skill không cấp thêm quyền / lệnh.
 
 ## Không làm bản này
 Tự kiểm bản mới, skill cho hỏi đáp / họp, ghi skill đã dùng vào dòng thời gian ticket.

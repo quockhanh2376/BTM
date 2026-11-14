@@ -3,8 +3,10 @@
 import { z } from 'zod';
 import type { Seat } from '../config.ts';
 
-export const SKILL_MAX_CHARS = 8000;
-export const SKILLS_PROMPT_MAX = 6000;
+// Anh Zon 2026-11-14: skill thật có thể dài (vd security-audit của Cloudflare ~22.000 ký tự) → nới 8.000 → 30.000.
+// Một lượt nhận tối đa 30.000 ký tự skill (~7.500 token); vẫn nằm trong giới hạn một tham số dòng lệnh (~128 KB).
+export const SKILL_MAX_CHARS = 30000;
+export const SKILLS_PROMPT_MAX = 30000;
 export const SKILLS_MAX = 40;
 export const SEATS: Seat[] = ['pm', 'dev', 'qc', 'audit'];
 

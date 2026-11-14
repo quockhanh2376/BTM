@@ -778,3 +778,32 @@ describe('Thời gian goal (2026-11-14)', () => {
     expect(t.agentMs).toBe(100 * 60_000);
   });
 });
+
+describe('Thẻ ghế khi lượt phụ đang chạy (2026-11-14)', () => {
+  it('Finn (ghế PM) kiểm skill ghi seat audit → thẻ sáng là PM của Finn, không phải Audit của người khác; Boss không ngồi ghế → không thẻ nào', async () => {
+    const { openStore } = await import('../src/store/db.ts');
+    const { loadConfig } = await import('../src/config.ts');
+    const { buildSnapshot } = await import('../src/server/snapshot.ts');
+    const { tmpRepo } = await import('./helpers.ts');
+    const base = loadConfig('btm.config.yaml');
+    const cfg = { ...base, agents: { ...base.agents, mb: { tool: 'claude-code', command: 'claude', provider: 'zai', can_sit: ['pm', 'dev', 'qc', 'audit'] } }, seats: { pm: 'elon', dev: 'jenny', qc: 'elon', audit: 'jenny' } } as any;
+    const repo = tmpRepo({ 'team/project.yaml': 'key: GT\n' });
+    const store = openStore(':memory:');
+    store.setActiveProject(repo);
+    const sid = store.createSession(['Skill check'], repo);
+    store.setSessionStatus(sid, 'running');
+    const t1 = store.startTurn(sid, 'audit', 'elon', 'SKILL-1');
+    let snap = buildSnapshot(store, cfg);
+    expect(snap.holder).toBe('pm');
+    expect(snap.seats.find((x) => x.seat === 'audit')!.status).not.toBe('running');
+    store.endTurn(t1, 'ok');
+    store.startTurn(sid, 'audit', 'mb', 'SKILL-1');
+    snap = buildSnapshot(store, cfg);
+    expect(snap.holder).toBeNull();
+    // Phiên goal thường không đổi: seat của lượt quyết định (kể cả khi người khác ngồi thay).
+    const gid = store.createSession(['1'], repo);
+    store.setSessionStatus(gid, 'running');
+    store.startTurn(gid, 'dev', 'mb', 'GT-0001');
+    expect(buildSnapshot(store, cfg).holder).toBe('dev');
+  });
+});

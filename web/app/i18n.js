@@ -160,6 +160,8 @@
           'skills.onlyProject': 'Only project {key}',
           'skills.onlyProjects': 'Only projects: {keys}',
           'skills.on': 'On',
+          'skills.onWait': 'Can be turned on after both security checks pass (this card refreshes by itself)',
+          'skills.onRejected': 'A rejected skill cannot be turned on',
           'skills.view': 'View text',
           'skills.recheck': 'Check again',
           'skills.delete': 'Delete',
