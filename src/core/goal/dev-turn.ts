@@ -1,4 +1,5 @@
 // Lượt Dev + gate của một ticket (tách khỏi runTickets 2026-11-14, không đổi hành vi).
+import { skillsFor } from '../../skills/lane.ts';
 import { standardsFor } from '../../standards.ts';
 import { mapForScope } from '../../knowledge/map.ts';
 import { rmSync } from 'node:fs';
@@ -73,7 +74,8 @@ export async function runDevTurn(
     d.cfg.runner.agy_allow_commands,
     isHandoffFor(devAgent),
     mapForScope(d.repo, ticket.scope),
-    standardsFor(d.store)
+    standardsFor(d.store),
+    skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'dev')
   );
 
   const devSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'dev');

@@ -1,3 +1,4 @@
+import type { createSkillsLane } from '../skills/lane.ts';
 import { cleanKey, mbStatus, removeMbKey, saveMbKey, setMbEnabled } from '../mb/vault.ts';
 import { searchBtm } from './search.ts';
 import { createSystemReader } from './system.ts';
@@ -58,6 +59,8 @@ export interface HostApi {
     action: 'start' | 'stop' | 'resume' | 'conclude' | 'close',
     p: { topic?: string; quick?: boolean; note?: string }
   ): Promise<{ ok: true; id: number } | { ok: false; status: number; error: string }>;
+  /** Skill cho agent (2026-11-14): thư viện + cổng bảo mật. */
+  skills?: ReturnType<typeof createSkillsLane>;
   /** Tài liệu đính kèm cuộc họp sắp mở (bước 2). */
   meetingDocs?: {
     add(name: string, bytes: Buffer): Promise<{ ok: true; doc: { id: number; name: string; note: string; chars: number } } | { ok: false; status: number; error: string }>;
@@ -390,7 +393,7 @@ export function createServer(o: {
         }
 
         // 4. Read body (max 16 KB, or 7 MB for team-note)
-        const maxBytes = pathname === '/api/team-note' || /^\/api\/questions\/\d{1,9}\/answer$/.test(pathname) ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : pathname === '/api/meeting/doc' ? 28 * 1024 * 1024 : pathname === '/api/agent' ? 96 * 1024 : 16384;
+        const maxBytes = pathname === '/api/team-note' || /^\/api\/questions\/\d{1,9}\/answer$/.test(pathname) ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : pathname === '/api/meeting/doc' ? 28 * 1024 * 1024 : pathname === '/api/skills' ? 64 * 1024 : pathname === '/api/agent' ? 96 * 1024 : 16384;
         let body: unknown;
         try {
           body = await readJsonBody(req, maxBytes);
@@ -463,6 +466,37 @@ export function createServer(o: {
           }
           const result = await o.host.stop(parsed.data.seat);
           sendJson(res, result.status ?? 200, result);
+          return;
+        }
+
+        // Skill cho agent (2026-11-14): dán / liệt kê + nhập từ GitHub / chỉnh ghế + project + bật tắt / kiểm lại / xoá.
+        if (pathname === '/api/skills') {
+          const seat = z.enum(['pm', 'dev', 'qc', 'audit']);
+          const parsed = z.discriminatedUnion('action', [
+            z.object({ action: z.literal('paste'), text: z.string().min(1).max(20000) }),
+            z.object({ action: z.literal('github-list'), url: z.string().min(1).max(300) }),
+            z.object({ action: z.literal('github-import'), url: z.string().min(1).max(300), paths: z.array(z.string().max(300)).min(1).max(30) }),
+            z.object({ action: z.literal('update'), id: z.number().int().positive(), seats: z.array(seat).max(4).optional(), projects: z.union([z.literal('all'), z.array(z.string().max(20)).max(50)]).optional(), on: z.boolean().optional() }),
+            z.object({ action: z.literal('recheck'), id: z.number().int().positive() }),
+            z.object({ action: z.literal('delete'), id: z.number().int().positive() }),
+          ]).safeParse(body);
+          if (!parsed.success) {
+            sendJson(res, 400, { error: 'Invalid skills request' });
+            return;
+          }
+          const lane = o.host.skills;
+          if (!lane) {
+            sendJson(res, 501, { error: 'Skills not available' });
+            return;
+          }
+          const p = parsed.data;
+          const r = p.action === 'paste' ? lane.add(p.text, 'pasted')
+            : p.action === 'github-list' ? await lane.listGithub(p.url)
+            : p.action === 'github-import' ? await lane.importGithub(p.url, p.paths)
+            : p.action === 'update' ? lane.update(p.id, { seats: p.seats, projects: p.projects, on: p.on })
+            : p.action === 'recheck' ? lane.recheck(p.id)
+            : { ok: true as const, skills: lane.remove(p.id) };
+          sendJson(res, r.ok ? 200 : r.status, r.ok ? r : { error: r.error });
           return;
         }
 

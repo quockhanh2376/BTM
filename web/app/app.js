@@ -2080,6 +2080,8 @@
       btmFolders({ clearChildren: clearChildren, agentLabel: agentLabel });
       // Settings: web/app/settings.js (nạp trước file này).
       btmSettings({ postJson: postJson });
+      // Skills: web/app/skills.js (nạp trước file này).
+      btmSkills({ postJson: postJson, askOwner: askOwner, agentLabel: agentLabel, SEAT_LABELS: SEAT_LABELS });
 
       // Lọc log (mẫu anh Zon): chỉ ẩn/hiện dòng đã có, không đổi dữ liệu.
       function isLogError(t) { return /^(error|timeout|rejected|command_denied|fail)/i.test(String(t || '')); }

@@ -81,6 +81,8 @@ export function pmTicketPrompt(
     map?: string;
     /** Chuẩn mặc định của anh Zon cho mọi project (Settings, 2026-11-14). */
     standards?: string[];
+    /** Skill đang bật cho ghế PM ở project này (đã qua cổng bảo mật), dạng khối chữ. */
+    skills?: string;
   }
 ): string {
   const cleanTitle = g.title.replace(/\r?\n/g, ' ').trim();
@@ -96,6 +98,8 @@ export function pmTicketPrompt(
     `acceptance và done_when chỉ mô tả kết quả sản phẩm kiểm tra được; KHÔNG ghi quy trình git vì Core tự lo.`,
     `Chỉ ghi file vào team/tickets/, không sửa file khác, cấm git commit và push.`,
   ];
+
+  if (opts?.skills?.trim()) lines.push(opts.skills.trim());
 
   if (opts?.standards?.length) {
     lines.push(`Chuẩn bắt buộc của anh Zon cho mọi project – ticket nào đụng tới phần liên quan thì acceptance PHẢI có mục kiểm tương ứng:\n${opts.standards.map((s) => `- ${s}`).join('\n')}`);
@@ -156,7 +160,8 @@ export function devTicketPrompt(
   allow: string[] = [],
   handoff = false,
   map = '',
-  standards: string[] = []
+  standards: string[] = [],
+  skills = ''
 ): string {
   const title = t.title.replace(/\r?\n/g, ' ').trim();
   const scope = t.scope.map((s) => s.replace(/\r?\n/g, ' ').trim()).join(', ');
@@ -185,6 +190,7 @@ export function devTicketPrompt(
     lines.push(`Bàn giao: đọc git log nhánh phiên và team/reports/${t.id}-dev.md trước khi sửa`);
   }
 
+  if (skills.trim()) lines.push(skills.trim());
   if (standards.length) {
     lines.splice(2, 0, `Chuẩn bắt buộc của anh Zon cho mọi project (làm đúng trong phần bạn sửa):\n${standards.map((s) => `- ${s}`).join('\n')}`);
   }
@@ -221,7 +227,7 @@ export function pmAnswerPrompt(questions: Array<{ id: number; ticket: string; se
   ].join('\n');
 }
 
-export function qcTicketPrompt(t: Ticket, base: string, agentName: string, ownerAnswers: string[] = [], regress: string[] = [], standards: string[] = []): string {
+export function qcTicketPrompt(t: Ticket, base: string, agentName: string, ownerAnswers: string[] = [], regress: string[] = [], standards: string[] = [], skills = ''): string {
   const title = t.title.replace(/\r?\n/g, ' ').trim();
   const scope = t.scope.map((s) => s.replace(/\r?\n/g, ' ').trim()).join(', ');
   const doneWhen = t.done_when.replace(/\r?\n/g, ' ').trim();
@@ -240,6 +246,7 @@ export function qcTicketPrompt(t: Ticket, base: string, agentName: string, owner
     const noteId = t.note.replace(/^team\/inbox\//, '').replace(/\.md$/, '');
     lines.splice(3, 0, `Đọc team/inbox/${noteId}.md và ảnh đính kèm; làm/chấm theo ảnh.`);
   }
+  if (skills.trim()) lines.splice(3, 0, skills.trim());
   if (standards.length > 0) {
     lines.splice(3, 0, `Chuẩn bắt buộc của anh Zon cho mọi project – kiểm trong phần ticket này đụng tới, vi phạm thì fail và ghi vào bugs:\n${standards.map((s) => `- ${s}`).join('\n')}`);
   }
@@ -258,13 +265,15 @@ export function auditPrompt(
   goal: { n: number; title: string },
   base: string,
   ticketIds: string[],
-  agentName: string
+  agentName: string,
+  skills = ''
 ): string {
   const goalId = `G${goal.n}`;
   const cleanTitle = goal.title.replace(/\r?\n/g, ' ').trim();
   const ticketsStr = ticketIds.join(', ');
 
   const lines = [
+    ...(skills.trim() ? [skills.trim()] : []),
     `Bạn là Audit (${agentName}). Hãy kiểm tra bảo mật toàn bộ thay đổi của mục tiêu ${goalId} (${cleanTitle}) từ commit base ${base} đến HEAD.`,
     `Các ticket đã hoàn thành trong mục tiêu: ${ticketsStr}.`,
     `Checklist kiểm tra: lộ secret/token, injection (SQL/command/path), xác thực & phân quyền, upload/đường dẫn file, dependency mới, log lộ dữ liệu nhạy cảm.`,

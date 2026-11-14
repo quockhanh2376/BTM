@@ -699,6 +699,22 @@
           <label class="settings-row"><span data-i18n="settings.uiLang">Language</span> <select id="ui-lang" class="settings-select"><option value="en">English</option><option value="vi">Vietnamese</option></select></label>
           <label class="settings-row"><span data-i18n="settings.uiTheme">Theme</span> <select id="ui-theme" class="settings-select"><option value="system" data-i18n="settings.themeSystem">Follow the device</option><option value="light" data-i18n="settings.themeLight">Light</option><option value="dark" data-i18n="settings.themeDark">Dark</option></select></label>
         </div>
+        <!-- Skill cho agent (anh Zon 2026-11-14): qua cổng bảo mật 2 vòng rồi mới dùng được -->
+        <h3 class="settings-sub" data-i18n="skills.title">Skills for agents</h3>
+        <p class="settings-note" data-i18n="skills.note">A skill is a text guide on how to work. BTM stores only the text (never runs scripts or hooks). Each new skill is scanned by Core, checked by one agent and cross-checked by another before it can be turned on.</p>
+        <p class="settings-note" id="skills-reviewers"></p>
+        <div class="skills-add">
+          <label class="settings-row settings-col" for="skills-paste"><span data-i18n="skills.paste">Paste a SKILL.md</span>
+            <textarea id="skills-paste" class="form-textarea settings-custom" rows="4" maxlength="8000" spellcheck="false"></textarea></label>
+          <div class="settings-row"><button type="button" id="skills-paste-btn" class="btn btn-secondary btn-sm" data-i18n="skills.pasteBtn">Check and add</button></div>
+          <label class="settings-row" for="skills-url"><span data-i18n="skills.url">Or a public GitHub repo</span>
+            <input type="url" id="skills-url" class="settings-select skills-url" placeholder="https://github.com/owner/repo" autocomplete="off" spellcheck="false">
+            <button type="button" id="skills-url-btn" class="btn btn-secondary btn-sm" data-i18n="skills.urlBtn">Find skills</button></label>
+          <div id="skills-candidates" class="skills-candidates"></div>
+        </div>
+        <span id="skills-feedback" class="settings-feedback" aria-live="polite"></span>
+        <div id="skills-list" class="skills-list"></div>
+        <h3 class="settings-sub" data-i18n="settings.saveTitle">Save standards and dashboard defaults</h3>
         <div class="settings-actions"><button type="button" id="settings-save" class="btn btn-primary btn-sm" data-i18n="settings.save">Save settings</button><span id="settings-feedback" class="settings-feedback" aria-live="polite"></span></div>
       </section>
     </div>
@@ -720,6 +736,7 @@
   <script src="/app/goals.js"></script>
   <script src="/app/meeting.js"></script>
   <script src="/app/settings.js"></script>
+  <script src="/app/skills.js"></script>
   <script src="/app/chat-bubbles.js"></script>
   <script src="/app/accounts.js"></script>
   <script src="/app/app.js"></script>

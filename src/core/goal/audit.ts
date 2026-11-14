@@ -1,4 +1,5 @@
 // Kiểm ticket + Audit + PM sửa theo audit (tách khỏi processGoal 2026-11-14, không đổi hành vi).
+import { skillsFor } from '../../skills/lane.ts';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Seat } from '../../config.ts';
@@ -104,7 +105,8 @@ export async function runAuditPhase(ctx: GoalCtx): Promise<SessionOutcome | 'aga
     { n: goal.n, title: goal.title },
     auditBase,
     goalTicketsAfter.map((t) => t.id),
-    auditAgent
+    auditAgent,
+    skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'audit')
   );
   const auditSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'audit');
   if (auditSnapshot.protectedBranchMoved) {
