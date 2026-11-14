@@ -1757,7 +1757,7 @@ describe('Chat bubbles (2026-11-14)', () => {
   });
 
   it('người chờ nói chuyện về project (2–4 phút, mỗi agent một tiếng nói)', () => {
-    expect(html).toContain('var chatNextChit = chatNow() + (2 + Math.random() * 2) * 60000;');
+    expect(html).toContain('var chatNextChit = chatNow() + minutesIn(chatMoodCfg(moodNow()).chit);');
     expect(html).toContain("pickChatLine('projectChit', pv, chatMode)");
     expect(html).toContain('seenAgent[s.agent] = true;');
   });
@@ -1771,7 +1771,7 @@ describe('Chat bubbles (2026-11-14)', () => {
     expect(f('   ')).toBe('');
     expect(f('a'.repeat(5) + ' ' + 'x'.repeat(200)).length).toBe(80);
     expect(html).toContain("chatShow(s.seat, '💭 ' + lead + line, false, true, true);");
-    expect(html).toContain('if (now - (chatThoughtAt[s.seat] || 0) < 60000 + Math.random() * 30000) return;');
+    expect(html).toContain('if (now - (chatThoughtAt[s.seat] || 0) < tm[0] + Math.random() * tm[1]) return;');
   });
 
   it('bong bóng hiện lâu hơn 5 s (anh Zon)', () => {
@@ -1975,8 +1975,27 @@ describe('Khu Agents theo mẫu (2026-11-14)', () => {
     const tx = (_k: string, v: { n: number }) => `Agents (${v.n})`;
     const fn = new Function('document', 'tx', src + 'return renderAgentCounts;')(doc, tx);
     fn([{ status: 'running' }, { status: 'waiting' }, { status: 'waiting' }, { status: 'idle' }]);
-    expect([els['agents-count']!.textContent, els['agents-live']!.textContent, els['agents-waiting']!.textContent, els['agents-idle']!.textContent]).toEqual(['Agents (4)', '1', '2', '1']);
-    for (const id of ['agents-refresh', 'agents-view']) expect(html).toContain(`id="${id}"`);
+    expect([els['agents-count']!.textContent, els['agents-live']!.textContent, els['agents-waiting']!.textContent, els['agents-idle']!.textContent]).toEqual(['Agents (4)', '1', '2', '']);
+    for (const id of ['agents-refresh', 'agents-view', 'chat-mood']) expect(html).toContain(`id="${id}"`);
+    expect(html).not.toContain('id="agents-idle"');
+  });
+
+  it('không khí team (2026-11-14): Vui vẻ nói nhiều hơn Bình thường; bàn kế hoạch [plan] đang chờ/chạy → tự Vui vẻ', () => {
+    const lib = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return { chatMoodCfg, chatDiscussing };')() as any;
+    const lively = lib.chatMoodCfg('lively');
+    const normal = lib.chatMoodCfg('normal');
+    expect(lively.chit[1]).toBeLessThan(normal.chit[0]);
+    expect(lively.check[1]).toBeLessThan(normal.check[0]);
+    expect(lively.thoughtMs[0] + lively.thoughtMs[1]).toBeLessThan(normal.thoughtMs[0]);
+    expect([lively.chitWhileWork, normal.chitWhileWork]).toEqual([true, false]);
+    const q = (to: string, text: string, status: string) => ({ queue: [{ to, text, status }] });
+    expect(lib.chatDiscussing(q('ask-pm', '[plan] next job?', 'queued'))).toBe(true);
+    expect(lib.chatDiscussing(q('ask-qc', '[PLAN] review', 'running'))).toBe(true);
+    expect(lib.chatDiscussing(q('ask-pm', '[plan] done one', 'done'))).toBe(false);
+    expect(lib.chatDiscussing(q('ask-pm', 'just a question', 'queued'))).toBe(false);
+    expect(lib.chatDiscussing(q('ask-lessons', '[plan] G1', 'queued'))).toBe(false);
+    expect(lib.chatDiscussing(q('dev', '[plan] x', 'queued'))).toBe(false);
+    expect(lib.chatDiscussing(null)).toBe(false);
   });
 });
 

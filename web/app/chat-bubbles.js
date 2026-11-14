@@ -14,9 +14,34 @@
       var chatWaiting = {};
       var chatPending = {};
       var chatNow = function () { return Date.now(); };
-      var chatNextCheck = chatNow() + (5 + Math.random() * 3) * 60000;
-      // Anh Zon: lúc có người đang làm, người chờ nói chuyện vui về project, giờ ngẫu nhiên 2–4 phút.
-      var chatNextChit = chatNow() + (2 + Math.random() * 2) * 60000;
+      // Không khí team (anh Zon 2026-11-14): một nút cho cả team; đang bàn kế hoạch / phản biện thì tự Vui vẻ.
+      var chatMood = 'normal';
+      try { if (window.localStorage.getItem('btm.chatMood') === 'lively') chatMood = 'lively'; } catch (e) {}
+      var chatAutoLively = false;
+      function moodNow() { return chatAutoLively ? 'lively' : chatMood; }
+      function minutesIn(range) { return (range[0] + Math.random() * (range[1] - range[0])) * 60000; }
+      var chatNextCheck = chatNow() + minutesIn(chatMoodCfg(moodNow()).check);
+      var chatNextChit = chatNow() + minutesIn(chatMoodCfg(moodNow()).chit);
+      function paintMood() {
+        var b = document.getElementById('chat-mood');
+        if (!b) return;
+        var m = moodNow();
+        b.setAttribute('aria-checked', m === 'lively' ? 'true' : 'false');
+        b.classList.toggle('is-lively', m === 'lively');
+        b.textContent = (m === 'lively' ? '😄 ' : '🙂 ') + tx(m === 'lively' ? 'mood.lively' : 'mood.normal') + (chatAutoLively ? ' · ' + tx('mood.auto') : '');
+        b.title = tx(chatAutoLively ? 'mood.autoTip' : 'mood.tip');
+      }
+      // Đổi không khí → hẹn lại lần nói kế tiếp theo nhịp mới (không phải đợi hết nhịp cũ).
+      function rescheduleMood() {
+        var c = chatMoodCfg(moodNow());
+        chatNextCheck = Math.min(chatNextCheck, chatNow() + minutesIn(c.check));
+        chatNextChit = Math.min(chatNextChit, chatNow() + minutesIn(c.chit));
+        if (moodNow() === 'normal') {
+          chatNextCheck = Math.max(chatNextCheck, chatNow() + c.check[0] * 60000);
+          chatNextChit = Math.max(chatNextChit, chatNow() + c.chit[0] * 60000);
+        }
+        paintMood();
+      }
 
       function chatSeat(snap, seat) {
         var found = null;
@@ -181,11 +206,14 @@
       function chatTick() {
         if (chatMode === 'off' || !chatSnap || document.visibilityState === 'hidden') return;
         var now = chatNow();
+        var cfg = chatMoodCfg(moodNow());
         if (now >= chatNextCheck) {
-          chatNextCheck = now + (5 + Math.random() * 3) * 60000;
+          chatNextCheck = now + minutesIn(cfg.check);
           chatRun(chatCheckIn(chatSnap, now));
         } else if (now >= chatNextChit) {
-          chatNextChit = now + (2 + Math.random() * 2) * 60000;
+          chatNextChit = now + minutesIn(cfg.chit);
+          // Bình thường: đang có người làm task thì không tán gẫu (chuyên nghiệp hơn).
+          if (!cfg.chitWhileWork && (chatSnap.seats || []).some(function (s) { return s.status === 'running'; })) return;
           // Mỗi agent một tiếng nói (Finn ngồi cả PM lẫn QC thì chỉ tính một lần).
           var seenAgent = {};
           var idle = (chatSnap.seats || []).filter(function (s) {
@@ -219,7 +247,7 @@
               { target: order[0], text: pickChatLine('projectChit', pv, chatMode), delay: 0 },
               { target: order[1], text: pickChatLine('projectChitAck', pv, chatMode), delay: 1800 }
             ];
-            if (order[2] && Math.random() < 0.6) talk.push({ target: order[2], text: pickChatLine('projectChit3', pv, chatMode), delay: 3600 });
+            if (order[2] && Math.random() < cfg.third) talk.push({ target: order[2], text: pickChatLine('projectChit3', pv, chatMode), delay: 3600 });
             chatRun(talk);
           } else if (idle.length >= 1 && (idle.length === 1 || Math.random() < 0.5)) {
             chatRun([{ target: idle[Math.floor(Math.random() * idle.length)], text: pickChatLine('chitOwner', {}, chatMode), delay: 0 }]);
@@ -254,14 +282,15 @@
       }
       var chatThoughtSeen = {};
       var chatThoughtAt = {};
-      // Agent đang chạy "nghĩ thành tiếng" khi Last log đổi: tối đa 1 lần mỗi 60–90 s, không vào hàng đợi thoại.
+      // Agent đang chạy "nghĩ thành tiếng" khi Last log đổi: Vui vẻ 30–45 s, Bình thường 2–3 phút; không vào hàng đợi thoại.
       function chatThoughts(state) {
         var now = chatNow();
+        var tm = chatMoodCfg(moodNow()).thoughtMs;
         ((state && state.seats) || []).forEach(function (s) {
           if (s.status !== 'running' || !s.agent) return;
           var line = chatThoughtLine(s.lastLine || s.agentStatus);
           if (!line || chatThoughtSeen[s.seat] === line) return;
-          if (now - (chatThoughtAt[s.seat] || 0) < 60000 + Math.random() * 30000) return;
+          if (now - (chatThoughtAt[s.seat] || 0) < tm[0] + Math.random() * tm[1]) return;
           chatThoughtSeen[s.seat] = line;
           chatThoughtAt[s.seat] = now;
           var lead = Math.random() < 0.4 ? pickChatLine('thoughtLead', {}, chatMode) : '';
@@ -271,6 +300,8 @@
       function chatOnSnapshot(state) {
         var events = chatEvents(chatSnap, state);
         chatSnap = state;
+        var disc = chatDiscussing(state);
+        if (disc !== chatAutoLively) { chatAutoLively = disc; rescheduleMood(); }
         chatPlay(events, state);
         if (chatMode !== 'off') chatThoughts(state);
         Object.keys(chatWaiting).forEach(function (t) { var a = chatAnchor(t); if (a) chatPlace(chatWaiting[t], a); else chatClearWaiting(t); });
@@ -283,6 +314,16 @@
           chatMode = sel.value;
           try { window.localStorage.setItem('btm.chat', chatMode); } catch (e) {}
           if (chatMode === 'off') chatReset();
+        });
+      })();
+      (function () {
+        var b = document.getElementById('chat-mood');
+        if (!b) return;
+        paintMood();
+        b.addEventListener('click', function () {
+          chatMood = chatMood === 'lively' ? 'normal' : 'lively';
+          try { window.localStorage.setItem('btm.chatMood', chatMood); } catch (e) {}
+          rescheduleMood();
         });
       })();
 
