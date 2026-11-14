@@ -551,6 +551,16 @@ done_when: done
     expect(t.error).toBe('readonly_cmd_modified_repo');
   });
 
+  it('mục hàng đợi cho người nhận lạ không kẹt "running" (đóng lượt, huỷ mục)', async () => {
+    const runner: Runner = vi.fn() as any;
+    const host = createHost({ cfg, store, runner, logDir, dataDir, env: {} });
+    const id = store.enqueue('team' as any, 'x');
+    await host.tick();
+    expect(runner).not.toHaveBeenCalled();
+    expect(store.listQueue(50).find((q: any) => q.id === id)?.status).toBe('cancelled');
+    expect(store.listTurns(store.getLatestSession()!.id).every((t: any) => t.ended_at)).toBe(true);
+  });
+
   it('chat Auto: ask-<ghế> chạy chỉ đọc (runner ghế qc), lượt ghi đúng ghế được hỏi, prompt có câu hỏi', async () => {
     const calls: Array<{ seat: string; prompt: string }> = [];
     const runner: Runner = vi.fn(async (seat: any, _a: any, prompt: string) => { calls.push({ seat, prompt }); return { exitCode: 0, timedOut: false, durationMs: 1, output: 'ok', lastMessage: 'ok' }; }) as any;

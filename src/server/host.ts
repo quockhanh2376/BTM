@@ -1,23 +1,17 @@
-import { existsSync, readFileSync, appendFileSync, mkdirSync, writeFileSync, realpathSync, lstatSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync, realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import type { Config, Seat } from '../config.ts';
 import { effectiveSeats, seatSettingKey, type Store } from '../store/db.ts';
-import type { Runner, TurnOutput } from '../runner/run.ts';
+import type { Runner } from '../runner/run.ts';
 import type { HostApi } from './http.ts';
 import { runSession, resumeSession, type SessionOutcome } from '../core/session.ts';
 import { pmAnswerQuestions, type DelegateResult } from '../core/delegate.ts';
-import { knowledgeFor, saveGoalDigest } from '../knowledge/digest.ts';
+import { saveGoalDigest } from '../knowledge/digest.ts';
 import { createAskLane } from './ask-lane.ts';
+import { runDirectCommand } from './direct-command.ts';
 import { isIsolated } from '../isolation/trusted.ts';
 import { notify, type NotifyKind } from '../notify/notify.ts';
-import { directPrompt, askPrompt } from '../core/prompts.ts';
-import { git, commitAll } from '../git.ts';
-import {
-  snapshotTurn,
-  guardStoredAgentTurn,
-  recoverInterruptedTurn,
-  restoreTicketFilesFromBase,
-} from '../core/guard.ts';
+import { recoverInterruptedTurn } from '../core/guard.ts';
 import { acquireLock } from '../cli.ts';
 import { inboxPath } from './inbox.ts';
 import { approveGoal as approveGoalFn, type ApproveGoalResult } from '../ticket/goal.ts';
@@ -25,7 +19,7 @@ import { publishGoal, type ReleaseInfo } from '../release/publish.ts';
 import { createMonitor } from '../energy/monitor.ts';
 import { readEnergy } from '../energy/quota.ts';
 import { checkLogin } from '../energy/login.ts';
-import { activeAccountKeys, usableAccounts } from '../agents/accounts.ts';
+import { activeAccountKeys } from '../agents/accounts.ts';
 
 export interface HostDeps {
   cfg: Config;
@@ -213,348 +207,13 @@ export function createHost(d: HostDeps): HostApi & {
       const logFile = join(d.logDir, `turn-${turnId}.log`);
       d.store.setTurnLog(turnId, logFile);
 
-      let turnResult: 'done' | 'error' = 'error';
-
-      // PM / Audit: câu hỏi trực tiếp CHỈ ĐỌC (2026-11-14). Trước đây không có nhánh này → lượt và hàng đợi kẹt "running".
-      if (askSeat || item.to === 'pm' || item.to === 'audit') {
-        if (!agent) {
-          d.store.endTurn(turnId, 'error', 'no_agent_on_seat');
-          d.store.setQueueStatus(item.id, 'cancelled');
-        } else {
-          const account = usableAccounts(d.cfg, d.store, agent)[0]?.key;
-          const headBefore = git(activeProject, 'rev-parse', 'HEAD').trim();
-          const treeBefore = git(activeProject, 'status', '--porcelain').trim();
-          let output: TurnOutput | null = null;
-          let runError: any = null;
-          try {
-            // Ghế chạy chỉ đọc: audit giữ 'audit'; PM chạy bằng ghế 'qc' (READ_ONLY_SEATS), lượt vẫn ghi là PM.
-            // Bước 2 kho kiến thức: câu hỏi / bàn kế hoạch kèm nhật ký nén của goal liên quan (không tốn lượt AI).
-            const prompt = askSeat ? askPrompt(askSeat, item.text, knowledgeFor(d.store, d.cfg, activeProject, item.text)) : directPrompt(item.to, item.text);
-            output = await d.runner(turnSeat === 'audit' ? 'audit' : 'qc', agent, prompt, activeProject, logFile, {
-              signal: abortController.signal,
-              account,
-            });
-          } catch (err: any) {
-            runError = err;
-          }
-          const isAbort = abortController.signal.aborted || runError?.name === 'AbortError';
-          if (runError || isAbort) {
-            d.store.endTurn(turnId, 'error', isAbort ? 'aborted' : (runError?.message || String(runError)));
-            d.store.setQueueStatus(item.id, isAbort ? 'cancelled' : 'done');
-          } else if (git(activeProject, 'rev-parse', 'HEAD').trim() !== headBefore || git(activeProject, 'status', '--porcelain').trim() !== treeBefore) {
-            d.store.endTurn(turnId, 'rejected', 'readonly_cmd_modified_repo');
-            d.store.setQueueStatus(item.id, 'done');
-          } else if (output!.timedOut || output!.exitCode !== 0) {
-            d.store.endTurn(turnId, output!.timedOut ? 'timeout' : 'error', output!.timedOut ? 'timeout' : `exit_${output!.exitCode}`);
-            d.store.setQueueStatus(item.id, 'done');
-          } else {
-            d.store.endTurn(turnId, 'ok');
-            d.store.setQueueStatus(item.id, 'done');
-            turnResult = 'done';
-          }
-        }
-      } else if (item.to === 'dev' || item.to === 'qc') {
-        let currentBranch = '';
-        try {
-          currentBranch = git(activeProject, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
-        } catch (err: any) {
-          d.store.endTurn(turnId, 'error', `git_error: ${err?.message || String(err)}`);
-          d.store.recordHandoffFailure(sessionId, taskId, 'git_error');
-          d.store.setSessionStatus(sessionId, 'error');
-          d.store.setQueueStatus(item.id, 'cancelled');
-          return;
-        }
-
-        const protectedBranch = d.cfg.git.protected_branch || 'main';
-        const goalMatch = currentBranch.match(/^goal\/G(\d+)(?:-.*)?$/);
-        const isGoalBranch = Boolean(goalMatch) && currentBranch !== protectedBranch;
-
-        if (!isGoalBranch) {
-          d.store.endTurn(turnId, 'error', 'direct_cmd_needs_goal_branch');
-          d.store.recordHandoffFailure(sessionId, taskId, 'direct_cmd_needs_goal_branch');
-          d.store.setSessionStatus(sessionId, 'error');
-          d.store.setQueueStatus(item.id, 'cancelled');
-          return;
-        }
-
-        const goalN = goalMatch![1];
-
-        if (
-          item.to === 'dev' &&
-          d.store
-            .listTickets(activeProject, `G${goalN}`)
-            .some(
-              (ticket) =>
-                ticket.state === 'in_dev' ||
-                ticket.state === 'returned' ||
-                ticket.state === 'awaiting_qc' ||
-                (ticket.state !== 'passed' && ticket.state !== 'cancelled' && Boolean(ticket.base_sha))
-            )
-        ) {
-          d.store.endTurn(turnId, 'error', 'direct_cmd_ticket_in_progress');
-          d.store.recordHandoffFailure(sessionId, taskId, 'direct_cmd_ticket_in_progress');
-          d.store.setSessionStatus(sessionId, 'error');
-          d.store.setQueueStatus(item.id, 'cancelled');
-          return;
-        }
-
-        const dirtyCheck = git(activeProject, 'status', '--porcelain').trim();
-        if (dirtyCheck.length > 0) {
-          d.store.endTurn(turnId, 'error', 'dirty_tree');
-          d.store.recordHandoffFailure(sessionId, taskId, 'dirty_tree');
-          d.store.setSessionStatus(sessionId, 'error');
-          d.store.setQueueStatus(item.id, 'cancelled');
-          return;
-        }
-
-        let gateFailedReason: string | null = null;
-        // Plan 7: lệnh trực tiếp chạy dưới tài khoản dùng được đầu tiên của Worker qua được gate energy.
-        let account: string | undefined;
-        if (agent) {
-          const candidates = usableAccounts(d.cfg, d.store, agent);
-          if (candidates.length === 0) gateFailedReason = `usage_limited:${agent}`;
-          for (const c of candidates) {
-            if (monitor) {
-              try {
-                await monitor.refresh([c.key]);
-              } catch {
-                // refresh reject -> coi như unknown
-              }
-              const gateCheck = monitor.gate(c.key);
-              if (!gateCheck.ok) {
-                gateFailedReason = gateCheck.reason;
-                continue;
-              }
-            }
-            account = c.key;
-            gateFailedReason = null;
-            break;
-          }
-        }
-
-        if (gateFailedReason) {
-          d.store.endTurn(turnId, 'error', gateFailedReason);
-          d.store.recordHandoffFailure(sessionId, taskId, gateFailedReason);
-          d.store.setQueueStatus(item.id, 'done');
-          turnResult = 'error';
-        } else {
-          const snapshot = snapshotTurn(
-            activeProject,
-            currentBranch,
-            protectedBranch,
-            d.store,
-            item.to
-          );
-          if (snapshot.protectedBranchMoved) {
-            d.store.endTurn(turnId, 'error', 'protected_branch_moved');
-            d.store.recordHandoffFailure(sessionId, taskId, 'protected_branch_moved');
-            d.store.setSessionStatus(sessionId, 'error');
-            d.store.setQueueStatus(item.id, 'cancelled');
-            return;
-          }
-          const author = { name: agent, email: `${agent}@btm.local` };
-
-          if (item.to === 'dev') {
-            const prompt = directPrompt('dev', item.text, d.cfg.runner.agy_allow_commands);
-            let output: TurnOutput | null = null;
-            let runError: any = null;
-            try {
-              output = await d.runner('dev', agent, prompt, activeProject, logFile, {
-                signal: abortController.signal,
-                account,
-              });
-            } catch (err: any) {
-              runError = err;
-            }
-
-            const isAbort = abortController.signal.aborted || runError?.name === 'AbortError';
-
-            if (runError) {
-              const reason = isAbort ? 'aborted' : (runError?.message || String(runError));
-              d.store.endTurn(turnId, 'error', reason);
-              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
-                isErrorOrTimeoutOrAbort: true,
-                taskId,
-                author,
-                reason,
-              });
-              d.store.setQueueStatus(item.id, isAbort ? 'cancelled' : 'done');
-              turnResult = 'error';
-              if (createdSessionForTurn && sessionId !== null) {
-                d.store.setSessionStatus(sessionId, isAbort ? 'stopped' : 'error');
-              }
-              return;
-            }
-
-            if (isAbort) {
-              d.store.endTurn(turnId, 'error', 'aborted');
-              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
-                isErrorOrTimeoutOrAbort: true,
-                taskId,
-                author,
-                reason: 'aborted',
-              });
-              d.store.setQueueStatus(item.id, 'cancelled');
-              if (createdSessionForTurn && sessionId !== null) {
-                d.store.setSessionStatus(sessionId, 'stopped');
-              }
-              return;
-            }
-
-            if (output!.timedOut) {
-              d.store.endTurn(turnId, 'timeout', 'timeout');
-              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
-                isErrorOrTimeoutOrAbort: true,
-                taskId,
-                author,
-                reason: 'timeout',
-              });
-              d.store.setQueueStatus(item.id, 'done');
-              turnResult = 'error';
-            } else if (output!.exitCode !== 0) {
-              const reason = `exit_${output!.exitCode}`;
-              d.store.endTurn(turnId, 'error', reason);
-              guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev', {
-                isErrorOrTimeoutOrAbort: true,
-                taskId,
-                author,
-                reason,
-              });
-              d.store.setQueueStatus(item.id, 'done');
-              turnResult = 'error';
-            } else {
-              const guardRes = guardStoredAgentTurn(d.store, activeProject, snapshot, 'dev');
-
-              if (guardRes.modifiedProtectedBranch) {
-                d.store.endTurn(turnId, 'error', 'agent_modified_protected_branch');
-                d.store.recordHandoffFailure(sessionId, taskId, 'agent_modified_protected_branch');
-                d.store.setQueueStatus(item.id, 'done');
-                turnResult = 'error';
-              } else if (guardRes.switchedBranch) {
-                d.store.endTurn(turnId, 'error', 'agent_switched_branch');
-                d.store.recordHandoffFailure(sessionId, taskId, 'agent_switched_branch');
-                d.store.setQueueStatus(item.id, 'done');
-                turnResult = 'error';
-              } else {
-                restoreTicketFilesFromBase(activeProject, snapshot.preHead);
-                let commitError: string | null = null;
-                const commitMsg = `G${goalN}: cmd ${item.id}: ${item.text.slice(0, 60)}`;
-                try {
-                  commitAll(activeProject, commitMsg, author);
-                } catch (err: any) {
-                  commitError = err?.message || String(err);
-                }
-
-                if (commitError) {
-                  d.store.endTurn(turnId, 'error', `commit_failed: ${commitError}`);
-                  try {
-                    appendFileSync(logFile, `\ncommitAll failed: ${commitError}\n`);
-                  } catch {}
-                  d.store.setQueueStatus(item.id, 'done');
-                  turnResult = 'error';
-                } else {
-                  const devNote =
-                    guardRes.ignoredListFailed
-                      ? 'ignored_list_failed'
-                      : (guardRes.ignoredCleanedCount ?? 0) > 0
-                      ? `ignored_cleaned:${guardRes.ignoredCleanedCount}`
-                      : undefined;
-                  d.store.endTurn(turnId, 'ok', devNote);
-                  d.store.setQueueStatus(item.id, 'done');
-                  turnResult = 'done';
-                }
-              }
-            }
-          } else if (item.to === 'qc') {
-            const prompt = directPrompt('qc', item.text, d.cfg.runner.agy_allow_commands);
-            let output: TurnOutput | null = null;
-            let runError: any = null;
-            try {
-              output = await d.runner('qc', agent, prompt, activeProject, logFile, {
-                signal: abortController.signal,
-                account,
-              });
-            } catch (err: any) {
-              runError = err;
-            }
-
-            const isAbort = abortController.signal.aborted || runError?.name === 'AbortError';
-
-            if (runError) {
-              const reason = isAbort ? 'aborted' : (runError?.message || String(runError));
-              d.store.endTurn(turnId, 'error', reason);
-              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
-                isErrorOrTimeoutOrAbort: true,
-              });
-              d.store.setQueueStatus(item.id, isAbort ? 'cancelled' : 'done');
-              turnResult = 'error';
-              if (createdSessionForTurn && sessionId !== null) {
-                d.store.setSessionStatus(sessionId, isAbort ? 'stopped' : 'error');
-              }
-              return;
-            }
-
-            if (isAbort) {
-              d.store.endTurn(turnId, 'error', 'aborted');
-              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
-                isErrorOrTimeoutOrAbort: true,
-              });
-              d.store.setQueueStatus(item.id, 'cancelled');
-              if (createdSessionForTurn && sessionId !== null) {
-                d.store.setSessionStatus(sessionId, 'stopped');
-              }
-              return;
-            }
-
-            if (output!.lastMessage) {
-              try {
-                appendFileSync(logFile, `\n${output!.lastMessage}\n`);
-              } catch {}
-            }
-
-            if (output!.timedOut) {
-              d.store.endTurn(turnId, 'timeout', 'timeout');
-              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
-                isErrorOrTimeoutOrAbort: true,
-              });
-              turnResult = 'error';
-            } else if (output!.exitCode !== 0) {
-              const reason = `exit_${output!.exitCode}`;
-              d.store.endTurn(turnId, 'error', reason);
-              guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc', {
-                isErrorOrTimeoutOrAbort: true,
-              });
-              turnResult = 'error';
-            } else {
-              const guardRes = guardStoredAgentTurn(d.store, activeProject, snapshot, 'qc');
-
-              if (guardRes.modifiedProtectedBranch) {
-                d.store.endTurn(turnId, 'error', 'agent_modified_protected_branch');
-                d.store.recordHandoffFailure(sessionId, taskId, 'agent_modified_protected_branch');
-                turnResult = 'error';
-              } else if (guardRes.switchedBranch) {
-                d.store.endTurn(turnId, 'error', 'agent_switched_branch');
-                d.store.recordHandoffFailure(sessionId, taskId, 'agent_switched_branch');
-                turnResult = 'error';
-              } else if (guardRes.headChanged || guardRes.treeDirty) {
-                d.store.endTurn(turnId, 'error', 'qc_modified_repo');
-                d.store.recordHandoffFailure(sessionId, taskId, 'qc_modified_repo');
-                turnResult = 'error';
-              } else {
-                const qcNote =
-                  guardRes.ignoredListFailed
-                    ? 'ignored_list_failed'
-                    : (guardRes.ignoredCleanedCount ?? 0) > 0
-                    ? `ignored_cleaned:${guardRes.ignoredCleanedCount}`
-                    : undefined;
-                d.store.endTurn(turnId, 'ok', qcNote);
-                turnResult = 'done';
-              }
-            }
-            d.store.setQueueStatus(item.id, 'done');
-          }
-        }
-      }
+      // Lệnh trực tiếp (Dev / QC / PM / Audit / ask-<ghế>): src/server/direct-command.ts.
+      const direct = await runDirectCommand({
+        cfg: d.cfg, store: d.store, runner: d.runner, monitor, signal: abortController.signal,
+        item, project: activeProject, sessionId, turnId, taskId, logFile, agent, turnSeat, askSeat,
+      });
+      if (direct.ownSession) return;
+      const turnResult = direct.result;
 
       if (createdSessionForTurn && sessionId !== null) {
         const currentSession = d.store.getSession(sessionId);
