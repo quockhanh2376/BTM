@@ -167,6 +167,12 @@ describe('Boss – Energy từ quota Z.ai', () => {
       { name: '5h', remainingPercent: 88, resetsAt: new Date(1794600000000).toISOString() },
       { name: 'week', remainingPercent: 60, resetsAt: new Date(1795000000000).toISOString() },
     ]);
+    // Dạng thật từ VM 2026-11-14 (gói max): CREDIT_LIMIT, unit 3 = 5 giờ, unit 6 = tuần (thứ tự đảo vẫn đúng).
+    const real = parseZaiQuota({ data: { level: 'max', limits: [
+      { type: 'CREDIT_LIMIT', unit: 6, number: 1, usage: 140000, remaining: 95356, percentage: 31, nextResetTime: 1794819500998 },
+      { type: 'CREDIT_LIMIT', unit: 3, number: 5, usage: 28000, remaining: 27988, percentage: 1, nextResetTime: 1794668244349 },
+    ] } });
+    expect(real.map((x) => [x.name, x.remainingPercent])).toEqual([['5h', 99], ['week', 69]]);
     expect(parseZaiQuota({})).toEqual([]);
     expect(parseZaiQuota({ data: { limits: [{ type: 'TOKENS_LIMIT', percentage: 'x' }] } })).toEqual([]);
   });

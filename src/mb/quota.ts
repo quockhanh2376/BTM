@@ -5,16 +5,20 @@ import type { EnergyWindow } from '../energy/quota.ts';
 
 export const ZAI_QUOTA_URL = 'https://api.z.ai/api/monitor/usage/quota/limit';
 
-interface Limit { type?: unknown; percentage?: unknown; nextResetTime?: unknown }
+interface Limit { type?: unknown; unit?: unknown; percentage?: unknown; nextResetTime?: unknown }
 
-/** TOKENS_LIMIT thứ nhất = cửa sổ 5 giờ, thứ hai = tuần; percentage là phần đã dùng. */
+/**
+ * Giới hạn theo dung lượng: CREDIT_LIMIT (gói hiện tại, thấy thật trên VM 2026-11-14) hoặc TOKENS_LIMIT (bản cũ).
+ * unit 3 = giờ (cửa sổ 5 giờ), unit 6 = tuần; không có unit thì theo thứ tự. percentage là phần đã dùng.
+ */
 export function parseZaiQuota(body: unknown, now = Date.now()): EnergyWindow[] {
   const limits = (body as { data?: { limits?: Limit[] } })?.data?.limits;
   if (!Array.isArray(limits)) return [];
-  const tokens = limits.filter((l) => l && l.type === 'TOKENS_LIMIT');
+  const caps = limits.filter((l) => l && (l.type === 'CREDIT_LIMIT' || l.type === 'TOKENS_LIMIT'));
+  const byUnit = (u: number) => caps.find((l) => Number(l.unit) === u);
   const out: EnergyWindow[] = [];
   (['5h', 'week'] as const).forEach((name, i) => {
-    const l = tokens[i];
+    const l = byUnit(name === '5h' ? 3 : 6) ?? caps[i];
     const used = Number(l?.percentage);
     if (!l || !Number.isFinite(used)) return;
     const reset = Number(l.nextResetTime);
