@@ -22,6 +22,7 @@ import { approveGoal, type ApproveGoalResult } from '../ticket/goal.ts';
 import type { ReleaseInfo } from '../release/publish.ts';
 import { readFolders, type ExecAsync } from './folders.ts';
 import { archiveGoalAction, restoreGoalAction, purgeGoalAction } from './goal-trash.ts';
+import { retryTicket } from './ticket-retry.ts';
 
 export interface HostApi {
   start(
@@ -776,6 +777,23 @@ export function createServer(o: {
         }
 
         if (handleAccountsPost(pathname, body, accountsCtx, res, sendJson)) return;
+
+        // Nút "Làm lại ticket": failed/blocked → returned (đủ vòng sửa mới), gỡ ticket bị chặn dây chuyền.
+        const retryMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/retry$/);
+        if (retryMatch) {
+          if (o.host.busy?.()) {
+            sendJson(res, 409, { error: 'Session running' });
+            return;
+          }
+          const project = o.store.getActiveProject();
+          if (!project) {
+            sendJson(res, 400, { error: 'No active project' });
+            return;
+          }
+          const result = retryTicket(o.store, project, retryMatch[1]!);
+          sendJson(res, result.ok ? 200 : result.status, result);
+          return;
+        }
 
         // Plan 6 Task 3: ghi chú dòng + trả ticket về Dev
         const ticketPostMatch = pathname.match(/^\/api\/tickets\/([A-Z][A-Z0-9]*-\d{1,8})\/(notes|return)$/);
