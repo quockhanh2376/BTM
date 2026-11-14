@@ -1241,7 +1241,91 @@
         return h ? h + 'h ' + (mm < 10 ? '0' : '') + mm + 'm' : mm + 'm';
       }
 
-      // Bước 3: câu trả lời gần đây của team (chỉ đọc; trả lời song song khi team đang làm).
+      // Lịch sử chung: dựng danh sách mục (thuần, test được). kind: goal | ask | cmd. Mới nhất trước.
+      function buildHistory(state) {
+        var out = [];
+        var s = state && state.session;
+        var goalsAll = (state && state.goals) || [];
+        if (s && (s.goals || []).length) {
+          (s.goals || []).forEach(function (g) {
+            var text = String(g);
+            if (text === 'Direct command' || text === 'Ask') return;
+            if (/^\d+$/.test(text)) {
+              var found = goalsAll.filter(function (x) { return String(x.n) === text; })[0];
+              text = 'G' + text + (found && found.title ? ' · ' + found.title : '');
+            }
+            out.push({ kind: 'goal', text: text, status: s.status });
+          });
+        }
+        var answers = {};
+        ((state && state.answers) || []).forEach(function (a) { answers[a.id] = a; });
+        ((state && state.queue) || []).forEach(function (q) {
+          var ask = String(q.to).indexOf('ask-') === 0;
+          out.push({
+            kind: ask ? 'ask' : 'cmd',
+            id: q.id,
+            seat: ask ? String(q.to).slice(4) : q.to,
+            text: String(q.text || '').replace(/^\[plan\]\s*/i, ''),
+            plan: /^\[plan\]/i.test(String(q.text || '')),
+            status: q.status,
+            at: q.created_at,
+            answer: ask ? answers[q.id] || null : null
+          });
+        });
+        return out;
+      }
+      function renderHistory(el, state) {
+        var items = buildHistory(state);
+        clearChildren(el);
+        if (!items.length) {
+          var e = document.createElement('li');
+          e.className = 'empty-placeholder';
+          e.textContent = tx('queue.empty');
+          el.appendChild(e);
+          return;
+        }
+        var seatAgent = {};
+        ((state && state.seats) || []).forEach(function (s) { seatAgent[s.seat] = s.agent; });
+        items.forEach(function (it) {
+          var li = document.createElement('li');
+          li.className = 'hist-item hist-' + it.kind;
+          var top = document.createElement('div');
+          top.className = 'hist-top';
+          var chip = document.createElement('span');
+          chip.className = 'hist-chip';
+          chip.textContent = tx(it.kind === 'goal' ? 'hist.goal' : it.kind === 'ask' ? (it.plan ? 'hist.plan' : 'hist.ask') : 'hist.cmd');
+          top.appendChild(chip);
+          var who = document.createElement('span');
+          who.className = 'hist-who';
+          who.textContent = it.kind === 'goal' ? '' : '→ ' + (agentLabel(seatAgent[it.seat]) || String(it.seat).toUpperCase()) + (it.at ? ' · ' + formatHHmm(it.at) : '');
+          top.appendChild(who);
+          var st = document.createElement('span');
+          st.className = 'badge hist-status';
+          st.textContent = formatStatus(it.status);
+          top.appendChild(st);
+          li.appendChild(top);
+          var text = document.createElement('div');
+          text.className = 'hist-text';
+          text.textContent = it.text;
+          li.appendChild(text);
+          if (it.answer) {
+            var ans = document.createElement('div');
+            ans.className = 'hist-answer';
+            var ah = document.createElement('div');
+            ah.className = 'hist-answer-who';
+            ah.textContent = agentLabel(it.answer.agent) + ' · ' + formatHHmm(it.answer.at) + (it.answer.seat !== it.answer.asked ? ' · ' + tx('ans.onBehalf', { seat: SEAT_LABELS[it.answer.asked] || it.answer.asked }) : '');
+            var ab = document.createElement('div');
+            ab.className = 'hist-answer-body';
+            ab.textContent = it.answer.answer;
+            ans.appendChild(ah);
+            ans.appendChild(ab);
+            li.appendChild(ans);
+          }
+          el.appendChild(li);
+        });
+      }
+
+      // (đã gộp vào lịch sử chung) câu trả lời gần đây của team.
       function renderAnswers(list, seats) {
         var box = document.getElementById('answers-box');
         var el = document.getElementById('answers-list');
@@ -2963,7 +3047,6 @@
 
         // Goals & Pipeline & Tickets
         renderGoals(state.goals, state.seats);
-        renderAnswers(state.answers, state.seats);
         setTrashCount(state.trash);
         var trashBox = document.getElementById('goals-trash');
         if (trashBox && !trashBox.hidden && trashBox.getAttribute('data-count') !== String(state.trash || 0)) {
@@ -3009,51 +3092,8 @@
         }
 
         // Phiên + hàng đợi (gộp Session goals vào đây cho gọn)
-        if (queueList) {
-          clearChildren(queueList);
-          var queue = Array.isArray(state.queue) ? state.queue : [];
-          var sessionGoals = (state.session && state.session.goals) ? state.session.goals : [];
-          var allGoals = Array.isArray(state.goals) ? state.goals : [];
-          sessionGoals.forEach(function (g) {
-            var gi = document.createElement('li');
-            gi.className = 'queue-item';
-            var label = document.createElement('span');
-            var text = String(g);
-            if (/^\d+$/.test(text)) {
-              var found = allGoals.find(function (x) { return String(x.n) === text; });
-              text = 'G' + text + (found && found.title ? ' · ' + found.title : '');
-            }
-            label.textContent = tx('queue.goal', { goal: text });
-            gi.appendChild(label);
-            var st = document.createElement('span');
-            st.className = 'badge';
-            st.textContent = formatStatus(state.session.status);
-            gi.appendChild(st);
-            queueList.appendChild(gi);
-          });
-          if (queue.length === 0 && sessionGoals.length === 0) {
-            var emptyQ = document.createElement('li');
-            emptyQ.className = 'empty-placeholder';
-            emptyQ.textContent = tx('queue.empty');
-            queueList.appendChild(emptyQ);
-          } else {
-            queue.forEach(function (item) {
-              var li = document.createElement('li');
-              li.className = 'queue-item';
-
-              var info = document.createElement('span');
-              info.textContent = '#' + item.id + ' [' + item.to + '] ' + item.text;
-              li.appendChild(info);
-
-              var status = document.createElement('span');
-              status.className = 'badge';
-              status.textContent = formatStatus(item.status);
-              li.appendChild(status);
-
-              queueList.appendChild(li);
-            });
-          }
-        }
+        // Lịch sử chung (anh Zon 2026-11-14): goal đang chạy + lệnh + câu hỏi kèm câu trả lời, một danh sách.
+        if (queueList) renderHistory(queueList, state);
 
         // Notes
         renderNotes(state.notes);

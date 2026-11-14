@@ -285,3 +285,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | cmd.auto / auto.* | Tự động / Anh Zon, đây là câu hỏi hay goal mới? / Câu hỏi / Goal mới / Project mới cần repo riêng / Em lập thành GOAL MỚI nhé? / Đã hỏi {name} / {name} đang soạn 2–3 job kế tiếp | Auto / … |
 | goal.summary / goal.summaryTip | Tóm tắt / Lịch sử nén của goal, team trả lời câu hỏi dựa trên đây | Summary / … |
 | ans.title / ans.onBehalf | Team trả lời / trả lời thay {seat} | Team answers / answering for {seat} |
+| queue.title / hist.goal / hist.ask / hist.plan / hist.cmd | Lịch sử / Goal / Hỏi / Kế hoạch / Lệnh | History / Goal / Question / Plan / Command |
