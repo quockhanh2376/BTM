@@ -2477,7 +2477,10 @@
       <h2 class="section-title" data-i18n="cmd.title">Command</h2>
       <div class="recipient-radios" id="recipient-radios">
         <label class="radio-label">
-          <input type="radio" name="cmd-to" value="team" checked> <span data-i18n="cmd.team">Team</span>
+          <input type="radio" name="cmd-to" value="auto" checked> <span data-i18n="cmd.auto">Auto</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="cmd-to" value="team"> <span data-i18n="cmd.team">Team</span>
         </label>
         <label class="radio-label">
           <input type="radio" name="cmd-to" value="pm"> PM
@@ -2911,6 +2914,7 @@
       <p id="ask-note" class="ask-note"></p>
       <div class="ask-actions">
         <button id="ask-cancel" type="button" class="btn btn-secondary"></button>
+        <button id="ask-alt" type="button" class="btn btn-secondary" hidden></button>
         <button id="ask-ok" type="button" class="btn btn-danger"></button>
       </div>
     </dialog>
@@ -3202,6 +3206,17 @@
           'inbox.skipped': 'kept {list} (used by a waiting session)',
           'cmd.title': 'Command',
           'cmd.team': 'Team',
+          'cmd.auto': 'Auto',
+          'auto.unknown': 'Anh Zon, is this a question for the team or a new goal? "{text}"',
+          'auto.asAsk': 'A question',
+          'auto.asGoal': 'A new goal',
+          'auto.project': 'A new project needs its own repo and folder.',
+          'auto.projectNote': 'Create it with "btm init" on the server for now. The kickoff meeting for new projects comes in v2.0.0. Nothing was created.',
+          'auto.gotIt': 'Got it',
+          'auto.goalConfirm': 'Should I plan this as a NEW goal? "{text}"',
+          'auto.goalNote': 'I will break it into tickets for the team. Nothing starts until you confirm.',
+          'auto.askSent': 'Asked {name}. The answer shows on the card (Last log) and in a bubble.',
+          'auto.planSent': '{name} is drafting 2–3 next jobs for you. Nothing is created until you pick one.',
           'cmd.label': 'Command or goal:',
           'cmd.placeholder': 'Goal for PM, command for Dev/QC, or note for the team…',
           'cmd.attach': 'Attach image',
@@ -3531,19 +3546,28 @@
         document.getElementById('ask-note').textContent = o.note || '';
         var ok = document.getElementById('ask-ok');
         var cancel = document.getElementById('ask-cancel');
+        var alt = document.getElementById('ask-alt');
         ok.textContent = o.ok;
         cancel.textContent = o.cancel;
+        alt.textContent = o.alt || '';
+        alt.hidden = !o.alt;
+        alt.style.display = o.alt ? '' : 'none'; // .btn đặt display nên hidden không đủ
+        // Nút đỏ chỉ cho việc nguy hiểm (dừng, xoá); hỏi bình thường dùng nút xanh.
+        ok.className = 'btn ' + (o.tone === 'primary' || o.alt ? 'btn-primary' : 'btn-danger');
         return new Promise(function (resolve) {
           function done(v) {
             ok.removeEventListener('click', onOk);
+            alt.removeEventListener('click', onAlt);
             cancel.removeEventListener('click', onCancel);
             dlg.removeEventListener('cancel', onCancel);
             if (dlg.open) dlg.close();
             resolve(v);
           }
           function onOk() { done(true); }
+          function onAlt() { done('alt'); }
           function onCancel(e) { if (e) e.preventDefault(); done(false); }
           ok.addEventListener('click', onOk);
+          alt.addEventListener('click', onAlt);
           cancel.addEventListener('click', onCancel);
           dlg.addEventListener('cancel', onCancel);
           dlg.showModal();
@@ -4638,6 +4662,7 @@
               var approveYes = await askAsSeat('pm', {
                 text: tx('ask.merge', { n: g.n }),
                 note: tx('ask.mergeNote'),
+                tone: 'primary',
                 ok: tx('ask.mergeOk'),
                 cancel: tx('ask.notYet'),
               });
@@ -5117,7 +5142,7 @@
       function updateAttachVisibility() {
         var checkedRadio = document.querySelector('input[name="cmd-to"]:checked');
         var to = checkedRadio ? checkedRadio.value : 'team';
-        setDisplay(attachImageGroup, to === 'team', 'flex');
+        setDisplay(attachImageGroup, to === 'team' || to === 'auto', 'flex');
       }
 
       if (recipientRadios) {
@@ -5153,7 +5178,7 @@
       function renderRecipients(seats) {
         if (!recipientRadios) return;
         var currentChecked = document.querySelector('input[name="cmd-to"]:checked');
-        var currentVal = currentChecked ? currentChecked.value : 'team';
+        var currentVal = currentChecked ? currentChecked.value : 'auto';
 
         var seatList = Array.isArray(seats) ? seats : [];
         var seatKeys = seatList.map(function (s) { return s.seat; });
@@ -5161,7 +5186,7 @@
           seatKeys = ['pm', 'dev', 'qc'];
         }
 
-        var options = [{ value: 'team', label: tx('cmd.team') }];
+        var options = [{ value: 'auto', label: tx('cmd.auto') }, { value: 'team', label: tx('cmd.team') }];
         seatKeys.forEach(function (sk) {
           options.push({ value: sk, label: formatSeatLabel(sk) });
         });
@@ -5181,7 +5206,7 @@
             radio.type = 'radio';
             radio.name = 'cmd-to';
             radio.value = opt.value;
-            if (opt.value === currentVal || (opt.value === 'team' && !newVals.includes(currentVal))) {
+            if (opt.value === currentVal || (opt.value === 'auto' && !newVals.includes(currentVal))) {
               radio.checked = true;
             }
             label.appendChild(radio);
@@ -5952,6 +5977,10 @@
           projectChitAck: ['Totally!', 'Hope so, go {runner}!', 'Yes, almost there!', 'Same thought here!', 'Cannot wait!', 'Our team rocks!'],
           projectChit3: ['One more ticket and the goal is done!', 'I will review {ticket} carefully later.', 'Bubble tea after release, everyone?', 'Let us keep the tests green!', 'Nice teamwork today!', 'Quiet focus mode, love it.'],
           thoughtLead: ['Working on it: ', 'Update: ', 'Right now: ', 'Hmm, ', 'Almost there: '],
+          intentPlan: ['next job', 'next step', 'what next', 'plan', 'roadmap', 'next goal'],
+          intentProject: ['new project', 'new app', 'another project', 'new repo', 'separate project'],
+          intentAsk: ['what', 'how', 'why', 'when', 'where', 'which', 'who', 'status', 'progress'],
+          intentGoal: ['add', 'make', 'build', 'create', 'fix', 'implement', 'change', 'write', 'update', 'remove'],
           resumeWords: ['go ahead', 'continue', 'resume', 'keep going', 'go on', 'carry on'],
           chitOwner: ['Anh Zon, hope your day is going great!', 'Anh Zon, remember to grab some water!', 'Anh Zon, the team is in good shape today!', 'Anh Zon, thanks for the clear tickets!', 'Anh Zon, we got this!', 'Anh Zon, have you had coffee yet?']
         },
@@ -5981,6 +6010,10 @@
           projectChitAck: ['Chuẩn luôn!', 'Hy vọng vậy, {runner} cố lên!', 'Đúng rồi, gần về đích rồi!', 'Mình cũng nghĩ vậy!', 'Hóng ghê!', 'Team mình đỉnh mà!'],
           projectChit3: ['Thêm một ticket nữa là xong goal rồi!', 'Lát mình soi kỹ {ticket} giúp nha!', 'Release xong làm ly trà sữa nha cả nhà!', 'Giữ test xanh nha mọi người!', 'Hôm nay team phối hợp mượt ghê!', 'Chế độ tập trung, thích ghê.'],
           thoughtLead: ['Mình đang… ', 'Update nè: ', 'Đang làm: ', 'Hmm, ', 'Sắp xong: '],
+          intentPlan: ['kế tiếp', 'tiếp theo', 'lên plan', 'lên kế hoạch', 'làm gì tiếp', 'job nào'],
+          intentProject: ['project mới', 'dự án mới', 'app mới', 'repo mới', 'ứng dụng mới'],
+          intentAsk: ['gì', 'sao', 'nào', 'bao giờ', 'khi nào', 'ở đâu', 'tới đâu', 'đến đâu', 'bao nhiêu', 'có phải'],
+          intentGoal: ['làm', 'thêm', 'tạo', 'sửa', 'đổi', 'viết', 'xây', 'bỏ', 'cập nhật', 'nâng cấp'],
           resumeWords: ['tiếp e', 'tiếp em', 'tiếp tục', 'làm tiếp', 'chạy tiếp', 'tiếp đi'],
           chitOwner: ['Anh Zon ơi, chúc anh một ngày thật vui!', 'Anh Zon nhớ uống nước nha!', 'Anh Zon ơi, team hôm nay sung lắm!', 'Cảm ơn anh Zon giao việc rõ ràng nha!', 'Anh Zon yên tâm, tụi em lo được!', 'Anh Zon uống cà phê chưa ạ?']
         }
@@ -5997,6 +6030,28 @@
           return vars && Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m;
         });
       }
+      // Chat Auto (anh Zon 2026-11-14): đoán loại tin nhắn bằng luật, không gọi AI. Không rõ → hỏi lại anh.
+      // kind: plan | project | ask | goal | unknown; seat = ghế được nhắc tên (vai hoặc tên hiển thị) nếu có.
+      function classifyMessage(text, names) {
+        var t = ' ' + String(text || '').toLowerCase().replace(/\s+/g, ' ').trim() + ' ';
+        var has = function (list) {
+          return list.some(function (w) { return new RegExp('(^|[^\\p{L}])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^\\p{L}])', 'u').test(t); });
+        };
+        var words = function (k) { return CHAT_LINES.en[k].concat(CHAT_LINES.vi[k]); };
+        var seat = null;
+        Object.keys(names || {}).forEach(function (sk) {
+          if (!seat && (names[sk] || []).some(function (n) { return n && has([String(n).toLowerCase()]); })) seat = sk;
+        });
+        if (has(words('intentProject'))) return { kind: 'project', seat: seat };
+        if (has(words('intentPlan'))) return { kind: 'plan', seat: seat };
+        var ask = t.indexOf('?') >= 0 || has(words('intentAsk'));
+        var stripped = t.replace(/^\s*[^,:]{1,20}[,:]\s*/, ' ');
+        var goal = words('intentGoal').some(function (w) { return stripped.trim().indexOf(w + ' ') === 0; });
+        if (ask && !goal) return { kind: 'ask', seat: seat };
+        if (goal && !ask) return { kind: 'goal', seat: seat };
+        return { kind: 'unknown', seat: seat };
+      }
+
       // Anh Zon gõ đúng "go ahead" / "tiếp e"… (cả câu, không thêm gì) trong Command = bấm Resume.
       function isResumeWord(text) {
         var t = String(text || '').toLowerCase().replace(/[\s.!,]+$/g, '').replace(/\s+/g, ' ').trim();
@@ -7150,7 +7205,7 @@
         cmdTextArea.addEventListener('paste', function (e) {
           var checkedRadio = document.querySelector('input[name="cmd-to"]:checked');
           var to = checkedRadio ? checkedRadio.value : 'team';
-          if (to !== 'team') return;
+          if (to !== 'team' && to !== 'auto') return;
           if (e.clipboardData && e.clipboardData.items) {
             for (var i = 0; i < e.clipboardData.items.length; i++) {
               var item = e.clipboardData.items[i];
@@ -7164,6 +7219,45 @@
             }
           }
         });
+      }
+
+      // Chat Auto: hỏi / bàn kế hoạch → lượt chỉ đọc (ask-<ghế>); goal mới → Finn tóm tắt và chờ anh xác nhận.
+      function seatNames() {
+        var out = {};
+        ((latestSnapshot && latestSnapshot.seats) || []).forEach(function (s) {
+          out[s.seat] = [s.seat === 'pm' ? 'pm' : s.seat, agentLabel(s.agent)].concat(s.seat === 'audit' ? ['audit'] : []);
+        });
+        return out;
+      }
+      async function sendAuto(text) {
+        var c = classifyMessage(text, seatNames());
+        if (c.kind === 'unknown') {
+          var pick = await askAsSeat('pm', { text: tx('auto.unknown', { text: text.slice(0, 100) }), ok: tx('auto.asAsk'), alt: tx('auto.asGoal'), tone: 'primary', cancel: tx('ask.notYet') });
+          if (!pick) return;
+          c.kind = pick === 'alt' ? 'goal' : 'ask';
+        }
+        if (c.kind === 'project') {
+          await askAsSeat('pm', { text: tx('auto.project'), note: tx('auto.projectNote'), ok: tx('auto.gotIt'), cancel: tx('ask.keepIt'), tone: 'primary' });
+          return;
+        }
+        if (c.kind === 'goal') {
+          var yes = await askAsSeat('pm', { text: tx('auto.goalConfirm', { text: text.slice(0, 160) }), note: tx('auto.goalNote'), ok: tx('q.teamGuardOk'), cancel: tx('q.teamGuardCancel'), tone: 'primary' });
+          if (!yes) return;
+          var payload = { text: text };
+          if (attachedImage && attachedImage.base64) payload.image = { name: attachedImage.name || 'image.png', base64: attachedImage.base64 };
+          var rg = await postJson('/api/team-note', payload);
+          if (rg && rg.error) { showFeedback(cmdFeedback, rg.error, true); return; }
+          showFeedback(cmdFeedback, tx('cmd.noteSent'), false);
+          cmdTextArea.value = '';
+          clearAttachedImage();
+          return;
+        }
+        var seat = c.kind === 'plan' ? 'pm' : (c.seat || 'pm');
+        var r = await postJson('/api/command', { to: 'ask-' + seat, text: (c.kind === 'plan' ? '[plan] ' : '') + text });
+        if (r && r.ok === false) { showFeedback(cmdFeedback, r.error || tx('cmd.failed'), true); return; }
+        var who = agentLabel(((latestSnapshot && latestSnapshot.seats) || []).filter(function (s) { return s.seat === seat; }).map(function (s) { return s.agent; })[0]) || seat.toUpperCase();
+        showFeedback(cmdFeedback, tx(c.kind === 'plan' ? 'auto.planSent' : 'auto.askSent', { name: who }), false);
+        cmdTextArea.value = '';
       }
 
       if (cmdSendBtn && cmdTextArea) {
@@ -7189,6 +7283,10 @@
               } else {
                 showFeedback(cmdFeedback, tx('cmd.nothingToResume'), true);
               }
+              return;
+            }
+            if (to === 'auto') {
+              await sendAuto(text);
               return;
             }
             // Gửi cho PM = tạo GOAL MỚI (không phải hỏi Finn): Finn hỏi lại trước.

@@ -47,6 +47,21 @@ export function directPrompt(to: Seat, text: string, allow: string[] = []): stri
   return cleanText;
 }
 
+// Chat Auto (anh Zon 2026-11-14): câu hỏi / bàn kế hoạch gửi một người trong team, CHỈ ĐỌC.
+const ROLE_NAME: Record<string, string> = { pm: 'PM', dev: 'Dev', qc: 'QC', audit: 'Audit' };
+export function askPrompt(seat: Seat, text: string): string {
+  const cleanText = text.replace(/\r?\n/g, ' ').trim();
+  const plan = /\[plan\]/i.test(cleanText);
+  const question = cleanText.replace(/\[plan\]\s*/i, '');
+  return [
+    `Bạn là ${ROLE_NAME[seat] ?? seat} trong team BTM (chỉ đọc). Anh Zon ${plan ? 'muốn bàn kế hoạch' : 'hỏi'}: ${question}`,
+    `Đọc team/goals/, team/tickets/, team/reports/, README/CHANGELOG và lịch sử git để trả lời. Chỉ đọc, không sửa hay tạo file, không chạy lệnh làm thay đổi repo, cấm git commit và push.`,
+    plan
+      ? `Đề xuất 2–3 job kế tiếp, mỗi job một dòng: mục tiêu, lý do, ước số ticket (S/M). Không tự tạo goal; anh Zon sẽ chọn.`
+      : `Trả lời ngắn gọn bằng tiếng Việt, dẫn ticket/file làm bằng chứng; điều chưa kiểm được thì nói rõ. Không bao giờ nói anh Zon đã kiểm.`,
+  ].join('\n');
+}
+
 export function pmTicketPrompt(
   g: { n: number; title: string },
   key: string,

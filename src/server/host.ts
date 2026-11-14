@@ -7,7 +7,7 @@ import type { HostApi } from './http.ts';
 import { runSession, resumeSession, type SessionOutcome } from '../core/session.ts';
 import { pmAnswerQuestions, type DelegateResult } from '../core/delegate.ts';
 import { notify, type NotifyKind } from '../notify/notify.ts';
-import { directPrompt } from '../core/prompts.ts';
+import { directPrompt, askPrompt } from '../core/prompts.ts';
 import { git, commitAll } from '../git.ts';
 import {
   snapshotTurn,
@@ -190,8 +190,11 @@ export function createHost(d: HostDeps): HostApi & {
 
       const taskId = `CMD-${item.id}`;
       const seats = effectiveSeats(d.cfg, d.store);
-      const agent = Object.hasOwn(seats, item.to) ? seats[item.to as Seat] : '';
-      const turnId = d.store.startTurn(sessionId, item.to, agent, taskId);
+      // "ask-<ghế>" (chat Auto, 2026-11-14): câu hỏi / bàn kế hoạch CHỈ ĐỌC gửi người ngồi ghế đó.
+      const askSeat = String(item.to).startsWith('ask-') ? (String(item.to).slice(4) as Seat) : null;
+      const turnSeat = (askSeat ?? item.to) as Seat;
+      const agent = Object.hasOwn(seats, turnSeat) ? seats[turnSeat] : '';
+      const turnId = d.store.startTurn(sessionId, turnSeat, agent, taskId);
       currentTurnId = turnId;
 
       mkdirSync(d.logDir, { recursive: true });
@@ -201,7 +204,7 @@ export function createHost(d: HostDeps): HostApi & {
       let turnResult: 'done' | 'error' = 'error';
 
       // PM / Audit: câu hỏi trực tiếp CHỈ ĐỌC (2026-11-14). Trước đây không có nhánh này → lượt và hàng đợi kẹt "running".
-      if (item.to === 'pm' || item.to === 'audit') {
+      if (askSeat || item.to === 'pm' || item.to === 'audit') {
         if (!agent) {
           d.store.endTurn(turnId, 'error', 'no_agent_on_seat');
           d.store.setQueueStatus(item.id, 'cancelled');
@@ -213,7 +216,8 @@ export function createHost(d: HostDeps): HostApi & {
           let runError: any = null;
           try {
             // Ghế chạy chỉ đọc: audit giữ 'audit'; PM chạy bằng ghế 'qc' (READ_ONLY_SEATS), lượt vẫn ghi là PM.
-            output = await d.runner(item.to === 'audit' ? 'audit' : 'qc', agent, directPrompt(item.to, item.text), activeProject, logFile, {
+            const prompt = askSeat ? askPrompt(askSeat, item.text) : directPrompt(item.to, item.text);
+            output = await d.runner(turnSeat === 'audit' ? 'audit' : 'qc', agent, prompt, activeProject, logFile, {
               signal: abortController.signal,
               account,
             });
@@ -1003,14 +1007,15 @@ export function createHost(d: HostDeps): HostApi & {
   }
 
   async function command(
-    to: Seat | 'team',
+    to: Seat | 'team' | `ask-${Seat}`,
     text: string
   ): Promise<{ ok: boolean; id?: number; error?: string }> {
     if (isStopping) {
       return { ok: false, error: 'Stopping' };
     }
 
-    const validSeats = [...Object.keys(effectiveSeats(d.cfg, d.store)), 'team'];
+    const seatKeys = Object.keys(effectiveSeats(d.cfg, d.store));
+    const validSeats = [...seatKeys, 'team', ...seatKeys.map((k) => `ask-${k}`)];
     if (!validSeats.includes(to)) {
       return { ok: false, error: 'Invalid recipient' };
     }

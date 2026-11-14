@@ -40,7 +40,7 @@ export interface HostApi {
   delegateAnswers?(): Promise<{ ok: boolean; status?: number; error?: string }>;
   stop(seat?: Seat): { ok: boolean; status?: number; error?: string } | Promise<{ ok: boolean; status?: number; error?: string }>;
   command(
-    to: Seat | 'team',
+    to: Seat | 'team' | `ask-${Seat}`,
     text: string
   ): { ok: boolean; id?: number; error?: string } | Promise<{ ok: boolean; id?: number; error?: string }>;
   setAutoApprove?(enabled: boolean): void | Promise<void>;
@@ -574,7 +574,8 @@ export function createServer(o: {
         }
 
         if (pathname === '/api/command') {
-          const allowedSeats = [...Object.keys(effectiveSeats(o.cfg, o.store)), 'team'];
+          const seatKeys = Object.keys(effectiveSeats(o.cfg, o.store));
+          const allowedSeats = [...seatKeys, 'team', ...seatKeys.map((k) => `ask-${k}`)];
           const CommandSchema = z.object({
             to: z.string().refine((val) => allowedSeats.includes(val), { message: 'Invalid recipient' }),
             text: z.string().trim().min(1).max(2000),
@@ -584,7 +585,7 @@ export function createServer(o: {
             sendJson(res, 400, { error: parsed.error.issues.map((i) => i.message).join('; ') });
             return;
           }
-          const result = await o.host.command(parsed.data.to as Seat | 'team', parsed.data.text);
+          const result = await o.host.command(parsed.data.to as Seat | 'team' | `ask-${Seat}`, parsed.data.text);
           sendJson(res, 200, result);
           return;
         }
