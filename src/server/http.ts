@@ -55,9 +55,11 @@ export interface HostApi {
   retryRelease?(n: number): Promise<ReleaseInfo | null>;
   /** Họp tranh luận (2026-11-14). */
   meeting?(
-    action: 'start' | 'stop' | 'resume' | 'conclude' | 'close',
-    p: { topic?: string; quick?: boolean; note?: string }
+    action: 'start' | 'stop' | 'resume' | 'conclude' | 'close' | 'decide',
+    p: { topic?: string; quick?: boolean; note?: string; options?: string[]; option?: string }
   ): Promise<{ ok: true; id: number } | { ok: false; status: number; error: string }>;
+  /** Dọn Meeting room (2026-11-14): xoá hẳn cuộc họp đã kết thúc trước mốc. */
+  purgeMeetingsBefore?(before: string): number;
   /** Skill cho agent (2026-11-14): thư viện + cổng bảo mật. */
   skills?: ReturnType<typeof createSkillsLane>;
   /** Tài liệu đính kèm cuộc họp sắp mở (bước 2). */

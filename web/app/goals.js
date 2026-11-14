@@ -102,6 +102,20 @@
             showBtn.textContent = tx('room.show');
             showBtn.addEventListener('click', function () { postJson('/api/meeting-room', { action: 'show' }).catch(function (e) { showFeedback(topFeedback, e.message, true); }); });
             li.appendChild(showBtn);
+            // Xoá hẳn (anh Zon 2026-11-14: họp nháp lúc dev BTM) – hỏi lại trước, không hoàn tác được.
+            var purgeBtn = document.createElement('button');
+            purgeBtn.type = 'button';
+            purgeBtn.className = 'room-show-btn room-purge-btn';
+            purgeBtn.textContent = tx('room.purge');
+            purgeBtn.addEventListener('click', async function () {
+              if (!(await d.askOwner({ who: tx('queue.title'), text: tx('room.purgeAsk', { n: it.n }), note: tx('room.purgeNote'), ok: tx('room.purge'), cancel: tx('ask.keepIt'), tone: 'danger' }))) return;
+              try {
+                var r = await postJson('/api/meeting-room', { action: 'purge' });
+                showFeedback(topFeedback, tx('room.purged', { meetings: r.deleted.meetings, answers: r.deleted.answers + r.deleted.queue }), false);
+              } catch (e) { showFeedback(topFeedback, e.message, true); }
+            });
+            li.appendChild(document.createTextNode(' · '));
+            li.appendChild(purgeBtn);
             el.appendChild(li);
             return;
           }

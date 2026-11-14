@@ -35,6 +35,14 @@ export function readAnswers(store: Store, project: string): AskAnswer[] {
   try { return JSON.parse(store.getSetting(answersKey(project)) || '[]') as AskAnswer[]; } catch { return []; }
 }
 
+/** Xoá hẳn các câu trả lời trước `before` (dọn Meeting room, 2026-11-14). Trả số câu đã xoá. */
+export function purgeAnswersBefore(store: Store, project: string, before: string): number {
+  const list = readAnswers(store, project);
+  const keep = list.filter((a) => Date.parse(a.at) >= Date.parse(before));
+  if (keep.length !== list.length) store.setSetting(answersKey(project), JSON.stringify(keep));
+  return list.length - keep.length;
+}
+
 /** Lưu câu trả lời (mới nhất trước, giữ MAX_KEEP) – dùng cho làn hỏi và lệnh trực tiếp chỉ đọc / QC. */
 export function saveAnswer(store: Store, project: string, a: Omit<AskAnswer, 'answer' | 'at'>, out: { lastMessage?: string; output?: string }): void {
   const list = readAnswers(store, project).filter((x) => x.id !== a.id);

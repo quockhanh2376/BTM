@@ -2592,3 +2592,17 @@
 .chat-log .msg-avatar { width: calc(22px * var(--chat-zoom, 1)); height: calc(22px * var(--chat-zoom, 1)); flex: 0 0 auto; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; font-size: calc(11px * var(--chat-zoom, 1)); font-weight: 700; background: var(--badge-bg); color: var(--badge-text); border: 1px solid var(--border); }
 .chat-log .msg-avatar-owner { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+/* Biểu quyết (anh Zon 2026-11-14) */
+.vote-options-wrap { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; margin-right: 8px; }
+.vote-options-wrap[hidden] { display: none; }
+.vote-options { font: inherit; font-size: 12px; width: 140px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+.chat-log .vote-choice { font-weight: 700; }
+.chat-log .vote-row { display: grid; grid-template-columns: minmax(60px, auto) 1fr auto; align-items: center; gap: 8px; margin-top: 6px; font-size: calc(13px * var(--chat-zoom, 1)); }
+.chat-log .vote-bar { height: 8px; border-radius: 4px; background: var(--badge-bg); overflow: hidden; }
+.chat-log .vote-fill { display: block; height: 100%; background: var(--text-muted); }
+.chat-log .vote-win .vote-fill { background: var(--accent); }
+.chat-log .vote-win .vote-opt { font-weight: 700; }
+.chat-log .vote-decided { margin-top: 6px; font-weight: 700; color: var(--live-text, #2e9e5b); }
+.room-purge-btn { color: var(--error-text); }
+.chat-log .meet-vote-result { align-self: stretch; max-width: none; }
+.chat-log .vote-bar { min-width: 80px; }

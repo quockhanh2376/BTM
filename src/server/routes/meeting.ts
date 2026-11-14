@@ -1,5 +1,6 @@
 // Route nhóm "meeting" tách khỏi http.ts 2026-11-14 (docs/engineering-rules.md). Không đổi hành vi.
 // handle*(…) trả true khi đã trả lời request.
+import { purgeAnswersBefore } from '../ask-lane.ts';
 import { renderMeetingDocx } from '../../meeting/docx.ts';
 import type { ServerResponse } from 'node:http';
 import type { ServerOpts, SendJson } from '../http.ts';
@@ -57,7 +58,7 @@ export async function handleMeetingGet(method: string | undefined, pathname: str
 export async function handleMeetingPost(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
   // Dọn Meeting room (anh Zon 2026-11-14): ẩn mọi tin trước lúc này; "show" bỏ mốc để hiện lại.
   if (pathname === '/api/meeting-room') {
-    const parsed = z.object({ action: z.enum(['clear', 'show']) }).safeParse(body);
+    const parsed = z.object({ action: z.enum(['clear', 'show', 'purge']) }).safeParse(body);
     if (!parsed.success) {
       sendJson(res, 400, { error: 'Invalid request' });
       return true;
@@ -65,6 +66,19 @@ export async function handleMeetingPost(method: string | undefined, pathname: st
     const project = o.store.getActiveProject();
     if (!project) {
       sendJson(res, 400, { error: 'No active project' });
+      return true;
+    }
+    if (parsed.data.action === 'purge') {
+      // Xoá hẳn những gì đang bị ẩn (trước mốc dọn phòng): cuộc họp đã kết thúc + biên bản, câu hỏi đáp, lệnh đã xong.
+      const cut = o.store.getSetting(roomClearedKey(project)) || '';
+      if (!cut) {
+        sendJson(res, 400, { error: 'Clear the room first' });
+        return true;
+      }
+      const meetings = o.host.purgeMeetingsBefore?.(cut) ?? 0;
+      const answers = purgeAnswersBefore(o.store, project, cut);
+      const queue = o.store.purgeQueueBefore(cut);
+      sendJson(res, 200, { ok: true, deleted: { meetings, answers, queue } });
       return true;
     }
     const at = parsed.data.action === 'clear' ? new Date().toISOString() : '';
@@ -98,12 +112,14 @@ export async function handleMeetingPost(method: string | undefined, pathname: st
   // Họp tranh luận (2026-11-14): mở / dừng / tiếp tục (kèm ghi chú) / kết luận luôn / đóng.
   if (pathname === '/api/meeting') {
     const parsed = z.object({
-      action: z.enum(['start', 'stop', 'resume', 'conclude', 'close']),
+      action: z.enum(['start', 'stop', 'resume', 'conclude', 'close', 'decide']),
       topic: z.string().trim().max(4000).optional(),
       quick: z.boolean().optional(),
       note: z.string().max(1000).optional(),
+      options: z.array(z.string().max(200)).max(10).optional(),
+      option: z.string().max(200).optional(),
     }).safeParse(body);
-    if (!parsed.success || (parsed.data.action === 'start' && !parsed.data.topic)) {
+    if (!parsed.success || (parsed.data.action === 'start' && !parsed.data.topic) || (parsed.data.action === 'decide' && !parsed.data.option)) {
       sendJson(res, 400, { error: 'Invalid meeting request' });
       return true;
     }

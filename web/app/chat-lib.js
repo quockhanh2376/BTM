@@ -29,6 +29,10 @@ function classifyMessage(text, names) {
   if (has(words('intentProject'))) return { kind: 'project', seat: seat };
   // Anh Zon 2026-11-14: câu dạng "có nên…", "A hay B", "tranh luận…" → mời mở Meeting (nhiều agent phản biện).
   if (has(words('intentDebate'))) return { kind: 'debate', seat: seat };
+  // "Chủ đề: …" / "Topic: …" ở đầu câu luôn là tranh luận; câu hỏi dạng "A hay B?" / "A or B?" cũng vậy (anh Zon 2026-11-14).
+  var lead = t.replace(/^[\s"“'«]+/, '');
+  if (words('intentTopic').some(function (w) { return lead.indexOf(w + ':') === 0 || lead.indexOf(w + ' :') === 0; })) return { kind: 'debate', seat: seat };
+  if (t.indexOf('?') >= 0 && /\s(hay|or)\s/.test(t)) return { kind: 'debate', seat: seat };
   if (has(words('intentPlan'))) return { kind: 'plan', seat: seat };
   var ask = t.indexOf('?') >= 0 || has(words('intentAsk'));
   var stripped = t.replace(/^\s*[^,:]{1,20}[,:]\s*/, ' ');

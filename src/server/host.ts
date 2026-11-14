@@ -106,8 +106,9 @@ export function createHost(d: HostDeps): HostApi & {
   });
   const meetingTimer = setInterval(() => { void meetingLane.tick(); }, 15_000);
   meetingTimer.unref?.();
-  async function meeting(action: 'start' | 'stop' | 'resume' | 'conclude' | 'close', p: { topic?: string; quick?: boolean; note?: string }) {
-    if (action === 'start') return meetingLane.start(p.topic ?? '', Boolean(p.quick));
+  async function meeting(action: 'start' | 'stop' | 'resume' | 'conclude' | 'close' | 'decide', p: { topic?: string; quick?: boolean; note?: string; options?: string[]; option?: string }) {
+    if (action === 'start') return meetingLane.start(p.topic ?? '', Boolean(p.quick), p.options);
+    if (action === 'decide') return meetingLane.decide(p.option ?? '');
     if (action === 'stop') return meetingLane.stop();
     if (action === 'resume') return meetingLane.resume(p.note);
     if (action === 'conclude') return meetingLane.resume(p.note, true);
@@ -122,6 +123,7 @@ export function createHost(d: HostDeps): HostApi & {
   });
   const skillsTimer = setInterval(() => { void skillsLane.tick(); }, 15_000);
   skillsTimer.unref?.();
+  const purgeMeetingsBefore = (before: string) => meetingLane.purgeBefore(before);
   const meetingDocs = {
     add: (name: string, bytes: Buffer) => meetingLane.addDoc(name, bytes),
     remove: (id: number) => meetingLane.removeDoc(id),
@@ -908,6 +910,7 @@ export function createHost(d: HostDeps): HostApi & {
     delegateAnswers,
     meeting,
     meetingDocs,
+    purgeMeetingsBefore,
     skills: skillsLane,
     stop,
     command,

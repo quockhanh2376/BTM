@@ -169,6 +169,8 @@ export interface Store {
   setQueueStatus(id: number, s: QueueItem['status']): void;
   cancelQueued(): number;
   listQueue(limit: number): QueueItem[];
+  /** Xoá hẳn các dòng hàng đợi đã xong / đã huỷ tạo trước `before` (dọn Meeting room, 2026-11-14). Trả số dòng đã xoá. */
+  purgeQueueBefore(before: string): number;
 
   /** Đổi đường dẫn project ở mọi bảng + key setting `…:<path>` (btm isolate). */
   renameProject(oldPath: string, newPath: string): void;
