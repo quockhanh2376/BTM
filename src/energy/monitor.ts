@@ -7,7 +7,8 @@ import { runProcess } from '../runner/run.ts';
 import { readEnergy, type EnergyReading, type EnergyWindow } from './quota.ts';
 import { checkLogin, type LoginHealth } from './login.ts';
 import { listModels, ZAI_MODELS } from '../agents/models.ts';
-import { mbStatus } from '../mb/vault.ts';
+import { mbStatus, readMbKey } from '../mb/vault.ts';
+import { fetchZaiQuota } from '../mb/quota.ts';
 import { usageLimitedKey } from '../agents/usage-limit.ts';
 import { activeAccountKeys, agentOfAccount } from '../agents/accounts.ts';
 import type { NotifyEvent } from '../notify/notify.ts';
@@ -22,6 +23,8 @@ export interface MonitorDeps {
   env?: NodeJS.ProcessEnv;
   codexHome?: string;
   listModels?: typeof listModels;
+  /** Boss: đọc quota Z.ai (test thay bằng hàm giả). */
+  zaiQuota?: (key: string) => Promise<EnergyWindow[]>;
   /** Plan 7: tài khoản đang bật bị đăng xuất (Ok → relogin) → ntfy. */
   notify?: (ev: NotifyEvent) => void;
 }
@@ -105,7 +108,11 @@ export function createMonitor(d: MonitorDeps): {
       if (agentCfg.provider === 'zai') {
         // Boss (decision 0003): không chạy CLI để đọc quota/đăng nhập; trạng thái lấy từ kho key.
         const st = mbStatus(d.store);
-        d.store.saveEnergy({ agent, status: 'unknown', windows: [], readAt: d.now().toISOString(), note: 'Z.ai' });
+        const key = st.set && st.enabled ? readMbKey(d.store, d.cfg.host.data_dir) : null;
+        const windows = key ? await (d.zaiQuota ?? fetchZaiQuota)(key) : [];
+        d.store.saveEnergy(windows.length
+          ? { agent, status: 'fresh', windows, readAt: d.now().toISOString() }
+          : { agent, status: 'unknown', windows: [], readAt: d.now().toISOString(), note: 'Z.ai' });
         d.store.saveLogin(st.set && st.enabled
           ? { agent, state: 'ok', detail: `Z.ai key …${st.last4}` }
           : { agent, state: 'relogin', detail: st.set ? 'Boss is turned off' : 'Set Boss key on Accounts page' });
