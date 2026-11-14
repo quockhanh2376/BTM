@@ -38,7 +38,7 @@
 
 | Nợ | Trạng thái 2026-11-14 | Còn lại |
 |---|---|---|
-| `web/index.html` 7.400 dòng | ✅ tách: `index.html` 611 + `web/app/{app.css, i18n.js, chat-lib.js, app.js}` (#97, #98) | `app.js` ~3.900 dòng: tách tiếp theo khu (goals, accounts, questions, seats) thành file riêng, chia sẻ helper qua global rõ ràng |
+| `web/index.html` 7.400 dòng | ✅ tách: `index.html` 611 + `web/app/{app.css, i18n.js, chat-lib.js, app.js}` (#97, #98) | `app.js` ~2.600 dòng sau khi tách `goals.js`, `folders.js`, `chat-bubbles.js`, `accounts.js` (hàm `btmX(d)` nhận helper qua `d`): còn questions, diff, seats, notes |
 | Lệnh trực tiếp nhiều nhánh trong `host.ts` | ✅ `src/server/direct-command.ts`, một bước chạy chung (#100); `host.ts` 1.218 → 884 | – |
 | `src/server/http.ts` route dài | ✅ `src/server/routes/{goals,tickets,questions}.ts` (#101); 1.082 → ~800 | tách nốt nhóm notes/inbox, seats/agent, session/command |
 | `src/core/session.ts` 2.450 dòng | ✅ `session-helpers.ts` (#102) + `processGoal` chia theo lượt: `src/core/goal/{ctx,pm-planning,tickets,audit}.ts` dùng `GoalCtx` (#106); `session.ts` còn ~710 | `goal/tickets.ts` ~780 dòng: có thể tách tiếp lượt Dev và lượt QC trong vòng ticket |
