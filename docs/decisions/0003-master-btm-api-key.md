@@ -1,6 +1,6 @@
 # 0003 – Master BTM (MB): một API key Z.ai làm người dự phòng chung
 
-- Ngày: 2026-11-14 · Người quyết: anh Zon · Ghi lại: Cheki · Trạng thái: **ĐỀ XUẤT – chờ anh duyệt**
+- Ngày: 2026-11-14 · Người quyết: anh Zon · Ghi lại: Cheki · Trạng thái: **ĐÃ DUYỆT** (anh Zon 2026-11-14, duyệt cả thiết kế)
 - Thiết kế: `docs/superpowers/specs/2026-11-14-master-btm-design.md`
 
 ## Quyết định
