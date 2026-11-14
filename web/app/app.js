@@ -1260,6 +1260,8 @@
             status: q.status,
             at: q.created_at
           });
+          // Người được hỏi "dạ" ngay, rồi mới tới câu trả lời chi tiết (anh Zon 2026-11-14).
+          if (q.status !== 'cancelled') out.push({ kind: 'reply', ack: true, id: q.id, seat: ask ? String(q.to).slice(4) : q.to, asked: ask ? String(q.to).slice(4) : q.to, agent: null, text: ackLine(q.id, raw), at: q.created_at });
           var a = answers[q.id];
           if (a) out.push({ kind: 'reply', id: q.id, seat: a.seat, asked: a.asked, agent: a.agent, text: a.answer, at: a.at });
         });
@@ -1304,7 +1306,7 @@
             el.appendChild(li);
             return;
           }
-          li.className = 'msg ' + (it.kind === 'ask' ? 'msg-owner' : 'msg-team');
+          li.className = 'msg ' + (it.kind === 'ask' ? 'msg-owner' : 'msg-team') + (it.ack ? ' msg-ack' : '');
           var head = document.createElement('div');
           head.className = 'msg-head';
           if (it.kind === 'ask') {
@@ -3817,6 +3819,7 @@
         var seat = c.kind === 'plan' ? 'pm' : (c.seat || 'pm');
         var r = await postJson('/api/command', { to: 'ask-' + seat, text: (c.kind === 'plan' ? '[plan] ' : '') + text });
         if (r && r.ok === false) { showFeedback(cmdFeedback, r.error || tx('cmd.failed'), true); return; }
+        try { chatRun([{ target: seat, text: ackLine(r && r.id, text), delay: 1200, allowRunning: true }]); } catch (e) {}
         var who = agentLabel(((latestSnapshot && latestSnapshot.seats) || []).filter(function (s) { return s.seat === seat; }).map(function (s) { return s.agent; })[0]) || seat.toUpperCase();
         showFeedback(cmdFeedback, tx(c.kind === 'plan' ? 'auto.planSent' : 'auto.askSent', { name: who }), false);
         cmdTextArea.value = '';
@@ -3883,6 +3886,7 @@
               }
             } else {
               var res = await postJson('/api/command', { to: to, text: text });
+              if (res && res.ok !== false) { try { chatRun([{ target: to, text: ackLine(res.id, text), delay: 1200, allowRunning: true }]); } catch (e) {} }
               if (res && res.ok === false) {
                 showFeedback(cmdFeedback, res.error || tx('cmd.failed'), true);
               } else {
