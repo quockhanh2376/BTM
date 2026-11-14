@@ -1555,6 +1555,26 @@ describe('P5-T9: UI tiếng Anh, bảng chuỗi', () => {
     expect(tx('energy.left', { pct: 15 }) + tx('energy.resets', { time: '19:57' })).toBe('15% left · resets 19:57');
   });
 
+  it('STRINGS.vi đủ key như STRINGS.en, giữ {placeholder}, không rỗng; nút EN/VI lưu btm.lang rồi tải lại', () => {
+    const all = new Function(`${html.slice(i18nStart, i18nEnd)}; return STRINGS;`)() as Record<string, Record<string, string>>;
+    const en = all.en!, vi = all.vi!;
+    expect(Object.keys(vi).sort()).toEqual(Object.keys(en).sort());
+    const broken = Object.keys(en).filter((k) => !vi[k]!.trim()
+      || (en[k]!.match(/\{\w+\}/g) ?? []).some((p) => !vi[k]!.includes(p)));
+    expect(broken).toEqual([]);
+    // tx() theo ngôn ngữ đã lưu; ngôn ngữ lạ thì về tiếng Anh.
+    const txFor = (lang: string) => new Function('window', `${html.slice(i18nStart, html.indexOf('function applyI18n'))}; return tx;`)({ localStorage: { getItem: () => lang } });
+    expect(txFor('vi')('bar.turns', { used: 3, max: 10 })).toBe('Lượt 3/10');
+    expect(txFor('xx')('btn.stop')).toBe('Stop');
+    const sw = html.slice(html.indexOf("document.querySelectorAll('.lang-switch button')"));
+    const handler = sw.slice(0, sw.indexOf('})();'));
+    expect(handler).toContain("b.setAttribute('aria-pressed', lang === LANG ? 'true' : 'false')");
+    expect(handler).toContain('if (lang === LANG || !STRINGS[lang]) return;');
+    expect(handler).toMatch(/localStorage\.setItem\('btm\.lang', lang\)[\s\S]*location\.reload\(\)/);
+    expect(html).toContain('document.documentElement.lang = LANG;');
+    expect(html).not.toContain('head.viSoon');
+  });
+
   it('trang không có biến cục bộ tên tx (che hàm dịch)', () => {
     expect(html).not.toMatch(/(var|let|const)\s+tx\b/);
   });

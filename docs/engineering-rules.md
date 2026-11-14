@@ -28,7 +28,7 @@
 
 ## 4. Giao diện
 
-- Mọi chữ hiển thị qua `tx()` + bảng `STRINGS`, thêm dòng vào `docs/i18n-strings.md`. Tiếng Việt chỉ nằm trong `STRINGS` hoặc kho thoại `CHAT_LINES`.
+- Mọi chữ hiển thị qua `tx()` + bảng `STRINGS`, thêm key ở cả `en` và `vi` (test bắt thiếu key), thêm dòng vào `docs/i18n-strings.md`. Tiếng Việt chỉ nằm trong `STRINGS` hoặc kho thoại `CHAT_LINES`.
 - Màu qua token CSS; làm cả light và dark; nút đỏ chỉ cho việc nguy hiểm.
 - Xác nhận dùng `askOwner` / `askAsSeat` (giọng agent), không `confirm()` của trình duyệt.
 - Giờ hiển thị cho anh Zon là giờ VN (`Asia/Ho_Chi_Minh`).
@@ -43,6 +43,6 @@
 | `src/server/http.ts` route dài | ✅ `src/server/routes/{goals,tickets,questions}.ts` (#101); 1.082 → ~800. 2026-11-14 tách nốt: `routes/{notes,seats,session,meeting,skills,settings}.ts` (220, 117, 120, 91, 79, 94 dòng); `http.ts` 929 → 423, `routes/goals.ts` 265 → 140 (chỉ còn việc của goal) | – |
 | `src/core/session.ts` 2.450 dòng | ✅ `session-helpers.ts` (#102) + `processGoal` chia theo lượt: `src/core/goal/{ctx,pm-planning,tickets,audit}.ts` dùng `GoalCtx` (#106); `session.ts` còn ~710 | ✅ `goal/tickets.ts` 775 → 91: `ticket-run.ts` (trạng thái ticket + 2 khối lặp gộp lại), `dev-turn.ts`, `qc-turn.ts` (#118) |
 | `src/store/db.ts` 1.700 dòng | ✅ `types.ts`, `seats.ts`, `schema.ts` (#103); còn 1.126 | tách phần thân `openStore` theo bảng nếu còn lớn lên |
-| Bản Việt của giao diện (nút VI) | chưa làm | thêm `STRINGS.vi` |
+| Bản Việt của giao diện (nút VI) | ✅ 2026-11-14: `STRINGS.vi` đủ key như `STRINGS.en`; nút EN/VI lưu `btm.lang` rồi tải lại trang | – |
 
 Trả nợ theo từng PR nhỏ, **không đổi hành vi**, test xanh trước và sau.
