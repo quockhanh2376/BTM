@@ -528,6 +528,29 @@ done_when: done
     expect(receivedPrompt).toMatch(/chỉ đọc/i);
   });
 
+  // 2026-11-14: anh hỏi Audit/PM qua Command → trước đây lượt + hàng đợi kẹt "running" vì không có nhánh xử lý.
+  it('lệnh trực tiếp cho Audit/PM: chạy chỉ đọc, đóng lượt + hàng đợi; lượt sửa repo bị từ chối', async () => {
+    const seats: string[] = [];
+    const runner: Runner = vi.fn(async (seat: any) => { seats.push(seat); return { exitCode: 0, timedOut: false, durationMs: 1, output: 'Bruno: G1 có lỗi DoS null byte, đã sửa ở GT-0007', lastMessage: 'ok' }; }) as any;
+    const auditCfg = { ...cfg, seats: { ...cfg.seats, audit: Object.keys(cfg.agents)[0]! } } as any;
+    const host = createHost({ cfg: auditCfg, store, runner, logDir, dataDir, env: {} });
+    await host.command('audit', 'Audit G1 vừa rồi gặp lỗi secure gì?');
+    await host.tick();
+    expect(seats).toEqual(['audit']);
+    expect(store.listQueue(50).filter((q: any) => q.status === 'running')).toEqual([]);
+    const sid = store.getLatestSession()!.id;
+    expect(store.listTurns(sid).every((t: any) => t.ended_at && t.result === 'ok')).toBe(true);
+    expect(store.getSession(sid)?.status).toBe('done');
+
+    const dirty: Runner = vi.fn(async (_s: any, _a: any, _p: any, cwd: string) => { writeFileSync(join(cwd, 'x.txt'), 'x'); return { exitCode: 0, timedOut: false, durationMs: 1, output: '', lastMessage: '' }; }) as any;
+    const host2 = createHost({ cfg: auditCfg, store, runner: dirty, logDir, dataDir, env: {} });
+    await host2.command('audit', 'q');
+    await host2.tick();
+    const t = store.listTurns(store.getLatestSession()!.id).at(-1) as any;
+    expect(t.result).toBe('rejected');
+    expect(t.error).toBe('readonly_cmd_modified_repo');
+  });
+
   it('6) lượt trực tiếp: phiên tạo cho nó được setSessionStatus "done" hoặc "error" khi xong', async () => {
     git(repoDir, 'checkout', '-b', 'goal/G1-status');
     // 6.1 Success case -> session status 'done'

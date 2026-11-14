@@ -36,6 +36,14 @@ export function directPrompt(to: Seat, text: string, allow: string[] = []): stri
       `Trả lời ngắn: kết quả kiểm tra bảo mật; ổn ghi OK.`,
     ].join('\n');
   }
+  if (to === 'pm') {
+    // Anh Zon hỏi PM (2026-11-14): chỉ đọc, trả lời từ những gì team đã làm.
+    return [
+      `Bạn là PM (chỉ đọc). Anh Zon hỏi: ${cleanText}`,
+      `Đọc team/goals/, team/tickets/, team/reports/ và lịch sử git để trả lời. Chỉ đọc, không sửa file, cấm git commit và push.`,
+      `Trả lời ngắn gọn bằng tiếng Việt, dựa trên bằng chứng (ghi ticket/file nếu có); điều không chắc thì nói rõ là chưa kiểm được.`,
+    ].join('\n');
+  }
   return cleanText;
 }
 

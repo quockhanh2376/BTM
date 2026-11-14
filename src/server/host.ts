@@ -200,7 +200,43 @@ export function createHost(d: HostDeps): HostApi & {
 
       let turnResult: 'done' | 'error' = 'error';
 
-      if (item.to === 'dev' || item.to === 'qc') {
+      // PM / Audit: câu hỏi trực tiếp CHỈ ĐỌC (2026-11-14). Trước đây không có nhánh này → lượt và hàng đợi kẹt "running".
+      if (item.to === 'pm' || item.to === 'audit') {
+        if (!agent) {
+          d.store.endTurn(turnId, 'error', 'no_agent_on_seat');
+          d.store.setQueueStatus(item.id, 'cancelled');
+        } else {
+          const account = usableAccounts(d.cfg, d.store, agent)[0]?.key;
+          const headBefore = git(activeProject, 'rev-parse', 'HEAD').trim();
+          const treeBefore = git(activeProject, 'status', '--porcelain').trim();
+          let output: TurnOutput | null = null;
+          let runError: any = null;
+          try {
+            // Ghế chạy chỉ đọc: audit giữ 'audit'; PM chạy bằng ghế 'qc' (READ_ONLY_SEATS), lượt vẫn ghi là PM.
+            output = await d.runner(item.to === 'audit' ? 'audit' : 'qc', agent, directPrompt(item.to, item.text), activeProject, logFile, {
+              signal: abortController.signal,
+              account,
+            });
+          } catch (err: any) {
+            runError = err;
+          }
+          const isAbort = abortController.signal.aborted || runError?.name === 'AbortError';
+          if (runError || isAbort) {
+            d.store.endTurn(turnId, 'error', isAbort ? 'aborted' : (runError?.message || String(runError)));
+            d.store.setQueueStatus(item.id, isAbort ? 'cancelled' : 'done');
+          } else if (git(activeProject, 'rev-parse', 'HEAD').trim() !== headBefore || git(activeProject, 'status', '--porcelain').trim() !== treeBefore) {
+            d.store.endTurn(turnId, 'rejected', 'readonly_cmd_modified_repo');
+            d.store.setQueueStatus(item.id, 'done');
+          } else if (output!.timedOut || output!.exitCode !== 0) {
+            d.store.endTurn(turnId, output!.timedOut ? 'timeout' : 'error', output!.timedOut ? 'timeout' : `exit_${output!.exitCode}`);
+            d.store.setQueueStatus(item.id, 'done');
+          } else {
+            d.store.endTurn(turnId, 'ok');
+            d.store.setQueueStatus(item.id, 'done');
+            turnResult = 'done';
+          }
+        }
+      } else if (item.to === 'dev' || item.to === 'qc') {
         let currentBranch = '';
         try {
           currentBranch = git(activeProject, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
