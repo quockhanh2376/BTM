@@ -39,7 +39,12 @@ export function saveAnswer(store: Store, project: string, a: Omit<AskAnswer, 'an
 
 function cleanAnswer(out: { lastMessage?: string; output?: string }): string {
   const raw = (out.lastMessage || '').trim() || String(out.output || '').trim().split(/\r?\n/).slice(-15).join('\n');
-  return raw.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').trim().slice(0, 2000);
+  return raw
+    .split(/\r?\n/)
+    // Dòng chẩn đoán của Claude Code (vd model GLM của Boss: "[claude-code:unrecognized_model] {…}") không phải câu trả lời.
+    .filter((l) => !/^\[claude-code:[a-z_]+\]/.test(l.trim()) && !l.trim().startsWith("Claude Code doesn't recognize the model "))
+    .join('\n')
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').trim().slice(0, 2000);
 }
 
 export function createAskLane(d: {
