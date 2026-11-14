@@ -159,7 +159,9 @@ export function runGate(
           reasons.push('report_header_invalid');
         }
         const trimmed = content.trim();
-        const isOk = trimmed === 'OK' || /(?:^|\n)\s*OK\s*$/.test(trimmed);
+        // "OK" một dòng, hoặc mọi dòng nội dung đều mở đầu bằng "OK" (vd "OK: npm test 2/2" – codex hay viết vậy).
+        const isOk = trimmed === 'OK' || /(?:^|\n)\s*OK\s*$/.test(trimmed)
+          || (bodyLines.length > 0 && bodyLines.every((l) => /^\s*OK\b/.test(l)));
         const hasValidHeading = /(?:^|\n)(?:##\s+(?:Bug|Cần sửa|Cần xác nhận)|#\s+Báo cáo Dev|-\s+(?:Bug|Cần sửa|Cần xác nhận):)/m.test(content);
         if (!isOk && !hasValidHeading) {
           reasons.push('bad_report');

@@ -371,6 +371,24 @@ describe('runGate', () => {
     expect(result.reasons).toContain('bad_report');
   });
 
+  // GT-0005 (2026-11-14): Marry (codex) ghi các dòng "OK: chi tiết…" → gate báo bad_report dù báo cáo ổn.
+  it('report whose lines all start with "OK:" passes; a stray non-OK line still fails', () => {
+    for (const [body, bad] of [
+      ['OK: ChoiGame.bat fixed.\nOK: npm test 2/2.', false],
+      ['OK: done\nnot ok text', true],
+    ] as const) {
+      const repo = tmpRepo({ 'src/a.ts': 'export const a = 1;' });
+      const base = headSha(repo);
+      writeFileSync(join(repo, 'src/a.ts'), 'export const a = 2;');
+      mkdirSync(join(repo, 'team/reports'), { recursive: true });
+      writeFileSync(join(repo, 'team/reports/GTM-0001-dev.md'), validReportHeader + body);
+      execFileSync('git', ['add', '-A'], { cwd: repo });
+      execFileSync('git', [...TEST_AUTHOR, 'commit', '-m', 'GTM-0001: ok lines'], { cwd: repo });
+      const result = runGate(repo, makeCard({ scope: ['src/'] }), base, emptyCmds);
+      expect(result.reasons.includes('bad_report')).toBe(bad);
+    }
+  });
+
   it('report with ## Bug / ## Cần sửa / ## Cần xác nhận passes schema check', () => {
     const repo = tmpRepo({
       'src/a.ts': 'export const a = 1;',
