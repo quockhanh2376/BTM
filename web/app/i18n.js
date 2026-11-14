@@ -228,6 +228,7 @@
           'search.title': 'Results',
           'search.clear': 'Clear results',
           'search.none': 'No results',
+          'search.hint': 'Type in Search above: goals, tickets, Q&A, logs…',
           'search.count': '{n} results',
           'search.copy': 'Copy',
           'search.copied': 'Copied',

@@ -1653,6 +1653,8 @@ describe('Command trái, Session & queue phải (2026-11-13)', () => {
     const kpi = html.slice(html.indexOf('<section class="kpi-grid"'));
     expect(kpi.indexOf('id="search-input"')).toBeLessThan(kpi.indexOf('id="kpi-accounts"'));
     expect(html).toContain("fetch('/api/search?q=' + encodeURIComponent(q)");
+    expect(html).not.toContain('id="search-panel" class="search-panel" style="display: none;"'); // Results luôn hiện
+    expect(html).toContain('align-items: stretch; /* Results + Command cao bằng Meeting room */');
   });
 });
 
