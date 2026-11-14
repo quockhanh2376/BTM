@@ -5640,6 +5640,9 @@
           idleSelf: ['I am free, waiting for work.', 'Nothing on my plate right now.', 'Free here, ready when needed.', 'Idle for now!', 'Waiting for the next ticket.'],
           chit: ['Coffee break, anyone?', 'Anyone else love green tests?', 'Quiet day, huh?', 'Who wants to pair later?', 'Stretch break!', 'Fun fact: tests are my love language.'],
           chitAck: ['Count me in!', 'Haha, same!', 'Always!', 'Sounds good!', 'Sure, why not?', 'Ha, true!'],
+          projectChit: ['{goal} is really taking shape!', '{runner} is focused on {ticket}, looks close.', 'Once {goal} is done, demo time for anh Zon!', '{ticket} has more details than it looks.', 'My bet: {ticket} passes this round!', 'This project is fun, cannot wait for release!'],
+          projectChitAck: ['Totally!', 'Hope so, go {runner}!', 'Yes, almost there!', 'Same thought here!', 'Cannot wait!', 'Our team rocks!'],
+          projectChit3: ['One more ticket and the goal is done!', 'I will review {ticket} carefully later.', 'Bubble tea after release, everyone?', 'Let us keep the tests green!', 'Nice teamwork today!', 'Quiet focus mode, love it.'],
           resumeWords: ['go ahead', 'continue', 'resume', 'keep going', 'go on', 'carry on'],
           chitOwner: ['Anh Zon, hope your day is going great!', 'Anh Zon, remember to grab some water!', 'Anh Zon, the team is in good shape today!', 'Anh Zon, thanks for the clear tickets!', 'Anh Zon, we got this!', 'Anh Zon, have you had coffee yet?']
         },
@@ -5665,6 +5668,9 @@
           idleSelf: ['Em đang rảnh, chờ việc ạ.', 'Em chưa có việc anh ạ.', 'Em rảnh, cần gì gọi em nha.', 'Đang rảnh nè!', 'Em chờ ticket tiếp theo ạ.'],
           chit: ['Có ai đi cà phê không?', 'Thấy test xanh là vui ghê!', 'Hôm nay yên ắng ghê ta.', 'Lát ai pair code với mình không?', 'Giải lao vươn vai chút nào!', 'Chuyện vui: test pass là chân ái.'],
           chitAck: ['Cho mình theo với!', 'Haha, đúng vậy!', 'Luôn luôn!', 'Nghe được đó!', 'Ok luôn!', 'Chuẩn!'],
+          projectChit: ['{goal} lên hình rõ rồi đó cả nhà!', '{runner} làm {ticket} chăm ghê, chắc sắp xong rồi.', 'Xong {goal} là demo cho anh Zon liền nha!', '{ticket} nhìn vậy mà nhiều chi tiết lắm.', 'Mình đoán {ticket} pass ngay vòng này!', 'Project này vui ghê, mong tới lúc release!'],
+          projectChitAck: ['Chuẩn luôn!', 'Hy vọng vậy, {runner} cố lên!', 'Đúng rồi, gần về đích rồi!', 'Mình cũng nghĩ vậy!', 'Hóng ghê!', 'Team mình đỉnh mà!'],
+          projectChit3: ['Thêm một ticket nữa là xong goal rồi!', 'Lát mình soi kỹ {ticket} giúp nha!', 'Release xong làm ly trà sữa nha cả nhà!', 'Giữ test xanh nha mọi người!', 'Hôm nay team phối hợp mượt ghê!', 'Chế độ tập trung, thích ghê.'],
           resumeWords: ['tiếp e', 'tiếp em', 'tiếp tục', 'làm tiếp', 'chạy tiếp', 'tiếp đi'],
           chitOwner: ['Anh Zon ơi, chúc anh một ngày thật vui!', 'Anh Zon nhớ uống nước nha!', 'Anh Zon ơi, team hôm nay sung lắm!', 'Cảm ơn anh Zon giao việc rõ ràng nha!', 'Anh Zon yên tâm, tụi em lo được!', 'Anh Zon uống cà phê chưa ạ?']
         }
@@ -5755,7 +5761,8 @@
       var chatPending = {};
       var chatNow = function () { return Date.now(); };
       var chatNextCheck = chatNow() + (5 + Math.random() * 3) * 60000;
-      var chatNextChit = chatNow() + (9 + Math.random() * 3) * 60000;
+      // Anh Zon: lúc có người đang làm, người chờ nói chuyện vui về project, giờ ngẫu nhiên 2–4 phút.
+      var chatNextChit = chatNow() + (2 + Math.random() * 2) * 60000;
 
       function chatSeat(snap, seat) {
         var found = null;
@@ -5916,9 +5923,27 @@
           chatNextCheck = now + (5 + Math.random() * 3) * 60000;
           chatRun(chatCheckIn(chatSnap, now));
         } else if (now >= chatNextChit) {
-          chatNextChit = now + (9 + Math.random() * 3) * 60000;
-          var idle = (chatSnap.seats || []).filter(function (s) { return s.agent && s.status !== 'running'; }).map(function (s) { return s.seat; });
-          if (idle.length >= 1 && (idle.length === 1 || Math.random() < 0.5)) {
+          chatNextChit = now + (2 + Math.random() * 2) * 60000;
+          // Mỗi agent một tiếng nói (Finn ngồi cả PM lẫn QC thì chỉ tính một lần).
+          var seenAgent = {};
+          var idle = (chatSnap.seats || []).filter(function (s) {
+            if (!s.agent || s.status === 'running' || seenAgent[s.agent]) return false;
+            seenAgent[s.agent] = true;
+            return true;
+          }).map(function (s) { return s.seat; });
+          var runner = null;
+          (chatSnap.seats || []).forEach(function (s) { if (!runner && s.status === 'running' && s.agent) runner = s; });
+          var goal = (chatSnap.goals || [])[0];
+          if (runner && goal && idle.length >= 2 && Math.random() < 0.7) {
+            var pv = { goal: chatTrim(goal.title, 32), ticket: runner.ticket || 'G' + goal.n, runner: agentLabel(runner.agent) };
+            var order = idle.slice().sort(function () { return Math.random() - 0.5; });
+            var talk = [
+              { target: order[0], text: pickChatLine('projectChit', pv, chatMode), delay: 0 },
+              { target: order[1], text: pickChatLine('projectChitAck', pv, chatMode), delay: 1800 }
+            ];
+            if (order[2] && Math.random() < 0.6) talk.push({ target: order[2], text: pickChatLine('projectChit3', pv, chatMode), delay: 3600 });
+            chatRun(talk);
+          } else if (idle.length >= 1 && (idle.length === 1 || Math.random() < 0.5)) {
             chatRun([{ target: idle[Math.floor(Math.random() * idle.length)], text: pickChatLine('chitOwner', {}, chatMode), delay: 0 }]);
           } else if (idle.length >= 2) {
             var a = idle[Math.floor(Math.random() * idle.length)];

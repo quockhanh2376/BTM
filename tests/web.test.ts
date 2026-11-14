@@ -1747,6 +1747,12 @@ describe('Chat bubbles (2026-11-14)', () => {
     expect(html).toContain("if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !btn.disabled) { e.preventDefault(); btn.click(); }");
   });
 
+  it('người chờ nói chuyện về project (2–4 phút, mỗi agent một tiếng nói)', () => {
+    expect(html).toContain('var chatNextChit = chatNow() + (2 + Math.random() * 2) * 60000;');
+    expect(html).toContain("pickChatLine('projectChit', pv, chatMode)");
+    expect(html).toContain('seenAgent[s.agent] = true;');
+  });
+
   it('bong bóng hiện lâu hơn 5 s (anh Zon)', () => {
     expect(html).toContain('var CHAT_SHOW_MS = 7000;');
     expect(html).toContain("el.classList.add('chat-fade'); }, CHAT_SHOW_MS)");

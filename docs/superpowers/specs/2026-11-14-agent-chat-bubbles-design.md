@@ -69,3 +69,11 @@ Công tắc **Chat** ở đầu khối **Agents** (cạnh các ô Live / Waiting
 ## Để người làm tự quyết
 
 Kiểu bong bóng cụ thể, thời gian hiện, nội dung từng câu trong kho.
+
+## Giai đoạn sau (anh Zon 2026-11-14, ghi lại để làm sau, CHƯA làm)
+
+Bản hiện tại: thoại chỉ cho vui, câu soạn sẵn, không gọi AI.
+
+Sau này: khi anh Zon **bàn về project hay goal** (ví dụ trước khi chốt goal mới), các agent **phản biện nhau thật**: PM nêu cách chia việc, Dev nêu rủi ro kỹ thuật, QC nêu cách kiểm, Audit nêu rủi ro bảo mật; mỗi người đọc ý người trước rồi đồng ý hoặc phản bác, anh chốt.
+
+Khác bản hiện tại ở chỗ: câu nói do AI sinh (tốn lượt/energy), cần backend (một phiên "thảo luận" riêng, không đụng vòng chuyển việc), có giới hạn số vòng và lưu lại kết luận cho PM dùng khi lập ticket. Cần thiết kế riêng (brainstorm) trước khi làm.
