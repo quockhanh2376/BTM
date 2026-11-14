@@ -36,13 +36,13 @@
 
 ## 5. Nợ kỹ thuật cần trả (theo thứ tự)
 
-| Nợ | Vì sao | Hướng |
+| Nợ | Trạng thái 2026-11-14 | Còn lại |
 |---|---|---|
-| `web/index.html` ~7.400 dòng, một file | khó đọc, dễ đụng nhau, test phải cắt chuỗi | tách JS/CSS ra file tĩnh cùng origin (CSP `'self'` cho phép), theo khu: chat, goals, accounts, questions… |
-| `src/core/session.ts` ~2.450 dòng | luồng PM/Dev/QC/Audit chung một file | tách từng lượt (pm/dev/qc/audit) + guard dùng chung |
-| `src/server/http.ts` ~1.000 dòng route | thêm route là thêm vào một hàm dài | tách router theo nhóm (goals, tickets, questions, accounts) như `accounts-api.ts` |
-| `src/store/db.ts` ~1.600 dòng | mọi bảng chung một object | tách theo bảng, giữ một `Store` interface |
-| Lệnh trực tiếp Dev/QC/PM/Audit có nhiều nhánh gần giống nhau trong `host.ts` | dễ sót trường hợp (lỗi lệnh Audit kẹt 2026-11-14) | một hàm chạy lượt dùng chung, tham số ghế/chỉ đọc |
+| `web/index.html` 7.400 dòng | ✅ tách: `index.html` 611 + `web/app/{app.css, i18n.js, chat-lib.js, app.js}` (#97, #98) | `app.js` ~3.900 dòng: tách tiếp theo khu (goals, accounts, questions, seats) thành file riêng, chia sẻ helper qua global rõ ràng |
+| Lệnh trực tiếp nhiều nhánh trong `host.ts` | ✅ `src/server/direct-command.ts`, một bước chạy chung (#100); `host.ts` 1.218 → 884 | – |
+| `src/server/http.ts` route dài | ✅ `src/server/routes/{goals,tickets,questions}.ts` (#101); 1.082 → ~800 | tách nốt nhóm notes/inbox, seats/agent, session/command |
+| `src/core/session.ts` 2.450 dòng | 🟡 hàm hỗ trợ → `session-helpers.ts` (#102); còn ~2.120 | chia `processGoal` (~1.700 dòng) theo lượt PM / Dev / QC / Audit với một đối tượng ngữ cảnh chung |
+| `src/store/db.ts` 1.700 dòng | ✅ `types.ts`, `seats.ts`, `schema.ts` (#103); còn 1.126 | tách phần thân `openStore` theo bảng nếu còn lớn lên |
 | Bản Việt của giao diện (nút VI) | chưa làm | thêm `STRINGS.vi` |
 
 Trả nợ theo từng PR nhỏ, **không đổi hành vi**, test xanh trước và sau.
