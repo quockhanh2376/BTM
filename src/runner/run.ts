@@ -472,7 +472,7 @@ export function makeRunner(
     // Công cụ của lượt = công cụ của TÀI KHOẢN (Finn có thể có tài khoản Antigravity). Model/effort của Worker chỉ áp dụng khi
     // tài khoản dùng đúng công cụ chính của Worker; công cụ khác thì dùng mặc định của công cụ đó.
     const tool: Tool = toolOf?.(w) ?? agent.tool;
-    if (!canRunOnSeat(tool, seat)) throw new Error(`agy_cannot_sit_read_only:${agentId}`);
+    if (!canRunOnSeat(tool, seat, agent.tool)) throw new Error(`agy_cannot_sit_read_only:${agentId}`);
     const ownTool = tool === agent.tool;
 
     // Kế hoạch 8: agy đo tiến độ bằng bước mới thay cho giờ cố định: còn ra bước thì chạy tới max_minutes,

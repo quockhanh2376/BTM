@@ -55,10 +55,13 @@ describe('Công cụ theo tài khoản: chọn tài khoản', () => {
     expect(pickAccount(cfg, store, 'finn', now, { readOnly: true })).toBeNull(); // ghế QC: chỉ đọc → không dùng agy
     store.setSetting('usage_limited_until:finn', '');
     expect(usableAccounts(cfg, store, 'finn', now, { readOnly: true }).map((a) => a.key)).toEqual(['finn']);
-    expect(canRunOnSeat('antigravity-cli', 'qc')).toBe(false);
-    expect(canRunOnSeat('antigravity-cli', 'audit')).toBe(false);
-    expect(canRunOnSeat('antigravity-cli', 'dev')).toBe(true);
-    expect(canRunOnSeat('claude-code', 'qc')).toBe(true);
+    expect(canRunOnSeat('antigravity-cli', 'qc', 'claude-code')).toBe(false); // tài khoản agy thêm cho Worker Claude
+    expect(canRunOnSeat('antigravity-cli', 'audit', 'codex-cli')).toBe(false);
+    expect(canRunOnSeat('antigravity-cli', 'dev', 'claude-code')).toBe(true);
+    expect(canRunOnSeat('claude-code', 'qc', 'claude-code')).toBe(true);
+    // Worker agy gốc: config.ts đã cấm ngồi QC/Audit, nên không chặn thêm ở đây (giữ hành vi cũ)
+    expect(canRunOnSeat('antigravity-cli', 'qc', 'antigravity-cli')).toBe(true);
+    expect(usableAccounts(cfg, store, 'john', now, { readOnly: true }).map((a) => a.key)).toEqual(['john']);
   });
 });
 

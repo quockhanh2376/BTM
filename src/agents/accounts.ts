@@ -42,8 +42,11 @@ export function toolOfAccountKey(cfg: Config, store: Store, key: string): Tool |
   return null;
 }
 
-/** Ghế chỉ đọc (QC, Audit) không dùng được Antigravity (agy không có chế độ chỉ đọc). */
-export const canRunOnSeat = (tool: Tool, seat: Seat) => !(tool === 'antigravity-cli' && READ_ONLY_SEATS.has(seat));
+/**
+ * Ghế chỉ đọc (QC, Audit) không dùng được Antigravity (agy không có chế độ chỉ đọc). Chỉ chặn tài khoản Antigravity THÊM cho
+ * Worker không phải agy: Worker agy gốc đã bị config.ts cấm ngồi QC/Audit (cấu hình sai bị từ chối lúc nạp).
+ */
+export const canRunOnSeat = (tool: Tool, seat: Seat, workerTool: Tool) => !(tool === 'antigravity-cli' && workerTool !== 'antigravity-cli' && READ_ONLY_SEATS.has(seat));
 
 export function agentOfAccount(cfg: Config, store: Store, key: string): string | null {
   if (cfg.agents[key]) return key;
@@ -69,7 +72,8 @@ export function isUsable(store: Store, key: string, now: Date): boolean {
 /** Tài khoản dùng được theo thứ tự: đang bật, không bị giới hạn (hoặc đã qua giờ reset), đăng nhập không phải relogin. */
 /** readOnly: lượt chỉ đọc (QC / Audit / hỏi đáp / họp) → bỏ tài khoản Antigravity. */
 export function usableAccounts(cfg: Config, store: Store, agent: string, now = new Date(), opts: { readOnly?: boolean } = {}): Array<{ key: string; slug: string }> {
-  const active = accountsOf(store, agent).filter((a) => a.active && !(opts.readOnly && (a.tool ?? cfg.agents[agent]?.tool) === 'antigravity-cli'));
+  const workerTool = cfg.agents[agent]?.tool;
+  const active = accountsOf(store, agent).filter((a) => a.active && !(opts.readOnly && workerTool && !canRunOnSeat(a.tool ?? workerTool, 'qc', workerTool)));
   const candidates = cfg.rules.auto_switch_accounts === false ? active.slice(0, 1) : active;
   return candidates.map((a) => ({ key: accountKey(agent, a.slug), slug: a.slug })).filter((a) => isUsable(store, a.key, now));
 }
