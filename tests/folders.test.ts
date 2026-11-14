@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { openStore } from '../src/store/db.ts';
 import { loadConfig, type Config } from '../src/config.ts';
-import { readFolders, parseWorkspaceOut, MAX_FILES } from '../src/server/folders.ts';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { readFolders, parseWorkspaceOut, MAX_FILES, WS_SCRIPT } from '../src/server/folders.ts';
 import { tmpRepo } from './helpers.ts';
 
 describe('Tab Folder: đọc cấu trúc thư mục (chỉ xem)', () => {
@@ -12,6 +16,23 @@ describe('Tab Folder: đọc cấu trúc thư mục (chỉ xem)', () => {
     expect(v.dirty).toBe(2);
     expect(v.files).toEqual(['server.js', 'public/a.js']);
     expect(parseWorkspaceOut('@projects\n@synced\n@dirty\n@files\n')).toMatchObject({ syncedAt: null, dirty: null, files: [] });
+  });
+
+  // Lỗi thật trên VM: chuỗi JS nuốt mất \( của find → sh báo lỗi cú pháp, mọi account hiện "chưa có thư mục".
+  it.skipIf(process.platform === 'win32')('script sh chạy được trên thư mục thật: liệt kê file, bỏ .git và node_modules', () => {
+    const root = mkdtempSync(join(tmpdir(), 'btm-ws-'));
+    const ws = join(root, 'proj');
+    mkdirSync(join(ws, '.git'), { recursive: true });
+    mkdirSync(join(ws, 'node_modules', 'x'), { recursive: true });
+    mkdirSync(join(ws, 'src'), { recursive: true });
+    writeFileSync(join(ws, 'src', 'a.js'), '');
+    writeFileSync(join(ws, 'node_modules', 'x', 'b.js'), '');
+    writeFileSync(join(ws, '.git', 'HEAD'), '');
+    const out = execFileSync('sh', ['-c', WS_SCRIPT, 'sh', ws, root, '10', 'true'], { encoding: 'utf8' });
+    const v = parseWorkspaceOut(out);
+    expect(v.projects).toEqual(['proj']);
+    expect(v.files).toEqual(['src/a.js']);
+    expect(v.syncedAt).not.toBeNull();
   });
 
   it('cắt danh sách ở MAX_FILES và báo truncated', () => {

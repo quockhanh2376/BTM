@@ -77,14 +77,12 @@ async function readRepo(project: string): Promise<RepoFolder> {
 
 // Một lệnh sh dưới user worker: thư mục project trong home làm việc, giờ đồng bộ (.git do BTM dựng lại mỗi lượt),
 // số file đang sửa (GIT_OPTIONAL_LOCKS=0: không giữ khoá index khi agent đang chạy), danh sách file (bỏ .git, node_modules).
-const WS_SCRIPT = [
-  'ws=$1; dir=$2; max=$3; shift 3',
-  'echo @projects; ls -1 -- "$dir" 2>/dev/null',
-  'echo @synced; test -d "$ws/.git" && stat -c %Y -- "$ws/.git"',
-  'echo @dirty; test -d "$ws/.git" && GIT_OPTIONAL_LOCKS=0 "$@" -C "$ws" status --porcelain 2>/dev/null | wc -l',
-  'echo @files; test -d "$ws" && find "$ws" -mindepth 1 \( -name .git -o -name node_modules \) -prune -o -type f -printf "%P\n" 2>/dev/null | head -n "$max"',
-  'exit 0',
-].join('\n');
+export const WS_SCRIPT = String.raw`ws=$1; dir=$2; max=$3; shift 3
+echo @projects; ls -1 -- "$dir" 2>/dev/null
+echo @synced; test -d "$ws/.git" && stat -c %Y -- "$ws/.git"
+echo @dirty; test -d "$ws/.git" && GIT_OPTIONAL_LOCKS=0 "$@" -C "$ws" status --porcelain 2>/dev/null | wc -l
+echo @files; test -d "$ws" && find "$ws" -mindepth 1 \( -name .git -o -name node_modules \) -prune -o -type f -printf '%P\n' 2>/dev/null | head -n "$max"
+exit 0`;
 
 export function parseWorkspaceOut(out: string): Pick<AccountFolder, 'projects' | 'syncedAt' | 'dirty' | 'files' | 'truncated'> {
   const sec: Record<string, string[]> = {};
