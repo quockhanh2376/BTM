@@ -3075,6 +3075,8 @@
           'energy.unavailable': 'Energy: unavailable',
           'energy.low': 'Low',
           'goals.title': 'Goals',
+          'cmd.pmGuard': 'Should I plan this as a NEW goal? "{text}"',
+          'cmd.pmGuardNote': 'Messages to PM create a goal with tickets. To ask a question about past work, ask Audit or QC (read-only answers).',
           'goal.timeLine': '{total} total · agents {agent} ({seats}) · waiting {wait}',
           'goal.timeRunning': 'still open',
           'goal.timeTip': 'From {from} to {to} (VN time). Waiting = time paused for you or between sessions.',
@@ -7188,6 +7190,11 @@
                 showFeedback(cmdFeedback, tx('cmd.nothingToResume'), true);
               }
               return;
+            }
+            // Gửi cho PM = tạo GOAL MỚI (không phải hỏi Finn): Finn hỏi lại trước.
+            if (to === 'pm') {
+              var goPm = await askAsSeat('pm', { text: tx('cmd.pmGuard', { text: text.slice(0, 120) }), note: tx('cmd.pmGuardNote'), ok: tx('q.teamGuardOk'), cancel: tx('q.teamGuardCancel') });
+              if (!goPm) return;
             }
             if (to === 'team' && latestSnapshot && (latestSnapshot.questions || []).length > 0) {
               var goOn = await askOwner({

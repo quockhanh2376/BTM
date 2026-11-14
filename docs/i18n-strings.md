@@ -281,3 +281,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | trash.* | Thùng rác ({n}) / Thùng rác trống / Chuyển G{n} vào thùng rác? / Khôi phục / Xoá vĩnh viễn / … | Trash ({n}) / Trash is empty / Move G{n} to Trash? / Restore / Delete permanently / … |
 | ticket.retry / ticket.askRetry / ticket.retryOk / ticket.retried | Làm lại / {ticket} đang {state}, làm lại nhé? / Ừ, làm lại / Đã mở lại {list}, bấm Resume | Retry / … |
 | goal.timeLine / goal.timeRunning / goal.timeTip | {total} tổng · agent {agent} ({seats}) · chờ {wait} / đang mở / Từ {from} tới {to} (giờ VN) | {total} total · agents {agent} ({seats}) · waiting {wait} / still open / … |
+| cmd.pmGuard / cmd.pmGuardNote | Em lập thành GOAL MỚI nhé? / Tin gửi PM sẽ tạo goal; hỏi chuyện cũ thì hỏi Audit/QC | Should I plan this as a NEW goal? / … |
