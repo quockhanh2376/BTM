@@ -1721,6 +1721,11 @@ describe('Chat bubbles (2026-11-14)', () => {
     expect(lib.chatStyleOf('jenny')).toBeGreaterThanOrEqual(0);
     expect(lib.chatStyleOf('jenny')).toBeLessThan(6);
   });
+  it('Ctrl+Enter = Send ở ô Command và ô trả lời', () => {
+    expect(html).toContain("if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && cmdSendBtn && !cmdSendBtn.disabled) { e.preventDefault(); cmdSendBtn.click(); }");
+    expect(html).toContain("if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !btn.disabled) { e.preventDefault(); btn.click(); }");
+  });
+
   it('bong bóng hiện lâu hơn 5 s (anh Zon)', () => {
     expect(html).toContain('var CHAT_SHOW_MS = 7000;');
     expect(html).toContain("el.classList.add('chat-fade'); }, CHAT_SHOW_MS)");

@@ -3874,6 +3874,9 @@
           compose.appendChild(bar);
           item.appendChild(compose);
           showPreview();
+          area.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !btn.disabled) { e.preventDefault(); btn.click(); }
+          });
 
           btn.addEventListener('click', async function () {
             // Chỉ có ảnh, chưa gõ chữ: vẫn gửi được, kèm câu mặc định (server cần chữ).
@@ -6704,6 +6707,10 @@
       var cmdTextArea = document.getElementById('cmd-text');
 
       if (cmdTextArea) {
+        // Ctrl+Enter (Cmd+Enter trên Mac) = bấm Send.
+        cmdTextArea.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && cmdSendBtn && !cmdSendBtn.disabled) { e.preventDefault(); cmdSendBtn.click(); }
+        });
         cmdTextArea.addEventListener('paste', function (e) {
           var checkedRadio = document.querySelector('input[name="cmd-to"]:checked');
           var to = checkedRadio ? checkedRadio.value : 'team';
