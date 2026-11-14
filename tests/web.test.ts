@@ -1861,6 +1861,24 @@ describe('Chat Auto: phân loại tin nhắn (2026-11-14)', () => {
   });
 });
 
+describe('Lịch sử chung: goal + lệnh + hỏi/đáp (2026-11-14)', () => {
+  const html = readWeb();
+  it('mỗi mục có loại; câu hỏi kèm câu trả lời theo id; bỏ nhãn phiên Direct command/Ask', () => {
+    const build = new Function(html.slice(html.indexOf('function buildHistory'), html.indexOf('function renderHistory')) + 'return buildHistory;')() as (s: any) => any[];
+    const items = build({
+      session: { goals: ['Direct command'], status: 'done' },
+      goals: [{ n: 1, title: 'Game' }],
+      queue: [{ id: 5, to: 'ask-audit', text: 'G1 lỗi gì?', status: 'done', created_at: 't' }, { id: 4, to: 'ask-pm', text: '[plan] Kế tiếp làm gì?', status: 'queued', created_at: 't' }, { id: 1, to: 'dev', text: 'tiếp tục', status: 'done', created_at: 't' }],
+      answers: [{ id: 5, seat: 'audit', asked: 'audit', agent: 'bruno', at: 't', answer: 'DoS null byte, đã sửa' }],
+    });
+    expect(items.map((i) => i.kind)).toEqual(['ask', 'ask', 'cmd']);
+    expect(items[0].answer.answer).toBe('DoS null byte, đã sửa');
+    expect(items[1]).toMatchObject({ plan: true, text: 'Kế tiếp làm gì?', answer: null });
+    expect(build({ session: { goals: ['1'], status: 'running' }, goals: [{ n: 1, title: 'Game' }], queue: [] })[0]).toEqual({ kind: 'goal', text: 'G1 · Game', status: 'running' });
+    expect(html).not.toContain('id="answers-box"');
+  });
+});
+
 describe('Stop: agent hỏi lại thân thiện (2026-11-14)', () => {
   const html = readWeb();
   it('dùng <dialog> thay confirm(), mặc định là tiếp tục, chữ bằng textContent', () => {
@@ -1939,8 +1957,8 @@ describe('Gộp Session goals vào khung hàng đợi (2026-11-12)', () => {
   it('không còn section Session goals; goal của phiên hiện "Goal G<n> · <tiêu đề>" trong cùng danh sách', () => {
     expect(html).not.toContain('goals-section');
     expect(html).not.toContain('id="goals-list"');
-    expect(html).toContain("'queue.title': 'Session & queue'");
-    expect(html).toContain("label.textContent = tx('queue.goal', { goal: text });");
+    expect(html).toContain("'queue.title': 'History'"); // 2026-11-14: gộp thành lịch sử chung
+    expect(html).toContain("out.push({ kind: 'goal', text: text, status: s.status });");
     expect(html).toContain("text = 'G' + text + (found && found.title ? ' · ' + found.title : '');");
   });
 });
