@@ -869,7 +869,7 @@ export function createHost(d: HostDeps): HostApi & {
             refresh: monitor.refresh,
             monitor,
           },
-          target.id
+          resumeId
         );
         afterOutcome(outcome, activeProject);
       } catch {

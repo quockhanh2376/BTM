@@ -104,6 +104,20 @@ done_when: done
     expect((await (host as any).resume()).ok).toBe(true);
     for (let i = 0; i < 40 && host.busy(); i++) await new Promise((r) => setTimeout(r, 25));
     expect(resumeSession).toHaveBeenCalledTimes(1);
+    // hết lượt → phiên mới cho cùng goal (đủ lượt), phiên cũ giữ out_of_turns
+    const newId = (resumeSession.mock.calls[0] as any[])[1];
+    expect(newId).toBeGreaterThan(sid);
+    expect(store.getSession(newId)?.goals).toEqual(['G1']);
+    expect(store.getSession(sid)?.status).toBe('out_of_turns');
+  });
+
+  it('resume() phiên needs_owner → chạy tiếp đúng phiên đó (không mở phiên mới)', async () => {
+    const sid = store.createSession(['G1'], repoDir);
+    store.setSessionStatus(sid, 'needs_owner');
+    const resumeSession = vi.fn(async () => ({ status: 'done', sessionId: sid, tasks: {}, notes: [] }));
+    const host = createHost({ cfg, store, runner: vi.fn() as any, logDir, dataDir, env: {}, resumeSession: resumeSession as any });
+    expect((await (host as any).resume()).ok).toBe(true);
+    for (let i = 0; i < 40 && host.busy(); i++) await new Promise((r) => setTimeout(r, 25));
     expect((resumeSession.mock.calls[0] as any[])[1]).toBe(sid);
   });
 
