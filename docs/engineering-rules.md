@@ -41,7 +41,7 @@
 | `web/index.html` 7.400 dòng | ✅ tách: `index.html` 611 + `web/app/{app.css, i18n.js, chat-lib.js, app.js}` (#97, #98) | `app.js` ~3.900 dòng: tách tiếp theo khu (goals, accounts, questions, seats) thành file riêng, chia sẻ helper qua global rõ ràng |
 | Lệnh trực tiếp nhiều nhánh trong `host.ts` | ✅ `src/server/direct-command.ts`, một bước chạy chung (#100); `host.ts` 1.218 → 884 | – |
 | `src/server/http.ts` route dài | ✅ `src/server/routes/{goals,tickets,questions}.ts` (#101); 1.082 → ~800 | tách nốt nhóm notes/inbox, seats/agent, session/command |
-| `src/core/session.ts` 2.450 dòng | 🟡 hàm hỗ trợ → `session-helpers.ts` (#102); còn ~2.120 | chia `processGoal` (~1.700 dòng) theo lượt PM / Dev / QC / Audit với một đối tượng ngữ cảnh chung |
+| `src/core/session.ts` 2.450 dòng | ✅ `session-helpers.ts` (#102) + `processGoal` chia theo lượt: `src/core/goal/{ctx,pm-planning,tickets,audit}.ts` dùng `GoalCtx` (#106); `session.ts` còn ~710 | `goal/tickets.ts` ~780 dòng: có thể tách tiếp lượt Dev và lượt QC trong vòng ticket |
 | `src/store/db.ts` 1.700 dòng | ✅ `types.ts`, `seats.ts`, `schema.ts` (#103); còn 1.126 | tách phần thân `openStore` theo bảng nếu còn lớn lên |
 | Bản Việt của giao diện (nút VI) | chưa làm | thêm `STRINGS.vi` |
 
