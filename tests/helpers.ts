@@ -19,6 +19,6 @@ export function tmpRepo(files: Record<string, string>): string {
 
 /** Mã dashboard đầy đủ cho test (2026-11-14: index.html tách ra web/app/*): khung trang + CSS + i18n + logic, đúng thứ tự tải. */
 export function readWeb(): string {
-  return ['web/index.html', 'web/app/app.css', 'web/app/i18n.js', 'web/app/app.js']
+  return ['web/index.html', 'web/app/app.css', 'web/app/i18n.js', 'web/app/chat-lib.js', 'web/app/app.js']
     .map((f) => readFileSync(resolve(process.cwd(), f), 'utf-8')).join(String.fromCharCode(10));
 }
