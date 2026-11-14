@@ -45,7 +45,7 @@ export async function handleSkillsPost(method: string | undefined, pathname: str
   if (pathname === '/api/skills') {
     const seat = z.enum(['pm', 'dev', 'qc', 'audit']);
     const parsed = z.discriminatedUnion('action', [
-      z.object({ action: z.literal('paste'), text: z.string().min(1).max(20000) }),
+      z.object({ action: z.literal('paste'), text: z.string().min(1).max(40000) }),
       z.object({ action: z.literal('github-list'), url: z.string().min(1).max(300) }),
       z.object({ action: z.literal('search'), query: z.string().min(1).max(200) }),
       z.object({ action: z.literal('search-import'), items: z.array(z.object({ source: z.string().max(150), skillId: z.string().max(90) })).min(1).max(20) }),

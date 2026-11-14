@@ -77,7 +77,7 @@ describe('Skill – phần thuần (2026-11-14)', () => {
     const all = [s({ id: 1, name: 'ok' }), s({ id: 2, name: 'off', on: false }), s({ id: 3, name: 'pending', status: 'checking' }), s({ id: 4, name: 'qc-only', seats: ['qc'] }), s({ id: 5, name: 'other-proj', projects: ['MG'] }), s({ id: 6, name: 'this-proj', projects: ['GT'] })];
     expect(activeSkills(all, 'dev', 'GT').map((x) => x.name)).toEqual(['ok', 'this-proj']);
     expect(activeSkills(all, 'qc', 'GT').map((x) => x.name)).toEqual(['qc-only']);
-    const block = skillsBlock([{ name: 'tidy', text: 'Be tidy.' }, { name: 'huge', text: 'x'.repeat(7000) }]);
+    const block = skillsBlock([{ name: 'tidy', text: 'Be tidy.' }, { name: 'huge', text: 'x'.repeat(31000) }]);
     expect(block).toContain('### Skill: tidy\nBe tidy.');
     expect(block).toContain('LUÔN đứng trên');
     expect(block).toContain('(Không đủ chỗ cho: huge)');
@@ -147,10 +147,14 @@ describe('Skill – thư viện + cổng bảo mật 2 người kiểm (2026-11-
     expect(s.reviews.map((x) => x.agent)).toEqual(['mb']);
     expect(s.note).toContain('energy:5h 1% left');
     expect(w.lane.add('short', 'pasted')).toMatchObject({ ok: false, status: 400 });
-    expect(w.lane.add('x'.repeat(8001), 'pasted')).toMatchObject({ ok: false, status: 400 });
+    expect(w.lane.add('x'.repeat(30001), 'pasted')).toMatchObject({ ok: false, status: 400 });
     expect(existsSync(skillFile(w.dataDir, 1))).toBe(true);
     expect(w.lane.remove(1)).toEqual([]);
     expect(existsSync(skillFile(w.dataDir, 1))).toBe(false);
+    // Skill dài thật (~22.000 ký tự, như security-audit của Cloudflare) vẫn nhận – anh Zon 2026-11-14.
+    const long = `${GOOD}\n${'Guidance line for reviewers.\n'.repeat(700)}`;
+    expect(long.length).toBeGreaterThan(20000);
+    expect(w.lane.add(long, 'pasted')).toMatchObject({ ok: true });
   });
 
   it('nhập từ GitHub: liệt kê SKILL.md (bỏ thư mục ẩn), chỉ nhập file được chọn; link sai → 400', async () => {

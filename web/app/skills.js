@@ -3,6 +3,7 @@
    Nội dung skill và kết quả kiểm là dữ liệu không tin cậy → chỉ textContent. */
 var SKILL_STATUS = { checking: 'skills.status.checking', approved: 'skills.status.approved', rejected: 'skills.status.rejected' };
 var SKILL_SEATS = ['pm', 'dev', 'qc', 'audit'];
+var SKILL_MAX_CHARS_UI = 30000; // khớp SKILL_MAX_CHARS ở src/skills/core.ts
 
 // Dòng tóm tắt cổng bảo mật của một skill (thuần, test được).
 function skillChecks(s) {
@@ -115,6 +116,7 @@ function btmSkills(d) {
     oncb.type = 'checkbox';
     oncb.checked = !!s.on;
     oncb.disabled = s.status !== 'approved';
+    if (oncb.disabled) on.title = tx(s.status === 'checking' ? 'skills.onWait' : 'skills.onRejected');
     oncb.addEventListener('change', function () { act({ action: 'update', id: s.id, on: oncb.checked }); });
     on.appendChild(oncb);
     on.appendChild(document.createTextNode(' ' + tx('skills.on')));
@@ -215,9 +217,9 @@ function btmSkills(d) {
       var cb = el('input');
       cb.type = 'checkbox';
       cb.value = c.path;
-      cb.disabled = c.chars > 8000;
+      cb.disabled = c.chars > SKILL_MAX_CHARS_UI;
       lab.appendChild(cb);
-      lab.appendChild(document.createTextNode(' ' + c.name + ' · ' + c.chars + (c.chars > 8000 ? ' ' + tx('skills.tooLong') : '') + (c.license ? ' · ' + c.license : '') + (c.description ? ' — ' + c.description : '')));
+      lab.appendChild(document.createTextNode(' ' + c.name + ' · ' + c.chars + (c.chars > SKILL_MAX_CHARS_UI ? ' ' + tx('skills.tooLong') : '') + (c.license ? ' · ' + c.license : '') + (c.description ? ' — ' + c.description : '')));
       cands.appendChild(lab);
     });
     addImportButton(function (picked) { return { action: 'github-import', url: url, paths: picked.map(function (x) { return x.value; }) }; });

@@ -331,7 +331,7 @@ export function createServer(o: {
         }
 
         // 4. Read body (max 16 KB, or 7 MB for team-note)
-        const maxBytes = pathname === '/api/team-note' || /^\/api\/questions\/\d{1,9}\/answer$/.test(pathname) ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : pathname === '/api/meeting/doc' ? 28 * 1024 * 1024 : pathname === '/api/skills' ? 64 * 1024 : pathname === '/api/agent' ? 96 * 1024 : 16384;
+        const maxBytes = pathname === '/api/team-note' || /^\/api\/questions\/\d{1,9}\/answer$/.test(pathname) ? 7 * 1024 * 1024 : pathname === '/api/accounts/import' ? IMPORT_MAX_BYTES : pathname === '/api/meeting/doc' ? 28 * 1024 * 1024 : pathname === '/api/skills' ? 256 * 1024 : pathname === '/api/agent' ? 96 * 1024 : 16384;
         let body: unknown;
         try {
           body = await readJsonBody(req, maxBytes);

@@ -703,10 +703,14 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
 
   const turns = store.listTurns(s.id);
   const runningTurn = turns.find((t) => t.ended_at === null);
-  const holder: Seat | null = runningTurn ? runningTurn.seat : null;
-
   const effSeats = effectiveSeats(cfg, store);
   const seatKeys = seatKeysFor(cfg, effSeats);
+  // Lượt phụ (kiểm skill, họp, bài học) ghi seat theo vai, không theo người: Finn kiểm skill ghi 'audit' thì thẻ Audit của
+  // Bruno hiện "đang chạy" (anh Zon thấy 2026-11-14). Với phiên phụ: thẻ sáng là ghế mà chính agent đó đang ngồi; không ngồi ghế nào → không thẻ nào.
+  const sideSession = s.goals.length === 1 && ['Skill check', 'Meeting', 'Lessons'].includes(String(s.goals[0]));
+  const holder: Seat | null = !runningTurn ? null
+    : sideSession && effSeats[runningTurn.seat] !== runningTurn.agent ? (seatKeys.find((k) => effSeats[k] === runningTurn.agent) ?? null)
+    : runningTurn.seat;
   const seats: SeatCard[] = seatKeys.map((seat) => {
     const agent = effSeats[seat] || cfg.seats[seat] || '';
     const tool = cfg.agents[agent]?.tool ?? 'claude-code';
