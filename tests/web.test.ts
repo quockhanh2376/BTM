@@ -116,8 +116,8 @@ describe('Web Dashboard (web/index.html)', () => {
     // Plan 9 Task 1: bảng màu mới theo ảnh mẫu
     expect(html.toLowerCase()).toContain('#f5f7fb');
     expect(html.toLowerCase()).toContain('#ffffff');
-    expect(html.toLowerCase()).toContain('#0f172a');
-    expect(html.toLowerCase()).toContain('#3f4a5c');
+    expect(html.toLowerCase()).toContain('#060b17');
+    expect(html.toLowerCase()).toContain('#2b3445');
     expect(html.toLowerCase()).toContain('#2563eb');
     expect(html.toLowerCase()).toContain('#dce6fb');
     expect(html.toLowerCase()).toContain('#1e3f99');
@@ -186,8 +186,8 @@ describe('Web Dashboard (web/index.html)', () => {
     const errContrast = getContrastRatio('#FF8A80', '#171A21');
     expect(errContrast).toBeGreaterThanOrEqual(4.5);
     // Plan 9: chữ phụ đọc được ở cả hai chế độ
-    expect(getContrastRatio('#3F4A5C', '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
-    expect(getContrastRatio('#3F4A5C', '#F5F7FB')).toBeGreaterThanOrEqual(4.5);
+    expect(getContrastRatio('#2B3445', '#FFFFFF')).toBeGreaterThanOrEqual(7);
+    expect(getContrastRatio('#2B3445', '#F5F7FB')).toBeGreaterThanOrEqual(7);
     expect(getContrastRatio('#9CA3AF', '#171A21')).toBeGreaterThanOrEqual(4.5);
     expect(getContrastRatio('#E5E7EB', '#0F1115')).toBeGreaterThanOrEqual(4.5);
 
@@ -731,7 +731,7 @@ describe('Web Dashboard (web/index.html)', () => {
 
       // 3. Dòng lịch sử mở ra dưới ticket là tr có 1 td colspan=4
       expect(html).toContain("trHistory.className = 'ticket-history-row'");
-      expect(html).toContain("tdHistory.colSpan = 4");
+      expect(html).toContain("tdHistory.colSpan = 5");
       expect(html).toMatch(/toggleTicketHistory\s*\(\s*t\.id/);
       expect(html).toContain('ticket-history-panel');
     });
@@ -1670,6 +1670,21 @@ describe('Ô trả lời câu hỏi (2026-11-14)', () => {
     expect(html).toContain("iconFrom('#attach-image-label svg', attach, tx('q.attach'))");
     expect(html).toContain("area.value.trim() || (qImages[q.id] ? tx('q.seeImage') : '')");
     expect(html).toContain("'q.seeImage': 'See attached image.'");
+  });
+});
+
+describe('Inbox / Goals / Log theo mẫu lần 2 (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('cột Tags riêng, icon từng chặng, lọc log chỉ lỗi', () => {
+    expect(html).toContain("thTags.textContent = tx('goal.col.tags')");
+    expect(html).toContain('tdTags.appendChild(diffBtn)');
+    for (const k of ['intake', 'plan', 'build', 'verify', 'audit', 'release']) expect(html).toContain(`.pipeline-step[data-stage="${k}"]`);
+    const src = html.slice(html.indexOf('function isLogError'), html.indexOf('function logFilterValue'));
+    const isErr = new Function(src + 'return isLogError;')() as (t: string) => boolean;
+    expect(isErr('error: aborted')).toBe(true);
+    expect(isErr('timeout: timeout')).toBe(true);
+    expect(isErr('started GT-0005')).toBe(false);
+    expect(html).toContain('.log-list.log-only-err .log-item:not(.log-err) { display: none; }');
   });
 });
 
