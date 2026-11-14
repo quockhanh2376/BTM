@@ -145,6 +145,7 @@ function livelyTalkPlan(idle, rnd) {
 }
 // Đang bàn kế hoạch / phản biện ([plan] gửi làn hỏi đáp, chưa xong) → tự bật lively.
 function chatDiscussing(snap) {
+  if (snap && snap.meeting && snap.meeting.status === 'running') return true;
   return ((snap && snap.queue) || []).some(function (q) {
     return String(q.to).indexOf('ask-') === 0 && q.to !== 'ask-lessons' && /^\[plan\]/i.test(String(q.text || '')) &&
       (q.status === 'queued' || q.status === 'running');

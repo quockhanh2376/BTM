@@ -1293,8 +1293,11 @@
         }
       }
 
+      // Họp tranh luận: web/app/meeting.js (nạp trước file này).
+      var meetingUi = btmMeeting({ agentLabel: agentLabel, formatHHmm: formatHHmm, postJson: postJson, showFeedback: showFeedback, feedbackEl: topFeedback });
       // Goals + khung History: web/app/goals.js (nạp trước file này).
       var goalsUi = btmGoals({
+        renderMeetItem: meetingUi.renderMeetItem,
         formatStatus: formatStatus, SEAT_LABELS: SEAT_LABELS, agentLabel: agentLabel, clearChildren: clearChildren, formatHHmm: formatHHmm,
         askAsSeat: askAsSeat, showFeedback: showFeedback, openDiff: openDiff, postJson: postJson, topFeedback: topFeedback,
         TASK_TAB_KEYS: TASK_TAB_KEYS, goalTabSelections: goalTabSelections, PIPELINE_STAGES: PIPELINE_STAGES, resolveActiveTab: resolveActiveTab,
@@ -1378,6 +1381,8 @@
         var checkedRadio = document.querySelector('input[name="cmd-to"]:checked');
         var to = checkedRadio ? checkedRadio.value : 'team';
         setDisplay(attachImageGroup, to === 'team' || to === 'auto', 'flex');
+        var quickWrap = document.getElementById('meet-quick-wrap');
+        if (quickWrap) quickWrap.hidden = to !== 'meeting';
       }
 
       if (recipientRadios) {
@@ -1421,7 +1426,7 @@
           seatKeys = ['pm', 'dev', 'qc'];
         }
 
-        var options = [{ value: 'auto', label: tx('cmd.auto') }, { value: 'team', label: tx('cmd.team') }];
+        var options = [{ value: 'auto', label: tx('cmd.auto') }, { value: 'team', label: tx('cmd.team') }, { value: 'meeting', label: tx('cmd.meeting') }];
         seatKeys.forEach(function (sk) {
           options.push({ value: sk, label: formatSeatLabel(sk) });
         });
@@ -2202,6 +2207,7 @@
         // Phiên + hàng đợi (gộp Session goals vào đây cho gọn)
         // Lịch sử chung (anh Zon 2026-11-14): goal đang chạy + lệnh + câu hỏi kèm câu trả lời, một danh sách.
         if (queueList) renderHistory(queueList, state);
+        meetingUi.paint(state);
 
         // Notes
         renderNotes(state.notes);
@@ -2526,6 +2532,14 @@
               }
               return;
             }
+            // Họp tranh luận (2026-11-14): vấn đề bất kỳ → cả team lần lượt phân tích, phản biện có dẫn chứng.
+            if (to === 'meeting') {
+              var quickBox = document.getElementById('meet-quick');
+              var mr = await postJson('/api/meeting', { action: 'start', topic: text, quick: !!(quickBox && quickBox.checked) });
+              if (mr && mr.error) showFeedback(cmdFeedback, mr.error, true);
+              else { showFeedback(cmdFeedback, tx('meet.started'), false); cmdTextArea.value = ''; }
+              return;
+            }
             if (to === 'auto') {
               await sendAuto(text);
               return;
@@ -2588,7 +2602,7 @@
         if (!input || !panel || !list) return; // panel: khung Results (luôn hiện)
         var timer = null;
         var seq = 0;
-        var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log', lesson: 'search.kind.lesson', map: 'search.kind.map' };
+        var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log', lesson: 'search.kind.lesson', map: 'search.kind.map', meeting: 'search.kind.meeting' };
         // Ô Results luôn hiện (anh Zon 2026-11-14); trống → dòng hướng dẫn.
         function hide() { seq++; clearChildren(list); count.textContent = ''; list.appendChild(line('empty-placeholder', tx('search.hint'))); }
         function line(cls, text) { var d = document.createElement('div'); d.className = cls; d.textContent = text; return d; }

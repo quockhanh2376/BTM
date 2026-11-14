@@ -2481,3 +2481,28 @@
 .ws-title { font-weight: 700; font-size: 14px; color: var(--text); text-align: center; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-collapsed .ws-title { display: none; }
 
+/* Họp tranh luận + zoom chữ Meeting room (anh Zon 2026-11-14) */
+.queue-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chat-zoom { display: inline-flex; gap: 4px; }
+.chat-zoom .cmd-icon-btn { font-size: 12px; font-weight: 700; width: 30px; height: 26px; }
+.chat-zoom .cmd-icon-btn:disabled { opacity: 0.4; cursor: default; }
+.chat-log .msg-body, .chat-log .meet-topic { font-size: calc(13px * var(--chat-zoom, 1)); }
+.chat-log .msg-head, .chat-log .meet-evidence, .chat-log .meet-label, .chat-log .meet-source { font-size: calc(11px * var(--chat-zoom, 1)); }
+.meet-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); }
+.meet-bar[hidden] { display: none; }
+.meet-bar-status { font-size: 12px; font-weight: 600; margin-right: auto; }
+.meet-note-input { flex: 1 1 180px; min-width: 120px; font: inherit; font-size: 12px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.chat-log .meet-head { align-self: stretch; text-align: left; white-space: normal; }
+.chat-log .meet-topic { font-weight: 600; color: var(--text); margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-log .meet-source { color: var(--text-muted); overflow-wrap: anywhere; }
+.chat-log .meet-turn, .chat-log .meet-end { max-width: 96%; }
+.chat-log .meet-point { margin-top: 6px; }
+.chat-log .meet-evidence { margin-top: 2px; padding-left: 14px; overflow-wrap: anywhere; }
+.chat-log .meet-evidence.ev-ok { color: var(--live-text, #2e9e5b); }
+.chat-log .meet-evidence.ev-warn { color: #d08a1e; }
+.chat-log .meet-skipped { opacity: 0.7; }
+.chat-log .meet-end { border-color: var(--accent); }
+.chat-log .meet-label { font-weight: 700; color: var(--accent); margin-top: 6px; }
+.meet-quick { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; margin-right: 8px; }
+.meet-quick[hidden] { display: none; }
+

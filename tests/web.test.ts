@@ -2051,3 +2051,37 @@ describe('Workspace trên sidebar (2026-11-14)', () => {
     expect(html).toMatch(/\['mousemove', 'click', 'keydown', 'focusin'\]\.forEach\(function \(ev\) \{ sidebarEl\.addEventListener\(ev, armAutoCollapse\); \}\);/);
   });
 });
+
+describe('Họp tranh luận trên dashboard (2026-11-14)', () => {
+  const html = readWeb();
+  it('mục họp cho khung chat: đầu cuộc họp → lượt + ghi chú theo giờ → kết luận; id đổi khi có lượt mới', () => {
+    const lib = new Function(html.slice(html.indexOf('function meetItems'), html.indexOf('function btmMeeting')) + 'return { meetItems, meetEvidenceMark };')() as any;
+    expect(lib.meetItems(null)).toEqual([]);
+    const m = {
+      id: 3, topic: 'Nên dùng X?', status: 'done', quick: false, createdAt: '2026-11-14T01:00:00Z',
+      turns: [
+        { round: 1, agent: 'elon', seats: ['pm', 'qc'], at: '2026-11-14T01:01:00Z', points: [{ text: 'a', evidence: { type: 'file', ref: 'x.js' }, verified: true }] },
+        { round: 2, agent: 'jenny', seats: ['dev'], at: '2026-11-14T01:05:00Z', points: [], skipped: 'timeout' },
+      ],
+      ownerNotes: [{ at: '2026-11-14T01:03:00Z', text: 'ý anh' }],
+      conclusion: { by: 'elon', at: '2026-11-14T01:09:00Z', agreed: [], disputed: [], recommendation: 'Làm A', questions: [] },
+    };
+    const items = lib.meetItems(m);
+    expect(items.map((x: any) => x.kind)).toEqual(['meet-head', 'meet-turn', 'meet-note', 'meet-turn', 'meet-end']);
+    expect(items.map((x: any) => x.id)).toEqual(['M3', 'M3-1-elon', 'M3-note-0', 'M3-2-jenny', 'M3-end']);
+    expect(items[3].status).toBe('skip');
+    expect([lib.meetEvidenceMark(true), lib.meetEvidenceMark(false), lib.meetEvidenceMark(null)]).toEqual(['✓', '⚠', '⚠']);
+  });
+
+  it('có lựa chọn Meeting + Quick, thanh điều khiển, zoom chữ; đang họp thì tự Lively', () => {
+    expect(html).toContain("{ value: 'meeting', label: tx('cmd.meeting') }");
+    for (const id of ['meet-bar', 'meet-quick', 'chat-zoom-in', 'chat-zoom-out']) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain("postJson('/api/meeting', { action: 'start', topic: text, quick:");
+    expect(html).toContain('<script src="/app/meeting.js"></script>');
+    expect(html).toMatch(/\.chat-log \.msg-body, \.chat-log \.meet-topic \{ font-size: calc\(13px \* var\(--chat-zoom, 1\)\); \}/);
+    const lib = new Function(html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) + 'return { chatDiscussing };')() as any;
+    expect(lib.chatDiscussing({ meeting: { status: 'running' }, queue: [] })).toBe(true);
+    expect(lib.chatDiscussing({ meeting: { status: 'paused' }, queue: [] })).toBe(false);
+    expect(html.slice(html.indexOf('function meetItems'), html.indexOf('// end meeting'))).not.toContain('innerHTML');
+  });
+});
