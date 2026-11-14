@@ -1,5 +1,6 @@
 // Route nhóm "meeting" tách khỏi http.ts 2026-11-14 (docs/engineering-rules.md). Không đổi hành vi.
 // handle*(…) trả true khi đã trả lời request.
+import { renderMeetingDocx } from '../../meeting/docx.ts';
 import type { ServerResponse } from 'node:http';
 import type { ServerOpts, SendJson } from '../http.ts';
 import { z } from 'zod';
@@ -19,7 +20,7 @@ export async function handleMeetingGet(method: string | undefined, pathname: str
     sendJson(res, 200, { meetings: (project ? readMeetings(o.store, project) : []).map((m) => ({ id: m.id, topic: m.topic.slice(0, 200), status: m.status, createdAt: m.createdAt })) });
     return true;
   }
-  const exportMatch = method === 'GET' ? pathname.match(/^\/api\/meetings\/(\d{1,6})\/export\.(md|html)$/) : null;
+  const exportMatch = method === 'GET' ? pathname.match(/^\/api\/meetings\/(\d{1,6})\/export\.(md|html|docx)$/) : null;
   if (exportMatch) {
     const project = o.store.getActiveProject();
     const m = project ? readMeetings(o.store, project).find((x) => x.id === parseInt(exportMatch[1]!, 10)) : null;
@@ -28,6 +29,16 @@ export async function handleMeetingGet(method: string | undefined, pathname: str
       return true;
     }
     const nameOf = (agent: string) => o.store.getSetting(agentNameKey(agent)) || agent;
+    if (exportMatch[2] === 'docx') {
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="meeting-M${m.id}.docx"`,
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      res.end(renderMeetingDocx(m, nameOf));
+      return true;
+    }
     const html = exportMatch[2] === 'html';
     res.writeHead(200, {
       'Content-Type': html ? 'text/html; charset=utf-8' : 'text/markdown; charset=utf-8',

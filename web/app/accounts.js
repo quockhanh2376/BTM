@@ -332,6 +332,7 @@
       document.getElementById('acc-add-btn').addEventListener('click', function () {
         clearChildren(accAddWorker);
         lastAccounts.forEach(function (w) {
+          if (w.provider === 'zai') return; // Boss dùng API key, không thêm tài khoản
           var o = document.createElement('option');
           o.value = w.agent;
           o.textContent = w.agent + ' · ' + w.tool;

@@ -2545,8 +2545,8 @@
 /* Skills trong Settings (anh Zon 2026-11-14) */
 .skills-add { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
 .skills-url { flex: 1 1 240px; min-width: 160px; }
-/* Anh Zon 2026-11-14: kết quả tìm skill chia nhiều cột theo độ rộng màn hình, chữ to hơn 20% (12px → 14.4px). */
-.skills-candidates { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 6px 16px; font-size: 14.4px; }
+/* Anh Zon 2026-11-14: kết quả tìm skill chia nhiều cột theo độ rộng màn hình; chữ tăng 20% hai lần (12 → 14.4 → 17.3px). */
+.skills-candidates { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 8px 20px; font-size: 17.3px; line-height: 1.4; }
 .skills-candidates > .skills-import-btn, .skills-candidates > .empty-placeholder { grid-column: 1 / -1; }
 .skill-cand { overflow-wrap: anywhere; }
 .skills-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; margin-top: 8px; }
@@ -2575,3 +2575,10 @@
 .skill-cand.trust-caution { color: #d08a1e; }
 .skill-cand.trust-risky { color: var(--error-text); }
 .settings-num { width: 76px; }
+
+/* Settings: nút Save cạnh tiêu đề + thu gọn (anh Zon 2026-11-14) */
+.settings-head { display: flex; align-items: center; gap: 10px; }
+.settings-head .settings-toggle { margin-left: auto; }
+.settings-section.settings-collapsed > :not(.sec-head) { display: none !important; }
+.settings-section.settings-collapsed #settings-save-top { display: none; }
+

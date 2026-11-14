@@ -6,7 +6,9 @@ function btmSettings(d) {
   var box = $('settings-section');
   if (!box) return { load: function () {} };
   var fb = $('settings-feedback');
-  var say = function (text, bad) { if (fb) { fb.textContent = text; fb.classList.toggle('is-error', !!bad); } };
+  var fbTop = $('settings-feedback-top');
+  // Thông báo hiện ở cả hai chỗ: cạnh nút Save trên tiêu đề và cạnh nút Save cuối phần Settings.
+  var say = function (text, bad) { [fb, fbTop].forEach(function (e) { if (e) { e.textContent = text; e.classList.toggle('is-error', !!bad); } }); };
 
   function fill(data) {
     var st = data.standards || {};
@@ -57,10 +59,11 @@ function btmSettings(d) {
     }
   }
 
-  var save = $('settings-save');
-  if (save) {
+  // Hai nút Save (anh Zon 2026-11-14: thêm nút cạnh chữ Settings) làm cùng một việc.
+  var saveButtons = [$('settings-save'), $('settings-save-top')].filter(Boolean);
+  saveButtons.forEach(function (save) {
     save.addEventListener('click', async function () {
-      save.disabled = true;
+      saveButtons.forEach(function (b) { b.disabled = true; });
       try {
         var r = await postJson('/api/standards', {
           standards: {
@@ -83,10 +86,37 @@ function btmSettings(d) {
       } catch (err) {
         say(err.message, true);
       } finally {
-        save.disabled = false;
+        saveButtons.forEach(function (b) { b.disabled = false; });
       }
     });
+  });
+
+  // Thu gọn phần Settings (anh Zon 2026-11-14): mặc định gọn; mở bằng mục Settings trên sidebar hoặc mũi tên;
+  // đang mở mà 5 phút không đụng tới thì tự đóng, chỉ còn hàng tiêu đề.
+  var SETTINGS_COLLAPSE_MS = 5 * 60 * 1000;
+  var toggle = $('settings-toggle');
+  var open = false;
+  var timer = null;
+  function arm() {
+    if (timer) clearTimeout(timer);
+    timer = open ? setTimeout(function () { setOpen(false); }, SETTINGS_COLLAPSE_MS) : null;
   }
+  function setOpen(v) {
+    open = v;
+    box.classList.toggle('settings-collapsed', !open);
+    if (toggle) {
+      toggle.textContent = open ? '▾' : '▸';
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.setAttribute('aria-label', tx(open ? 'settings.hide' : 'settings.show'));
+      toggle.title = tx(open ? 'settings.hide' : 'settings.show');
+    }
+    arm();
+  }
+  if (toggle) toggle.addEventListener('click', function () { setOpen(!open); });
+  var nav = document.querySelector('a[data-nav="settings"]');
+  if (nav) nav.addEventListener('click', function () { setOpen(true); });
+  ['mousemove', 'click', 'keydown', 'focusin', 'input'].forEach(function (ev) { box.addEventListener(ev, function () { if (open) arm(); }); });
+  setOpen(false);
   load();
   return { load: load };
 }

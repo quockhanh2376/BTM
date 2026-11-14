@@ -116,7 +116,7 @@ function btmMeeting(d) {
     }
     if (m.status === 'running' || m.status === 'paused') btn('meet.close', 'btn-secondary', function () { act('close'); });
     // Xuất biên bản (anh Zon 2026-11-14): Markdown, hoặc HTML (mở bằng trình duyệt → in ra PDF; Word cũng mở được).
-    [['md', 'meet.exportMd'], ['html', 'meet.exportHtml']].forEach(function (f) {
+    [['md', 'meet.exportMd'], ['html', 'meet.exportHtml'], ['docx', 'meet.exportDocx']].forEach(function (f) {
       var a = el('a', 'btn btn-sm btn-secondary', tx(f[1]));
       a.href = '/api/meetings/' + m.id + '/export.' + f[0];
       a.setAttribute('download', 'meeting-M' + m.id + '.' + f[0]);

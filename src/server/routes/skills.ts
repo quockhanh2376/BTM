@@ -52,6 +52,7 @@ export async function handleSkillsPost(method: string | undefined, pathname: str
       z.object({ action: z.literal('github-import'), url: z.string().min(1).max(300), paths: z.array(z.string().max(300)).min(1).max(30) }),
       z.object({ action: z.literal('update'), id: z.number().int().positive(), seats: z.array(seat).max(4).optional(), projects: z.union([z.literal('all'), z.array(z.string().max(20)).max(50)]).optional(), on: z.boolean().optional() }),
       z.object({ action: z.literal('recheck'), id: z.number().int().positive() }),
+      z.object({ action: z.literal('check-update'), id: z.number().int().positive() }),
       z.object({ action: z.literal('delete'), id: z.number().int().positive() }),
     ]).safeParse(body);
     if (!parsed.success) {
@@ -71,6 +72,7 @@ export async function handleSkillsPost(method: string | undefined, pathname: str
       : p.action === 'github-import' ? await lane.importGithub(p.url, p.paths)
       : p.action === 'update' ? lane.update(p.id, { seats: p.seats, projects: p.projects, on: p.on })
       : p.action === 'recheck' ? lane.recheck(p.id)
+      : p.action === 'check-update' ? await lane.checkUpdate(p.id)
       : { ok: true as const, skills: lane.remove(p.id) };
     sendJson(res, r.ok ? 200 : r.status, r.ok ? r : { error: r.error });
     return true;

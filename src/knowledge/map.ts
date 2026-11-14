@@ -22,8 +22,13 @@ const cut = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)
 /** Dòng chú thích đầu + tên hàm/class được export (JS/TS: export …, module.exports, exports.x; Python: def/class cấp đầu). */
 export function fileSymbols(text: string, path: string): { note: string; symbols: string[] } {
   const lines = text.split(/\r?\n/).slice(0, 400);
-  const first = lines.find((l) => /^\s*(\/\/|#(?!!)|\/\*|\*|""")/.test(l) && one(l.replace(/^\s*(\/\/+|#+|\/\*+|\*+|""")\s*/, ''), 200));
-  const note = first ? one(first.replace(/^\s*(\/\/+|#+|\/\*+|\*+|""")\s*/, '').replace(/\*\/\s*$/, ''), 110) : '';
+  // Mô tả = chú thích ĐẦU FILE (8 dòng đầu), chỉ với file code / markdown / CSS. Trước đây lấy dòng chú thích bất kỳ nên
+  // ra ".gitignore — .db", "style.css — {", "bot.test.js — Bot at center" (anh Zon thấy 2026-11-14).
+  const base = path.split('/').pop() ?? path;
+  const noteable = !base.startsWith('.') && (CODE.test(path) || /\.(md|css|scss|sh)$/i.test(path));
+  const marker = /\.(css|scss)$/i.test(path) ? /^\s*\/\*+\s*/ : /\.md$/i.test(path) ? /^\s*#+\s+/ : /^\s*(\/\/+|#+(?!!)|\/\*+|""")\s*/;
+  const first = noteable ? lines.slice(0, 8).find((l) => marker.test(l) && one(l.replace(marker, '').replace(/\*\/\s*$/, ''), 200).length >= 3) : undefined;
+  const note = first ? one(first.replace(marker, '').replace(/\*\/\s*$/, ''), 110) : '';
   if (!CODE.test(path)) return { note, symbols: [] };
   const found = new Set<string>();
   const add = (n?: string) => { if (n && found.size < 10) found.add(n); };

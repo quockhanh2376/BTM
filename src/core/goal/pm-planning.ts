@@ -59,7 +59,7 @@ export async function runPmPlanning(ctx: GoalCtx): Promise<SessionOutcome | null
       lessons: lessonsForPrompt(d.cfg.host.data_dir, key),
       map: buildProjectMap(d.store, d.repo, MAP_PM_MAX),
       standards: standardsFor(d.store),
-      skills: skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'pm'),
+      skills: skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'pm', pmTurnId),
     });
     const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
     if (pmSnapshot.protectedBranchMoved) {

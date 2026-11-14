@@ -14,6 +14,8 @@ export function accountKey(agent: string, slug: string): string {
 
 export function validateSlug(cfg: Config, agent: string, slug: string): string | null {
   if (!cfg.agents[agent]) return `unknown worker: ${agent}`;
+  // Boss (decision 0003) chạy bằng API key trong kho, không có tài khoản đăng nhập → không thêm / nhập tài khoản phụ.
+  if (cfg.agents[agent]!.provider === 'zai') return 'Boss uses an API key, it has no login accounts';
   if (slug === 'default' || !SLUG_RE.test(slug)) return 'slug must be 1-12 of a-z0-9 and not "default"';
   const key = accountKey(agent, slug);
   if (cfg.agents[key]) return `account key ${key} equals another agent id`;

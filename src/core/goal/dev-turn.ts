@@ -75,7 +75,7 @@ export async function runDevTurn(
     isHandoffFor(devAgent),
     mapForScope(d.repo, ticket.scope),
     standardsFor(d.store),
-    skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'dev')
+    skillsFor(d.store, d.cfg.host.data_dir, d.repo, 'dev', devTurnId)
   );
 
   const devSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'dev');
