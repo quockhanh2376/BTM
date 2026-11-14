@@ -1574,8 +1574,8 @@ describe('P6-T3/T4: dashboard diff + câu hỏi', () => {
     expect(html).toContain("if (!confirm(tx('diff.confirmReturn', { ticket: diffTicket }))) return;");
     expect(html).toContain("txt.textContent = l.text;");
     expect(html).toContain('id="questions-section"');
-    expect(html).toContain("postJson('/api/questions/' + q.id + '/answer'");
-    expect(html).toContain('text.textContent = q.text;');
+    expect(html).toContain("postJson('/api/questions/' + qs[i].id + '/answer'");
+    expect(html).toContain("text.textContent = (qs.length > 1 ? (i + 1) + '. ' : '') + x.text;");
   });
 });
 
@@ -1772,6 +1772,21 @@ describe('Chat bubbles (2026-11-14)', () => {
     expect(fn).not.toContain('innerHTML');
     expect(html).toContain('@keyframes chat-blink');
     for (let i = 0; i < 6; i++) expect(html).toContain(`.chat-bubble.style-${i}`);
+  });
+});
+
+describe('Một ô trả lời cho nhiều câu hỏi cùng ticket (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const lib = new Function(html.slice(html.indexOf('function splitAnswers'), html.indexOf('function renderQuestions')) + 'return { splitAnswers, groupQuestions };')() as any;
+  it('gom theo ticket + ghế; "1. … 2. …" đủ số câu thì tách, thiếu thì dùng chung', () => {
+    const g = lib.groupQuestions([{ id: 1, ticket: 'A', seat: 'dev' }, { id: 2, ticket: 'B', seat: 'qc' }, { id: 3, ticket: 'A', seat: 'dev' }]);
+    expect(g.map((x: any[]) => x.map((q) => q.id))).toEqual([[1, 3], [2]]);
+    expect(lib.splitAnswers('1. Không có ảnh mẫu\n2. Đã chạy, đạt', 2)).toEqual(['Không có ảnh mẫu', 'Đã chạy, đạt']);
+    expect(lib.splitAnswers('1) a\n2: b', 2)).toEqual(['a', 'b']);
+    expect(lib.splitAnswers('Đạt hết, chuyển QC', 2)).toEqual(['Đạt hết, chuyển QC', 'Đạt hết, chuyển QC']);
+    expect(lib.splitAnswers('1. chỉ có một', 2)).toEqual(['1. chỉ có một', '1. chỉ có một']);
+    expect(lib.splitAnswers('ok', 1)).toEqual(['ok']);
+    expect(html).toContain("clearBtn.className = 'q-clear';");
   });
 });
 
