@@ -1802,6 +1802,16 @@ describe('Một ô trả lời cho nhiều câu hỏi cùng ticket (2026-11-14)'
   });
 });
 
+describe('Để PM trả lời + chặn tạo goal nhầm (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('nút gọi /api/questions/delegate; gửi Team khi còn câu hỏi thì hỏi lại trước', () => {
+    expect(html).toContain('id="q-delegate"');
+    expect(html).toContain("postJson('/api/questions/delegate', {})");
+    expect(html).toContain("if (to === 'team' && latestSnapshot && (latestSnapshot.questions || []).length > 0) {");
+    expect(html).toContain("text: tx('q.teamGuard'),");
+  });
+});
+
 describe('Stop: agent hỏi lại thân thiện (2026-11-14)', () => {
   const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
   it('dùng <dialog> thay confirm(), mặc định là tiếp tục, chữ bằng textContent', () => {

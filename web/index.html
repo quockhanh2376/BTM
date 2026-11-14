@@ -2449,7 +2449,10 @@
 
     <!-- Plan 6 Task 4: câu hỏi chặn ticket -->
     <section class="card" id="questions-section" style="display: none;">
-      <h2 class="section-title" data-i18n="q.title">Questions</h2>
+      <div class="sec-head">
+        <h2 class="section-title" data-i18n="q.title">Questions</h2>
+        <button type="button" id="q-delegate" class="btn btn-secondary btn-sm btn-tool btn-accent-outline" title="PM answers what it can check from the repo; the rest stays for you" data-i18n-title="q.delegateTip"><span id="q-delegate-label">Let PM answer</span></button>
+      </div>
       <div id="questions-list"></div>
     </section>
 
@@ -3228,6 +3231,12 @@
           'q.multiHint': 'One answer for all {n} questions, or write "1. … 2. …" to answer each one.',
           'q.answerFor': 'Answer question {id}',
           'q.answered': 'Answered – press Resume to continue',
+          'q.delegate': 'Let {name} answer',
+          'q.delegateTip': 'PM answers what it can check from the repo; the rest stays for you',
+          'q.delegateSent': '{name} is answering. Answered questions show "(PM trả lời)"; if all are answered the session resumes.',
+          'q.teamGuard': 'There are open questions. A message to Team creates a NEW goal. To have PM answer them, use "Let PM answer" under Questions.',
+          'q.teamGuardOk': 'Create new goal',
+          'q.teamGuardCancel': 'Cancel',
           'diff.open': 'Diff',
           'diff.openFor': 'Show diff for {ticket}',
           'diff.title': 'Diff · {ticket}',
@@ -3811,6 +3820,26 @@
         r.readAsDataURL(file);
       }
 
+      // Nút "Để Finn trả lời" (anh Zon 2026-11-14): một lượt PM chỉ đọc, xong hết thì tự Resume.
+      (function () {
+        var b = document.getElementById('q-delegate');
+        if (!b) return;
+        b.addEventListener('click', async function () {
+          var pm = latestSnapshot && (latestSnapshot.seats || []).filter(function (s) { return s.seat === 'pm'; })[0];
+          var name = agentLabel(pm ? pm.agent : 'pm');
+          b.disabled = true;
+          try {
+            var res = await postJson('/api/questions/delegate', {});
+            if (res && res.error) showFeedback(topFeedback, res.error, true);
+            else showFeedback(topFeedback, tx('q.delegateSent', { name: name }), false);
+          } catch (err) {
+            showFeedback(topFeedback, err.message, true);
+          } finally {
+            b.disabled = false;
+          }
+        });
+      })();
+
       // Anh Zon 2026-11-14: nhiều câu hỏi của cùng ticket → một ô trả lời. Gõ "1. … 2. …" đủ số câu thì tách riêng
       // từng câu; không thì cùng một câu trả lời cho mọi câu hỏi.
       function splitAnswers(text, n) {
@@ -3845,6 +3874,11 @@
 
       function renderQuestions(questions) {
         var section = document.getElementById('questions-section');
+        var dlg = document.getElementById('q-delegate-label');
+        if (dlg) {
+          var pmSeat = latestSnapshot && (latestSnapshot.seats || []).filter(function (s) { return s.seat === 'pm'; })[0];
+          dlg.textContent = tx('q.delegate', { name: agentLabel(pmSeat ? pmSeat.agent : 'pm') || 'PM' });
+        }
         var list = document.getElementById('questions-list');
         if (!section || !list) return;
         var active = document.activeElement;
@@ -6950,6 +6984,15 @@
                 showFeedback(cmdFeedback, tx('cmd.nothingToResume'), true);
               }
               return;
+            }
+            if (to === 'team' && latestSnapshot && (latestSnapshot.questions || []).length > 0) {
+              var goOn = await askOwner({
+                who: tx('ask.team'),
+                text: tx('q.teamGuard'),
+                ok: tx('q.teamGuardOk'),
+                cancel: tx('q.teamGuardCancel'),
+              });
+              if (!goOn) return;
             }
             if (to === 'team') {
               var payload = { text: text };
