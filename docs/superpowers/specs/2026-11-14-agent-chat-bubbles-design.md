@@ -87,3 +87,12 @@ Khác bản hiện tại ở chỗ: câu nói do AI sinh (tốn lượt/energy),
 
 Biên bản v2.0.0 dự kiến nằm ngoài git (kho attachments theo plan lưu trữ) hoặc trong `team/meetings/` nếu anh muốn đi theo code; quyết định khi brainstorm.
 
+### Họp khởi động project mới (anh Zon 2026-11-14) – cũng thuộc v2.0.0
+
+Khi bắt đầu một project mới: anh Zon mô tả ý tưởng, cả team cùng bàn trước khi lập goal:
+- **PM:** ưu điểm, nhược điểm, phạm vi, cách chia goal.
+- **Dev:** chọn tech/specs (ngôn ngữ, thư viện, cấu trúc), rủi ro kỹ thuật.
+- **QC:** cách kiểm thử, tiêu chí nghiệm thu.
+- **Audit:** rủi ro bảo mật, cách audit.
+- Anh chốt. **Lưu file** biên bản, các phương án, **quyết định** (kiểu decision record), để PM và Dev đọc lại khi lập/làm ticket.
+
