@@ -46,6 +46,8 @@
       function chatClearWaiting(target) {
         var w = chatWaiting[target];
         if (w && w.parentNode) w.parentNode.removeChild(w);
+        var a = w && chatAnchor(target);
+        if (a) a.classList.remove('is-talking');
         delete chatWaiting[target];
       }
       // Hiện một bong bóng (text) hoặc bong bóng chờ (waiting) trên avatar.
@@ -70,6 +72,10 @@
         }
         document.body.appendChild(el);
         chatPlace(el, anchor);
+        if (anchor.classList.contains('seat-avatar')) {
+          anchor.classList.add('is-talking');
+          if (!waiting) chatTimers.push(setTimeout(function () { anchor.classList.remove('is-talking'); }, CHAT_SHOW_MS + 600));
+        }
         if (waiting) { chatWaiting[target] = el; return; }
         chatTimers.push(setTimeout(function () { el.classList.add('chat-fade'); }, CHAT_SHOW_MS));
         chatTimers.push(setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, CHAT_SHOW_MS + 600));
@@ -243,6 +249,7 @@
         chatBusyUntil = 0;
         chatPending = {};
         document.querySelectorAll('.chat-bubble').forEach(function (el) { if (el.parentNode) el.parentNode.removeChild(el); });
+        document.querySelectorAll('.seat-avatar.is-talking').forEach(function (el) { el.classList.remove('is-talking'); });
         chatWaiting = {};
       }
       var chatThoughtSeen = {};

@@ -467,17 +467,14 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(holderBoxHtml).toContain('currentColor');
     });
 
-    it('không còn chuỗi hiển thị "Đang chạy" dạng chip; nhãn Chờ/Rảnh giữ dạng chip xám nhỏ', () => {
-      // HTML tĩnh không có chip nào hiển thị chữ 'Đang chạy'
-      expect(html).not.toMatch(/<span[^>]*class=["'][^"']*seat-status-badge[^"']*["'][^>]*>\s*Running\s*<\/span>/);
-
-      // Nhãn Chờ / Rảnh giữ dạng chip xám nhỏ trong CSS
-      expect(html).toMatch(/\.status-waiting\b/);
-      expect(html).toMatch(/\.status-idle\b/);
-
-      // Trong renderSeat: khi status === 'running', không gán text 'Đang chạy' vào statusBadge dạng chip
-      expect(html).not.toMatch(/statusBadge\.textContent\s*=\s*['"]Running['"]/);
-      expect(html).not.toMatch(/statusBadge\.textContent\s*=\s*formatStatus\s*\(\s*['"]running['"]\s*\)/);
+    it('anh Zon 2026-11-14: không còn chip Idle/Live/Waiting; trạng thái là vòng quanh avatar, tắt hiệu ứng thì không xoay', () => {
+      expect(html).not.toMatch(/id="[a-z]+-status-badge"/);
+      expect(html).not.toContain('statusBadge');
+      expect(html).toMatch(/avatarEl\.classList\.toggle\('is-active', cardData\.status === 'running'\)/);
+      expect(html).toMatch(/avatarEl\.classList\.toggle\('is-waiting', cardData\.status === 'waiting'\)/);
+      expect(html).toContain("anchor.classList.add('is-talking')");
+      expect(html).toMatch(/\.seat-avatar\.is-active::before[^{]*\{[^}]*conic-gradient/);
+      expect(html).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.seat-avatar\.is-active::before, \.seat-avatar\.is-talking::before \{ animation: none; \}/);
     });
   });
 

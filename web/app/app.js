@@ -1777,7 +1777,6 @@
           var titleEl = document.getElementById(seatKey + '-title');
           var toolEl = document.getElementById(seatKey + '-tool');
           var spinnerEl = document.getElementById(seatKey + '-spinner');
-          var statusBadge = document.getElementById(seatKey + '-status-badge');
           var taskEl = document.getElementById(seatKey + '-task');
           var sinceEl = document.getElementById(seatKey + '-since');
           var turnsEl = document.getElementById(seatKey + '-turns');
@@ -1796,26 +1795,15 @@
             toolEl.textContent = toolParts.join(' · ');
           }
 
-          if (cardData.status === 'running') {
-            if (spinnerEl) setDisplay(spinnerEl, true, 'inline-block');
-            if (statusBadge) {
-              setDisplay(statusBadge, true, 'inline-block');
-              statusBadge.className = 'seat-status-badge status-live';
-              statusBadge.textContent = tx('seat.live');
-            }
-          } else {
-            if (spinnerEl) setDisplay(spinnerEl, false);
-            if (statusBadge) {
-              setDisplay(statusBadge, true, 'inline-block');
-              statusBadge.className = 'seat-status-badge';
-              if (cardData.status === 'waiting') {
-                statusBadge.classList.add('status-waiting');
-                statusBadge.textContent = tx('seat.waiting');
-              } else {
-                statusBadge.classList.add('status-idle');
-                statusBadge.textContent = tx('seat.idle');
-              }
-            }
+          if (spinnerEl) setDisplay(spinnerEl, cardData.status === 'running', 'inline-block');
+          // Vòng quanh avatar (anh Zon 2026-11-14) thay chip Idle/Live/Waiting: đang làm → sáng + xoay; chờ anh → vòng vàng đứng yên.
+          var avatarEl = cardEl.querySelector('.seat-avatar');
+          if (avatarEl) {
+            avatarEl.classList.toggle('is-active', cardData.status === 'running');
+            avatarEl.classList.toggle('is-waiting', cardData.status === 'waiting');
+            var stateText = tx(cardData.status === 'running' ? 'seat.live' : cardData.status === 'waiting' ? 'seat.waiting' : 'seat.idle');
+            avatarEl.setAttribute('aria-label', tx('seat.avatarFor', { agent: agentLabel(cardData.agent) }) + ' · ' + stateText);
+            avatarEl.title = avatarEl.getAttribute('aria-label');
           }
 
           if (taskEl) taskEl.textContent = cardData.taskId || '—';
