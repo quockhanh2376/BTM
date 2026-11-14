@@ -246,6 +246,17 @@ describe('Công cụ theo tài khoản: API + snapshot + giao diện', () => {
     expect(html).toContain("var accTool = a.tool || worker.tool;");
     expect(html).toContain("toolTag.className = 'acc-tool-tag';");
     expect(html).toContain("var cmd = getLoginCommand(accTool, sshTarget, a.user);");
+    // Thẻ ghế (2026-11-15): chip "Thẻ n · ghế", nút + Thêm acc, chuyển thẻ, nhãn trùng email, model theo công cụ
+    expect(html).toContain("seatEl.textContent = tx('acc.cardSeat', { i: cardIdx + 1, seat: cardSeatText(acc) });");
+    expect(html).toContain("addHere.addEventListener('click', function () { openAddForm(acc.agent); });");
+    expect(html).toContain("await postJson('/api/accounts/' + encodeURIComponent(a.key) + '/move', { agent: to });");
+    expect(html).toContain("dupTag.textContent = tx('acc.dupEmail', { at: a.dupOf });");
+    expect(html).toContain("acc.modelTool ? { tool: acc.modelTool } : {}");
+    expect(html).toContain("(dry.skipped || []).forEach(function (r) { add(tx('acc.importSkipped', { entry: r.entry, at: r.at })); });");
+    // Lỗi PR #148: xem trước import không được đọc biến rawText (chỉ có trong hàm đọc file)
+    const preview = html.slice(html.indexOf('async function previewImport()'), html.indexOf("accImportFile.addEventListener('change'"));
+    expect(preview).not.toContain('rawText');
+    expect(preview).toContain("postJson('/api/accounts/import'");
     expect(html).toContain("'acc.toolTip': 'This account runs on {tool}.");
   });
 });
