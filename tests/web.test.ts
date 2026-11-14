@@ -1681,7 +1681,7 @@ describe('Chat bubbles (2026-11-14)', () => {
   const html = readWeb();
   const lib = new Function(
     'agentLabel',
-    html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('var chatMode')) +
+    html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('// end chat-lib')) +
       'return { pickChatLine, chatStyleOf, chatEvents, chatTargetsFor, CHAT_LINES };'
   )((id: string) => id) as any;
   const snap = (over: any = {}) => ({
