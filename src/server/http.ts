@@ -3,7 +3,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { AGENT_NAME_RE, AVATAR_MAX_BYTES, agentAvatarKey, agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
 import type { Socket } from 'node:net';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, lstatSync, rmSync } from 'node:fs';
-import { join, relative, isAbsolute } from 'node:path';
+import { join, relative, isAbsolute, dirname } from 'node:path';
 import { z } from 'zod';
 import { EffortSchema, ModelSchema, type Config, type Seat } from '../config.ts';
 import { agentEffortKey, agentModelKey } from '../agents/model.ts';
@@ -165,6 +165,23 @@ export function createServer(o: {
             "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:",
         });
         res.end(html);
+        return;
+      }
+
+      // File tĩnh của dashboard (tách từ index.html, 2026-11-14): chỉ tên an toàn trong web/app/, không cache.
+      const assetMatch = method === 'GET' ? pathname.match(/^\/app\/([a-z0-9-]{1,40})\.(js|css)$/) : null;
+      if (assetMatch) {
+        const file = join(dirname(o.webFile), 'app', `${assetMatch[1]}.${assetMatch[2]}`);
+        if (!existsSync(file)) {
+          sendJson(res, 404, { error: 'Not found' });
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': assetMatch[2] === 'js' ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        });
+        res.end(readFileSync(file, 'utf-8'));
         return;
       }
 
