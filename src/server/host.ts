@@ -6,6 +6,7 @@ import type { Runner, TurnOutput } from '../runner/run.ts';
 import type { HostApi } from './http.ts';
 import { runSession, resumeSession, type SessionOutcome } from '../core/session.ts';
 import { pmAnswerQuestions, type DelegateResult } from '../core/delegate.ts';
+import { knowledgeFor, saveGoalDigest } from '../knowledge/digest.ts';
 import { notify, type NotifyKind } from '../notify/notify.ts';
 import { directPrompt, askPrompt } from '../core/prompts.ts';
 import { git, commitAll } from '../git.ts';
@@ -216,7 +217,8 @@ export function createHost(d: HostDeps): HostApi & {
           let runError: any = null;
           try {
             // Ghế chạy chỉ đọc: audit giữ 'audit'; PM chạy bằng ghế 'qc' (READ_ONLY_SEATS), lượt vẫn ghi là PM.
-            const prompt = askSeat ? askPrompt(askSeat, item.text) : directPrompt(item.to, item.text);
+            // Bước 2 kho kiến thức: câu hỏi / bàn kế hoạch kèm nhật ký nén của goal liên quan (không tốn lượt AI).
+            const prompt = askSeat ? askPrompt(askSeat, item.text, knowledgeFor(d.store, d.cfg, activeProject, item.text)) : directPrompt(item.to, item.text);
             output = await d.runner(turnSeat === 'audit' ? 'audit' : 'qc', agent, prompt, activeProject, logFile, {
               signal: abortController.signal,
               account,
@@ -1123,7 +1125,9 @@ export function createHost(d: HostDeps): HostApi & {
     }
     const fn = d.approveGoal ?? approveGoalFn;
     const res = fn(d.store, activeProject, d.cfg, n);
-    if (res.ok) void pushRelease(activeProject, n);
+    if (res.ok) {
+      void pushRelease(activeProject, n).finally(() => saveGoalDigest(d.store, d.cfg, activeProject, n));
+    }
     return res;
   }
 

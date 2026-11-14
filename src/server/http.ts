@@ -23,6 +23,7 @@ import type { ReleaseInfo } from '../release/publish.ts';
 import { readFolders, type ExecAsync } from './folders.ts';
 import { archiveGoalAction, restoreGoalAction, purgeGoalAction } from './goal-trash.ts';
 import { retryTicket } from './ticket-retry.ts';
+import { buildGoalDigest, saveGoalDigest } from '../knowledge/digest.ts';
 
 export interface HostApi {
   start(
@@ -190,6 +191,20 @@ export function createServer(o: {
           n: g.n, title: g.title, state: g.state, archivedAt: g.archived_at,
           tickets: project ? o.store.listTickets(project, `G${g.n}`).length : 0,
         })));
+        return;
+      }
+
+      // Kho kiến thức: nhật ký nén của một goal (chữ thường, để anh xem; giống bản đưa vào câu hỏi).
+      const kbMatch = method === 'GET' ? pathname.match(/^\/api\/goals\/(\d{1,6})\/knowledge$/) : null;
+      if (kbMatch) {
+        const project = o.store.getActiveProject();
+        const text = project ? buildGoalDigest(o.store, o.cfg, project, parseInt(kbMatch[1]!, 10)) : null;
+        if (!text) {
+          sendJson(res, 404, { error: 'Unknown goal' });
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+        res.end(text);
         return;
       }
 
@@ -539,6 +554,7 @@ export function createServer(o: {
           const n = parseInt(trashMatch[1]!, 10);
           let result;
           try {
+            if (trashMatch[2] === 'archive') saveGoalDigest(o.store, o.cfg, project, n); // lưu nhật ký trước khi ẩn
             result = trashMatch[2] === 'archive' ? archiveGoalAction(o.store, project, n)
               : trashMatch[2] === 'restore' ? restoreGoalAction(o.store, project, n)
               : purgeGoalAction(o.store, o.cfg, project, n);

@@ -49,11 +49,15 @@ export function directPrompt(to: Seat, text: string, allow: string[] = []): stri
 
 // Chat Auto (anh Zon 2026-11-14): câu hỏi / bàn kế hoạch gửi một người trong team, CHỈ ĐỌC.
 const ROLE_NAME: Record<string, string> = { pm: 'PM', dev: 'Dev', qc: 'QC', audit: 'Audit' };
-export function askPrompt(seat: Seat, text: string): string {
+export function askPrompt(seat: Seat, text: string, knowledge = ''): string {
   const cleanText = text.replace(/\r?\n/g, ' ').trim();
   const plan = /\[plan\]/i.test(cleanText);
   const question = cleanText.replace(/\[plan\]\s*/i, '');
+  const kb = knowledge.trim()
+    ? [`Kho kiến thức team (nhật ký nén các goal, do BTM ghi, dùng làm nguồn chính; cần chi tiết thì đọc file báo cáo được nhắc):\n${knowledge.trim()}`]
+    : [];
   return [
+    ...kb,
     `Bạn là ${ROLE_NAME[seat] ?? seat} trong team BTM (chỉ đọc). Anh Zon ${plan ? 'muốn bàn kế hoạch' : 'hỏi'}: ${question}`,
     `Đọc team/goals/, team/tickets/, team/reports/, README/CHANGELOG và lịch sử git để trả lời. Chỉ đọc, không sửa hay tạo file, không chạy lệnh làm thay đổi repo, cấm git commit và push.`,
     plan
