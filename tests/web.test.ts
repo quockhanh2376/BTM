@@ -1466,7 +1466,7 @@ describe('Web Dashboard (web/index.html)', () => {
     it('đổi chữ "Dừng khẩn cấp" thành "Dừng" trên nút #stop-btn, confirm và feedback, giữ nguyên id và btn-danger', () => {
       expect(html).not.toContain('Dừng khẩn cấp');
       expect(html).toMatch(/<button[^>]*id=["']stop-btn["'][^>]*class=["'][^"']*\bbtn-danger\b[^"']*["'][^>]*>\s*Stop\s*<\/button>/);
-      expect(html).toMatch(/confirm\(tx\('confirm\.stop'\)\)/);
+      expect(html).toContain("text: tx('ask.stopAll')");
       expect(html).toContain("tx('fb.stopSent')");
     });
 
