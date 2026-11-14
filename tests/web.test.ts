@@ -1643,12 +1643,16 @@ describe('Accounts thu gọn bằng nút ▸/▾ (2026-11-13)', () => {
 
 describe('Command trái, Session & queue phải (2026-11-13)', () => {
   const html = readWeb();
-  it('cmd-section là lưới 2 cột: cmd-main rồi queue-container; màn hẹp xếp chồng', () => {
+  it('cmd-section: Results + Command 1/3 bên trái, Meeting room 2/3 bên phải ở mọi cỡ màn hình (2026-11-14)', () => {
     const sec = html.slice(html.indexOf('<section class="card cmd-section">'), html.indexOf('</section>', html.indexOf('<section class="card cmd-section">')));
     expect(sec.indexOf('<div class="cmd-main">')).toBeGreaterThan(-1);
     expect(sec.indexOf('id="cmd-feedback"')).toBeLessThan(sec.indexOf('<div class="queue-container">'));
-    expect(html).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);');
-    expect(html).toContain('.cmd-section { grid-template-columns: minmax(0, 1fr); }');
+    expect(sec.indexOf('id="search-panel"')).toBeLessThan(sec.indexOf('class="cmd-head"'));
+    expect(html).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);');
+    expect(html).not.toContain('.cmd-section { grid-template-columns: minmax(0, 1fr); }');
+    const kpi = html.slice(html.indexOf('<section class="kpi-grid"'));
+    expect(kpi.indexOf('id="search-input"')).toBeLessThan(kpi.indexOf('id="kpi-accounts"'));
+    expect(html).toContain("fetch('/api/search?q=' + encodeURIComponent(q)");
   });
 });
 
@@ -1989,7 +1993,7 @@ describe('Gộp Session goals vào khung hàng đợi (2026-11-12)', () => {
   it('không còn section Session goals; goal của phiên hiện "Goal G<n> · <tiêu đề>" trong cùng danh sách', () => {
     expect(html).not.toContain('goals-section');
     expect(html).not.toContain('id="goals-list"');
-    expect(html).toContain("'queue.title': 'History'"); // 2026-11-14: gộp thành lịch sử chung
+    expect(html).toContain("'queue.title': 'Meeting room'"); // 2026-11-14: gộp thành lịch sử chung
     expect(html).toContain("out.push({ kind: 'goal', text: text, status: s.status });");
     expect(html).toContain("text = 'G' + text + (found && found.title ? ' · ' + found.title : '');");
   });

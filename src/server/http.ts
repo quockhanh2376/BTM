@@ -1,3 +1,4 @@
+import { searchBtm } from './search.ts';
 import { createSystemReader } from './system.ts';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { AGENT_NAME_RE, AVATAR_MAX_BYTES, agentAvatarKey, agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
@@ -200,6 +201,12 @@ export function createServer(o: {
       }
 
       if (await handleGoalsGet(method, pathname, undefined, o, res, sendJson)) return;
+
+      // Ô Search (chỉ đọc, không lưu): ?q=… → { hits }.
+      if (method === 'GET' && pathname === '/api/search') {
+        sendJson(res, 200, { hits: searchBtm(o.store, o.cfg, url.searchParams.get('q') ?? '') });
+        return;
+      }
 
       // State snapshot route
       if (method === 'GET' && pathname === '/api/state') {

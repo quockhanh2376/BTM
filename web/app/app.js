@@ -3917,4 +3917,65 @@
           }
         });
       }
+
+      // ===== Ô Search (anh Zon 2026-11-14): kết quả tạm, không lưu; X xoá; 📋 copy để dán hỏi team. =====
+      (function () {
+        var input = document.getElementById('search-input');
+        var panel = document.getElementById('search-panel');
+        var list = document.getElementById('search-list');
+        var count = document.getElementById('search-count');
+        var clearBtn = document.getElementById('search-clear');
+        if (!input || !panel || !list) return;
+        var timer = null;
+        var seq = 0;
+        var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log' };
+        function hide() { seq++; clearChildren(list); count.textContent = ''; panel.style.display = 'none'; }
+        function line(cls, text) { var d = document.createElement('div'); d.className = cls; d.textContent = text; return d; }
+        function show(hits) {
+          clearChildren(list);
+          panel.style.display = '';
+          count.textContent = hits.length ? tx('search.count', { n: hits.length }) : '';
+          if (!hits.length) { list.appendChild(line('empty-placeholder', tx('search.none'))); return; }
+          hits.forEach(function (h) {
+            var li = document.createElement('li');
+            li.className = 'search-hit';
+            li.appendChild(line('search-hit-head', tx(KIND_KEY[h.kind] || 'search.kind.log') + ' · ' + h.title + (h.at ? ' · ' + formatHHmm(h.at) : '')));
+            li.appendChild(line('search-hit-text', h.text));
+            var copy = document.createElement('button');
+            copy.type = 'button';
+            copy.className = 'cmd-icon-btn search-copy';
+            copy.textContent = '📋';
+            copy.title = tx('search.copy');
+            copy.setAttribute('aria-label', tx('search.copy'));
+            copy.addEventListener('click', function () {
+              var text = h.title + '\n' + h.text;
+              Promise.resolve(navigator.clipboard && navigator.clipboard.writeText(text)).then(function () {
+                copy.textContent = '✓';
+                copy.title = tx('search.copied');
+                setTimeout(function () { copy.textContent = '📋'; copy.title = tx('search.copy'); }, 1500);
+              }).catch(function () {});
+            });
+            li.appendChild(copy);
+            list.appendChild(li);
+          });
+        }
+        async function run() {
+          var q = input.value.trim();
+          if (!q) { hide(); return; }
+          var my = ++seq;
+          try {
+            var res = await fetch('/api/search?q=' + encodeURIComponent(q), { cache: 'no-store' });
+            var data = await res.json();
+            if (my === seq) show((data && data.hits) || []);
+          } catch (e) {
+            if (my === seq) { show([]); count.textContent = tx('search.failed'); }
+          }
+        }
+        input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(run, 300); });
+        input.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { clearTimeout(timer); run(); }
+          if (e.key === 'Escape') { input.value = ''; hide(); }
+        });
+        clearBtn.addEventListener('click', function () { input.value = ''; hide(); input.focus(); });
+      })();
     })();
