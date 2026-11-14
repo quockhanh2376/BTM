@@ -92,6 +92,7 @@
 
     <!-- Plan 9 Task 2: 4 thẻ số (mũi tên % theo 24 giờ có ở Task 5) -->
     <section class="kpi-grid" aria-label="Summary" data-i18n-aria="kpi.label">
+      <div class="card kpi-card kpi-search"><span class="kpi-icon kpi-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><input type="search" id="search-input" class="search-input" maxlength="200" autocomplete="off" placeholder="Search goals, tickets, Q&amp;A, logs…" aria-label="Search" data-i18n-placeholder="search.placeholder" data-i18n-aria="search.label"></div>
       <div class="card kpi-card"><span class="kpi-icon kpi-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-4-5.6"/></svg></span><div class="kpi-body"><div class="kpi-value" id="kpi-accounts">–</div><div class="kpi-label" data-i18n="kpi.accounts">Total accounts</div></div><span class="kpi-delta" id="kpi-accounts-delta" hidden></span></div>
       <div class="card kpi-card"><span class="kpi-icon kpi-violet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/></svg></span><div class="kpi-body"><div class="kpi-value" id="kpi-running">–</div><div class="kpi-label" data-i18n="kpi.running">Running instances</div></div><span class="kpi-delta" id="kpi-running-delta" hidden></span></div>
       <div class="card kpi-card"><span class="kpi-icon kpi-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></span><div class="kpi-body"><div class="kpi-value" id="kpi-goals">–</div><div class="kpi-label" data-i18n="kpi.goals">Active goals</div></div><span class="kpi-delta" id="kpi-goals-delta" hidden></span></div>
@@ -111,6 +112,10 @@
     <!-- Khung lệnh -->
     <section class="card cmd-section">
       <div class="cmd-main">
+      <div id="search-panel" class="search-panel" style="display: none;">
+        <div class="search-head"><h3 class="queue-title" data-i18n="search.title">Results</h3><span id="search-count" class="search-count"></span><button type="button" id="search-clear" class="cmd-icon-btn search-clear" title="Clear" aria-label="Clear" data-i18n-title="search.clear" data-i18n-aria="search.clear">✕</button></div>
+        <ul id="search-list" class="search-list"></ul>
+      </div>
       <div class="cmd-head">
       <h2 class="section-title" data-i18n="cmd.title">Command</h2>
       <div class="recipient-radios" id="recipient-radios">
@@ -166,7 +171,7 @@
       </div>
 
       <div class="queue-container">
-        <h3 class="queue-title" data-i18n="queue.title">History</h3>
+        <h3 class="queue-title" data-i18n="queue.title">Meeting room</h3>
         <ul id="queue-list" class="queue-list">
           <li class="empty-placeholder" data-i18n="queue.empty">Nothing running or queued</li>
         </ul>

@@ -287,3 +287,5 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | ans.title / ans.onBehalf | Team trả lời / trả lời thay {seat} | Team answers / answering for {seat} |
 | queue.title / hist.goal / hist.ask / hist.plan / hist.cmd | Lịch sử / Goal / Hỏi / Kế hoạch / Lệnh | History / Goal / Question / Plan / Command |
 | hist.owner | Zon | Zon |
+| queue.title | Phòng họp | Meeting room |
+| search.* | Ô tìm kiếm: nhãn, Results, xoá, không có kết quả, copy, loại mục | Search box: label, Results, clear, no results, copy, hit kinds |
