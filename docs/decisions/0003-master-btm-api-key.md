@@ -9,6 +9,7 @@
 - MB đứng trong danh sách dự phòng của mọi ghế (PM, Dev, QC, Audit): ghế nào hết quota thì MB vào thay ngay.
 - MB chọn được model mặc định và đổi model trên dashboard như các agent khác.
 - Một key ↔ đúng một agent (MB). Không dùng chung, không đưa cho agent khác.
+- MB có ID `mb`, tên hiển thị "Boss", và là worker như mọi agent: không thêm quyền, vẫn qua gate / QC / audit.
 
 ## Bảo vệ key
 1. **Agent không bao giờ cầm key thật.** BTM chạy một cổng trung gian nội bộ (127.0.0.1) giữ key; lượt của MB chỉ nhận địa chỉ cổng + mã tạm của lượt đó. Hết lượt, mã tạm hết hạn.

@@ -6,7 +6,9 @@ Ngày 2026-11-14 · anh Zon + Cheki · Quyết định: `docs/decisions/0003-mas
 Anh Zon có key Z.ai gói Max. Muốn có một người dự phòng luôn sẵn sàng: agent nào trong team hết quota thì **MB vào ghế đó ngay**, để phiên không dừng. MB làm được mọi việc: lập plan (PM), code (Dev), QC, Audit. Sau này MB làm thêm audit bảo mật lần 2 sau Bruno.
 
 ## Mục tiêu
-- MB là agent thứ N trong team, tên hiển thị "MB" (anh đổi được), dùng CLI Claude Code trỏ tới Z.ai.
+- MB là thành viên thứ 5: ID `mb` (user Linux `btm-mb`), tên hiển thị **"Boss"** (anh đổi được), dùng CLI Claude Code trỏ tới Z.ai.
+- **Boss = worker** (anh Zon 2026-11-14): không có thêm quyền. Code của Boss vẫn qua gate, QC, audit; Boss không ra lệnh cho agent khác (PM điều phối, anh quyết). Trên thẻ chỉ thêm nhãn "Backup · mọi ghế".
+- Thẻ mọi agent hiện ID mờ cạnh tên (ví dụ "Finn · elon") để đối chiếu với log.
 - Ngồi được mọi ghế; đứng cuối danh sách `seats_backup` của mọi ghế.
 - Chọn model mặc định + đổi model trên dashboard như các agent khác.
 - Key mã hoá trong DB; agent không bao giờ thấy key thật.
