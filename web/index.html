@@ -3041,7 +3041,9 @@
           'mic.stop': 'Stop voice input',
           'mic.lang': 'Voice language',
           'mic.listening': 'Listening… speak now, click the mic again to stop.',
-          'mic.blocked': 'Microphone is blocked. Allow it in the browser address bar.',
+          'mic.blocked': 'Microphone is blocked by the browser. Click the lock icon in the address bar, allow Microphone, then reload (F5).',
+          'mic.service': 'The browser blocks its speech service here. Use Chrome or Edge (not an embedded app window).',
+          'mic.none': 'No microphone found. Over Remote Desktop, turn on "Record from this computer" in the RDP audio settings and reconnect.',
           'mic.error': 'Voice input stopped: {err}',
           'cmd.nothingToResume': 'Nothing to resume: the session is not paused.',
           'chat.aria': 'Chat bubbles',
@@ -6788,7 +6790,9 @@
               cmdTextArea.value = (base ? base + ' ' : '') + heard.trim();
             };
             rec.onerror = function (ev) {
-              showFeedback(cmdFeedback, ev.error === 'not-allowed' || ev.error === 'service-not-allowed' ? tx('mic.blocked') : tx('mic.error', { err: ev.error }), true);
+              // Tách lỗi để biết sửa ở đâu: trình duyệt chặn / dịch vụ nhận diện bị chặn / không có mic (vd RDP chưa chuyển mic).
+              var key = ev.error === 'not-allowed' ? 'mic.blocked' : ev.error === 'service-not-allowed' ? 'mic.service' : ev.error === 'audio-capture' ? 'mic.none' : null;
+              showFeedback(cmdFeedback, key ? tx(key) : tx('mic.error', { err: ev.error }), true);
             };
             rec.onend = function () { rec = null; setOn(false); cmdTextArea.focus(); };
             try {
