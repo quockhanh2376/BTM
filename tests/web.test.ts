@@ -1529,7 +1529,9 @@ describe('P5-T9: UI tiếng Anh, bảng chuỗi', () => {
   const tx = new Function('window', `${html.slice(i18nStart, html.indexOf('function applyI18n'))}; return tx;`)({ localStorage: { getItem: () => null } });
 
   it('ngoài bảng STRINGS không còn chữ tiếng Việt (bỏ qua comment)', () => {
-    const rest = (html.slice(0, i18nStart) + html.slice(i18nEnd))
+    // Kho thoại EN/VI của bong bóng chat (anh Zon 2026-11-14) là bảng chữ thứ hai, được phép có tiếng Việt.
+    const c0 = html.indexOf('var CHAT_LINES'), c1 = html.indexOf('var chatLastIdx');
+    const rest = (html.slice(0, i18nStart) + html.slice(i18nEnd, c0) + html.slice(c1))
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/<!--[\s\S]*?-->/g, '')
       .split('\n').map((l) => l.replace(/(^|\s)\/\/.*$/, '')).join('\n');
@@ -1670,6 +1672,63 @@ describe('Ô trả lời câu hỏi (2026-11-14)', () => {
     expect(html).toContain("iconFrom('#attach-image-label svg', attach, tx('q.attach'))");
     expect(html).toContain("area.value.trim() || (qImages[q.id] ? tx('q.seeImage') : '')");
     expect(html).toContain("'q.seeImage': 'See attached image.'");
+  });
+});
+
+describe('Chat bubbles (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const lib = new Function(
+    'agentLabel',
+    html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('var chatMode')) +
+      'return { pickChatLine, chatStyleOf, chatEvents, chatTargetsFor, CHAT_LINES };'
+  )((id: string) => id) as any;
+  const snap = (over: any = {}) => ({
+    goals: [{ tickets: [{ id: 'GT-0005', state: 'pending' }] }],
+    seats: [{ seat: 'pm', agent: 'elon', status: 'idle' }, { seat: 'dev', agent: 'jenny', status: 'idle' }, { seat: 'qc', agent: 'jacky', status: 'idle' }],
+    questions: [],
+    log: [],
+    ...over,
+  });
+  it('trang vừa mở không phát chuyện cũ; giao việc phát đúng một lần', () => {
+    expect(lib.chatEvents(null, snap())).toEqual([]);
+    const a = snap();
+    const b = snap({ goals: [{ tickets: [{ id: 'GT-0005', state: 'in_dev' }] }] });
+    expect(lib.chatEvents(a, b)).toEqual([{ type: 'assign', from: 'pm', to: 'dev', ticket: 'GT-0005' }]);
+    expect(lib.chatEvents(b, b)).toEqual([]);
+  });
+  it('ghế bắt đầu chạy, câu hỏi mới/đã trả lời, lỗi trong log', () => {
+    const a = snap();
+    const b = snap({
+      seats: [{ seat: 'pm', agent: 'elon', status: 'idle' }, { seat: 'dev', agent: 'jenny', status: 'running', ticket: 'GT-0005' }, { seat: 'qc', agent: 'jacky', status: 'idle' }],
+      questions: [{ id: 7, seat: 'dev', ticket: 'GT-0005', text: 'Q?' }],
+      log: [{ at: 't1', who: 'jacky', text: 'error: aborted' }],
+    });
+    const ev = lib.chatEvents(a, b);
+    expect(ev).toContainEqual({ type: 'start', seat: 'dev', ticket: 'GT-0005' });
+    expect(ev).toContainEqual({ type: 'question', seat: 'dev', ticket: 'GT-0005', text: 'Q?' });
+    expect(ev).toContainEqual({ type: 'error', seat: 'qc' });
+    expect(lib.chatEvents(b, snap())).toContainEqual({ type: 'answered', seat: 'dev', ticket: 'GT-0005' });
+  });
+  it('người đang chạy không đáp Command; chọn câu EN/VI có tên và mã ticket, không lặp liền', () => {
+    const b = snap({ seats: [{ seat: 'pm', agent: 'elon', status: 'idle' }, { seat: 'dev', agent: 'jenny', status: 'running' }] });
+    expect(lib.chatTargetsFor('team', b)).toEqual(['pm']);
+    expect(lib.chatTargetsFor('dev', b)).toEqual([]);
+    const l1 = lib.pickChatLine('assign', { to: 'John', ticket: 'GT-1' }, 'vi');
+    expect(l1).toContain('GT-1');
+    expect(lib.pickChatLine('assign', { to: 'John', ticket: 'GT-1' }, 'vi')).not.toBe(l1);
+    for (const lang of ['en', 'vi']) for (const k of Object.keys(lib.CHAT_LINES.en)) expect(lib.CHAT_LINES[lang][k]?.length).toBeGreaterThanOrEqual(5);
+    expect(lib.chatStyleOf('jenny')).toBe(lib.chatStyleOf('jenny'));
+    expect(lib.chatStyleOf('jenny')).toBeGreaterThanOrEqual(0);
+    expect(lib.chatStyleOf('jenny')).toBeLessThan(6);
+  });
+  it('công tắc Chat nhớ trong localStorage (có try), chữ bằng textContent, có bong bóng chờ chớp', () => {
+    expect(html).toContain('id="chat-toggle"');
+    expect(html).toMatch(/try \{ var cm = window\.localStorage\.getItem\('btm\.chat'\)/);
+    const fn = html.slice(html.indexOf('function chatShow'), html.indexOf('function chatRun'));
+    expect(fn).toContain('el.textContent = text');
+    expect(fn).not.toContain('innerHTML');
+    expect(html).toContain('@keyframes chat-blink');
+    for (let i = 0; i < 6; i++) expect(html).toContain(`.chat-bubble.style-${i}`);
   });
 });
 

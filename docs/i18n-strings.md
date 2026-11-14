@@ -271,3 +271,4 @@ Sau khi anh duyệt, cột **key** + **EN** thành `STRINGS.en` trong `web/i18n.
 | goal.col.tags / log.filterAll / log.filterErr | Nhãn / Lọc: Tất cả / Chỉ lỗi | Tags / Filter: All / Errors only |
 | ask.stopTicket / ask.stopTask / ask.stopNote / ask.keep / ask.yesStop | (Tiếng Việt làm sau) | Do you want me to stop working on {ticket}? / Do you want me to stop my current task? / I will end this turn and keep the work I have done so far. The queue stays as it is. / Keep working / Yes, stop |
 | ask.team / ask.stopAll / ask.stopAllNote / ask.keepAll / ask.yesStopAll | (Tiếng Việt làm sau) | Team / Do you want us to stop everything? / The running turn ends and the queue is cleared… / Keep going / Stop everything |
+| chat.aria / chat.en / chat.vi / chat.off / chat.waiting | Bong bóng thoại / Chat: EN / Chat: VI / Chat: Tắt / Đang chờ trả lời | Chat bubbles / Chat: EN / Chat: VI / Chat: Off / Waiting for a reply |
