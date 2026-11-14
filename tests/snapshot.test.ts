@@ -536,21 +536,21 @@ from_audit: false
       // 1. Without active project or session, default from cfg (!require_task_approval)
       cfg.session.require_task_approval = true;
       const snap1 = buildSnapshot(store, cfg);
-      expect(snap1.settings).toEqual({ autoApprove: false, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true }, ui: { lang: 'en', theme: 'system' } });
+      expect(snap1.settings).toEqual({ autoApprove: false, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true }, ui: { lang: 'en', theme: 'system' }, chat: { speakers: 3, livelySec: [30, 60], normalMin: [5, 8] } });
 
       cfg.session.require_task_approval = false;
       const snap2 = buildSnapshot(store, cfg);
-      expect(snap2.settings).toEqual({ autoApprove: true, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true }, ui: { lang: 'en', theme: 'system' } });
+      expect(snap2.settings).toEqual({ autoApprove: true, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true }, ui: { lang: 'en', theme: 'system' }, chat: { speakers: 3, livelySec: [30, 60], normalMin: [5, 8] } });
 
       // 2. Overridden by store.setSetting('auto_approve', 'true')
       store.setSetting('auto_approve', 'true');
       const snap3 = buildSnapshot(store, cfg);
-      expect(snap3.settings).toEqual({ autoApprove: true, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true }, ui: { lang: 'en', theme: 'system' } });
+      expect(snap3.settings).toEqual({ autoApprove: true, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true }, ui: { lang: 'en', theme: 'system' }, chat: { speakers: 3, livelySec: [30, 60], normalMin: [5, 8] } });
 
       // 3. Overridden by store.setSetting('auto_approve', 'false')
       store.setSetting('auto_approve', 'false');
       const snap4 = buildSnapshot(store, cfg);
-      expect(snap4.settings).toEqual({ autoApprove: false, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true }, ui: { lang: 'en', theme: 'system' } });
+      expect(snap4.settings).toEqual({ autoApprove: false, names: {}, avatars: {}, mb: { set: false, last4: '', enabled: true }, ui: { lang: 'en', theme: 'system' }, chat: { speakers: 3, livelySec: [30, 60], normalMin: [5, 8] } });
     });
 
     it('settings.names: tên hiển thị Worker từ setting agent_name:<agent>; rỗng = không có', () => {

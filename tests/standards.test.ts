@@ -39,3 +39,17 @@ describe('Settings: chuẩn cho mọi project (2026-11-14)', () => {
     for (const p of [pmTicketPrompt({ n: 1, title: 'x' }, 'GT', 'GT-0001', {}), devTicketPrompt(T, 'jenny'), qcTicketPrompt(T, 'abc', 'elon')]) expect(p).not.toContain('Chuẩn bắt buộc');
   });
 });
+
+describe('Settings: chat lúc rảnh (2026-11-14)', () => {
+  it('mặc định 3 người, Vui vẻ 30–60 giây, Bình thường 5–8 phút; min > max thì đảo; ngoài giới hạn bị từ chối', async () => {
+    const { readChatSettings, ChatSettingsSchema, CHAT_KEY } = await import('../src/standards.ts');
+    const store = openStore(':memory:');
+    expect(readChatSettings(store)).toEqual({ speakers: 3, livelySec: [30, 60], normalMin: [5, 8] });
+    const p = ChatSettingsSchema.parse({ speakers: 1, livelySec: [90, 20], normalMin: [3, 3] });
+    expect(p).toEqual({ speakers: 1, livelySec: [20, 90], normalMin: [3, 3] });
+    store.setSetting(CHAT_KEY, JSON.stringify(p));
+    expect(readChatSettings(store)).toEqual(p);
+    expect(ChatSettingsSchema.safeParse({ speakers: 4, livelySec: [30, 60], normalMin: [5, 8] }).success).toBe(false);
+    expect(ChatSettingsSchema.safeParse({ speakers: 2, livelySec: [5, 60], normalMin: [5, 8] }).success).toBe(false);
+  });
+});

@@ -131,16 +131,34 @@ function timeKind(hour) {
 }
 // Không khí team (anh Zon 2026-11-14): "lively" nói nhiều, đùa; "normal" ít hơn, chuyên nghiệp, không tán gẫu khi có người đang làm.
 // Đơn vị: phút cho chit/check, ms cho thought.
-function chatMoodCfg(mood) {
-  return mood === 'lively'
+// opt = cài đặt của anh trong Settings (snapshot.settings.chat): { speakers, livelySec: [min, max], normalMin: [min, max] }.
+function chatMoodCfg(mood, opt) {
+  var cfg = mood === 'lively'
     ? { chit: [0.5, 1], check: [3, 5], thoughtMs: [30000, 15000], chitWhileWork: true, third: 0.9 }
     : { chit: [5, 8], check: [8, 10], thoughtMs: [120000, 60000], chitWhileWork: false, third: 0.3 };
+  cfg.speakers = 3;
+  if (opt) {
+    if (mood === 'lively' && opt.livelySec && opt.livelySec.length === 2) cfg.chit = [opt.livelySec[0] / 60, opt.livelySec[1] / 60];
+    if (mood !== 'lively' && opt.normalMin && opt.normalMin.length === 2) cfg.chit = [opt.normalMin[0], opt.normalMin[1]];
+    if (opt.speakers >= 1 && opt.speakers <= 3) cfg.speakers = opt.speakers;
+  }
+  return cfg;
+}
+// Giữ lại các bước của tối đa `max` agent đầu tiên (anh Zon – 'owner' – không tính).
+function capSpeakers(steps, max) {
+  var seen = [];
+  return (steps || []).filter(function (st) {
+    if (!st.target || st.target === 'owner') return true;
+    if (seen.indexOf(st.target) < 0) { if (seen.length >= max) return false; seen.push(st.target); }
+    return true;
+  });
 }
 // Vui vẻ: 1–3 người (ngẫu nhiên, trong số người rảnh) cùng nói; người đầu gọi tên người thứ hai (hoặc anh Zon).
-function livelyTalkPlan(idle, rnd) {
+function livelyTalkPlan(idle, rnd, max) {
   rnd = rnd || Math.random;
+  max = max >= 1 && max <= 3 ? max : 3;
   var order = (idle || []).slice().sort(function () { return rnd() - 0.5; });
-  var n = Math.min(order.length, 1 + Math.floor(rnd() * 3));
+  var n = Math.min(order.length, 1 + Math.floor(rnd() * max));
   return order.slice(0, n);
 }
 // Đang bàn kế hoạch / phản biện ([plan] gửi làn hỏi đáp, chưa xong) → tự bật lively.

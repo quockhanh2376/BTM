@@ -15,13 +15,14 @@
       var chatPending = {};
       var chatNow = function () { return Date.now(); };
       // Không khí team (anh Zon 2026-11-14): một nút cho cả team; đang bàn kế hoạch / phản biện thì tự Vui vẻ.
+      var chatOpt = null; // cài đặt chat lúc rảnh từ Settings (snapshot.settings.chat)
       var chatMood = 'normal';
       try { if (window.localStorage.getItem('btm.chatMood') === 'lively') chatMood = 'lively'; } catch (e) {}
       var chatAutoLively = false;
       function moodNow() { return chatAutoLively ? 'lively' : chatMood; }
       function minutesIn(range) { return (range[0] + Math.random() * (range[1] - range[0])) * 60000; }
-      var chatNextCheck = chatNow() + minutesIn(chatMoodCfg(moodNow()).check);
-      var chatNextChit = chatNow() + minutesIn(chatMoodCfg(moodNow()).chit);
+      var chatNextCheck = chatNow() + minutesIn(chatMoodCfg(moodNow(), chatOpt).check);
+      var chatNextChit = chatNow() + minutesIn(chatMoodCfg(moodNow(), chatOpt).chit);
       function paintMood() {
         var b = document.getElementById('chat-mood');
         if (!b) return;
@@ -33,9 +34,9 @@
       }
       // Đổi không khí → hẹn lại lần nói kế tiếp theo nhịp mới (không phải đợi hết nhịp cũ).
       function rescheduleMood() {
-        var c = chatMoodCfg(moodNow());
+        var c = chatMoodCfg(moodNow(), chatOpt);
         chatNextCheck = Math.min(chatNextCheck, chatNow() + minutesIn(c.check));
-        chatNextChit = Math.min(chatNextChit, chatNow() + minutesIn(c.chit));
+        chatNextChit = chatNow() + minutesIn(c.chit); // nhịp mới tính lại từ bây giờ
         if (moodNow() === 'normal') {
           chatNextCheck = Math.max(chatNextCheck, chatNow() + c.check[0] * 60000);
           chatNextChit = Math.max(chatNextChit, chatNow() + c.chit[0] * 60000);
@@ -206,7 +207,7 @@
       function chatTick() {
         if (chatMode === 'off' || !chatSnap || document.visibilityState === 'hidden') return;
         var now = chatNow();
-        var cfg = chatMoodCfg(moodNow());
+        var cfg = chatMoodCfg(moodNow(), chatOpt);
         if (now >= chatNextCheck) {
           chatNextCheck = now + minutesIn(cfg.check);
           chatRun(chatCheckIn(chatSnap, now));
@@ -226,7 +227,7 @@
           var goal = (chatSnap.goals || [])[0];
           // Vui vẻ (anh Zon 2026-11-14): phần lớn lượt dùng bộ câu vui, 1–3 người cùng nói; còn lại dùng các kiểu cũ.
           if (moodNow() === 'lively' && idle.length >= 1 && Math.random() < 0.65) {
-            var who = livelyTalkPlan(idle);
+            var who = livelyTalkPlan(idle, null, cfg.speakers);
             var second = who[1] && (chatSnap.seats || []).filter(function (x) { return x.seat === who[1]; })[0];
             var lv = { to: second ? agentLabel(second.agent) : (chatMode === 'vi' ? 'anh Zon' : 'Zon') };
             var lt = [{ target: who[0], text: pickChatLine('livelyChit', lv, chatMode), delay: 0 }];
@@ -246,10 +247,10 @@
             } else {
               var other = others[Math.floor(Math.random() * others.length)];
               var otherSeat = (chatSnap.seats || []).filter(function (x) { return x.seat === other; })[0];
-              chatRun([
+              chatRun(capSpeakers([
                 { target: speaker, text: pickChatLine(kindT, { to: agentLabel(otherSeat && otherSeat.agent) || other }, chatMode), delay: 0 },
                 { target: other, text: pickChatLine('timeAck', {}, chatMode), delay: 1800 }
-              ]);
+              ], cfg.speakers));
             }
           } else if (runner && goal && idle.length >= 2 && Math.random() < 0.7) {
             var pv = { goal: chatTrim(goal.title, 32), ticket: runner.ticket || 'G' + goal.n, runner: agentLabel(runner.agent) };
@@ -259,16 +260,16 @@
               { target: order[1], text: pickChatLine('projectChitAck', pv, chatMode), delay: 1800 }
             ];
             if (order[2] && Math.random() < cfg.third) talk.push({ target: order[2], text: pickChatLine('projectChit3', pv, chatMode), delay: 3600 });
-            chatRun(talk);
+            chatRun(capSpeakers(talk, cfg.speakers));
           } else if (idle.length >= 1 && (idle.length === 1 || Math.random() < 0.5)) {
             chatRun([{ target: idle[Math.floor(Math.random() * idle.length)], text: pickChatLine('chitOwner', {}, chatMode), delay: 0 }]);
           } else if (idle.length >= 2) {
             var a = idle[Math.floor(Math.random() * idle.length)];
             var b = idle.filter(function (s) { return s !== a; })[Math.floor(Math.random() * (idle.length - 1))];
-            chatRun([
+            chatRun(capSpeakers([
               { target: a, text: pickChatLine('chit', {}, chatMode), delay: 0 },
               { target: b, text: pickChatLine('chitAck', {}, chatMode), delay: 1500 }
-            ]);
+            ], cfg.speakers));
           }
         }
       }
@@ -296,7 +297,7 @@
       // Agent đang chạy "nghĩ thành tiếng" khi Last log đổi: Vui vẻ 30–45 s, Bình thường 2–3 phút; không vào hàng đợi thoại.
       function chatThoughts(state) {
         var now = chatNow();
-        var tm = chatMoodCfg(moodNow()).thoughtMs;
+        var tm = chatMoodCfg(moodNow(), chatOpt).thoughtMs;
         ((state && state.seats) || []).forEach(function (s) {
           if (s.status !== 'running' || !s.agent) return;
           var line = chatThoughtLine(s.lastLine || s.agentStatus);
@@ -311,6 +312,9 @@
       function chatOnSnapshot(state) {
         var events = chatEvents(chatSnap, state);
         chatSnap = state;
+        // Anh đổi nhịp chat trong Settings → áp dụng ngay.
+        var opt = (state && state.settings && state.settings.chat) || null;
+        if (JSON.stringify(opt) !== JSON.stringify(chatOpt)) { chatOpt = opt; rescheduleMood(); }
         var disc = chatDiscussing(state);
         if (disc !== chatAutoLively) { chatAutoLively = disc; rescheduleMood(); }
         chatPlay(events, state);

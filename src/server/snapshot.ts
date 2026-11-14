@@ -2,7 +2,7 @@ import { mbStatus, type MbStatus } from '../mb/vault.ts';
 import { readRelease, type ReleaseInfo } from '../release/publish.ts';
 import { readAnswers, type AskAnswer } from './ask-lane.ts';
 import { latestMeeting } from '../meeting/lane.ts';
-import { readUiDefaults, type UiDefaults } from '../standards.ts';
+import { readChatSettings, readUiDefaults, type ChatSettings, type UiDefaults } from '../standards.ts';
 import type { Meeting } from '../meeting/core.ts';
 import { existsSync, statSync, openSync, readSync, closeSync, readFileSync, lstatSync } from 'node:fs';
 import { agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
@@ -202,6 +202,8 @@ export interface Snapshot {
     mb?: MbStatus;
     /** Mặc định dashboard (Settings 2026-11-14): ngôn ngữ + giao diện cho trình duyệt chưa chọn. */
     ui?: UiDefaults;
+    /** Chat lúc rảnh (Settings 2026-11-14): số người nói tối đa + khoảng nghỉ ngẫu nhiên. */
+    chat?: ChatSettings;
   };
   members: string[];
   notes: SnapshotNote[];
@@ -560,7 +562,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     const v = store.getSetting(agentAvatarVerKey(a));
     if (v) avatars[a] = v;
   }
-  const settings = { autoApprove, names, avatars, mb: mbStatus(store), ui: readUiDefaults(store) };
+  const settings = { autoApprove, names, avatars, mb: mbStatus(store), ui: readUiDefaults(store), chat: readChatSettings(store) };
 
   const rawNotes = project ? store.listNotes(project, 10) : [];
   let allTickets: Ticket[] = [];

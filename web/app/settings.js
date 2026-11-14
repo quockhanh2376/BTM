@@ -26,6 +26,12 @@ function btmSettings(d) {
     $('std-bilingual').checked = !!st.bilingual;
     $('std-custom').value = (st.custom || []).join('\n');
     var ui = data.ui || {};
+    var chat = data.chat || {};
+    $('chat-speakers').value = String(chat.speakers || 3);
+    $('chat-lively-min').value = (chat.livelySec || [30, 60])[0];
+    $('chat-lively-max').value = (chat.livelySec || [30, 60])[1];
+    $('chat-normal-min').value = (chat.normalMin || [5, 8])[0];
+    $('chat-normal-max').value = (chat.normalMin || [5, 8])[1];
     $('ui-lang').value = ui.lang || 'en';
     $('ui-theme').value = ui.theme || 'system';
   }
@@ -64,7 +70,12 @@ function btmSettings(d) {
             bilingual: $('std-bilingual').checked,
             custom: $('std-custom').value.split('\n')
           },
-          ui: { lang: $('ui-lang').value, theme: $('ui-theme').value }
+          ui: { lang: $('ui-lang').value, theme: $('ui-theme').value },
+          chat: {
+            speakers: parseInt($('chat-speakers').value, 10) || 3,
+            livelySec: [Number($('chat-lively-min').value) || 30, Number($('chat-lively-max').value) || 60],
+            normalMin: [Number($('chat-normal-min').value) || 5, Number($('chat-normal-max').value) || 8]
+          }
         });
         fill(Object.assign({ timezones: {} }, r));
         say(tx('settings.saved'), false);

@@ -1930,6 +1930,7 @@
     }
 
     .cmd-composer .cmd-composer-text {
+      resize: none; /* anh Zon 2026-11-14: tay nắm đổi cỡ hiện thành vệt ở góc, ngay trên nút Send */
       border: none;
       border-radius: 12px 12px 0 0;
       background: transparent;
@@ -2571,4 +2572,4 @@
 .skill-hint:hover { border-color: var(--accent); color: var(--accent); }
 .skill-cand.trust-caution { color: #d08a1e; }
 .skill-cand.trust-risky { color: var(--error-text); }
-
+.settings-num { width: 76px; }
