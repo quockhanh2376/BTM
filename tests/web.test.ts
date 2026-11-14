@@ -603,7 +603,7 @@ describe('Web Dashboard (web/index.html)', () => {
       expect(html).toContain('btn-approve-goal');
 
       // 2. Có gọi confirm và POST /api/goal/approve
-      expect(html).toMatch(/confirm\(tx\('goal\.confirmMerge'/);
+      expect(html).toContain("var approveYes = await askAsSeat('pm', {");
       expect(html).toContain('/api/goal/approve');
 
       // 3. Điều kiện sẵn sàng: chỉ hiện khi qc_done (không audit) hoặc audit_passed
@@ -1571,7 +1571,7 @@ describe('P6-T3/T4: dashboard diff + câu hỏi', () => {
     expect(html).toContain('id="diff-panel"');
     expect(html).toContain("diffBtn.textContent = tx('diff.open');");
     expect(html).toContain("'/api/tickets/' + encodeURIComponent(diffTicket) + '/notes'");
-    expect(html).toContain("if (!confirm(tx('diff.confirmReturn', { ticket: diffTicket }))) return;");
+    expect(html).toContain("askAsSeat('dev', { text: tx('ask.return', { ticket: diffTicket })");
     expect(html).toContain("txt.textContent = l.text;");
     expect(html).toContain('id="questions-section"');
     expect(html).toContain("postJson('/api/questions/' + qs[i].id + '/answer'");
@@ -1591,7 +1591,7 @@ describe('Inbox gọn + thứ tự dashboard (2026-11-12)', () => {
     expect(html).toContain('class="card inbox-section collapsed" id="inbox-section"');
     expect(html).toContain('var INBOX_COLLAPSE_MS = 3 * 60 * 1000;');
     expect(html).toContain("postJson('/api/notes/delete', body)");
-    expect(html).toContain('if (!window.confirm(question)) return;');
+    expect(html).toContain("if (!(await askOwner({ who: tx('ask.team'), text: question, ok: tx('ask.delete'), cancel: tx('ask.keepIt') }))) return;");
   });
 });
 
@@ -1809,6 +1809,16 @@ describe('Để PM trả lời + chặn tạo goal nhầm (2026-11-14)', () => {
     expect(html).toContain("postJson('/api/questions/delegate', {})");
     expect(html).toContain("if (to === 'team' && latestSnapshot && (latestSnapshot.questions || []).length > 0) {");
     expect(html).toContain("text: tx('q.teamGuard'),");
+  });
+});
+
+describe('Không còn confirm() của trình duyệt (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('merge do PM hỏi; các hộp xác nhận khác cũng qua askOwner', () => {
+    expect(html).toContain("var approveYes = await askAsSeat('pm', {");
+    expect(html).toContain("'ask.merge': 'Anh Zon, G{n} is all done");
+    const calls = html.match(/[^.\w]confirm\(/g) || [];
+    expect(calls.length).toBe(1); // chỉ còn dự phòng trong askOwner khi trình duyệt không có <dialog>
   });
 });
 

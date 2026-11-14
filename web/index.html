@@ -2991,6 +2991,17 @@
           'head.owner': 'Owner',
           'confirm.stop': 'Stop everything? The running agent will be killed and the queue cleared.',
           'confirm.stopCard': 'Stop this card? Its running turn will be killed; the queue is kept.',
+          'ask.merge': 'Anh Zon, G{n} is all done: every ticket passed QC and the security audit passed. Ready to approve?',
+          'ask.mergeNote': 'I will merge it into main, then release: push to GitHub and tag the version.',
+          'ask.mergeOk': 'Approve & merge',
+          'ask.notYet': 'Not yet',
+          'ask.return': 'Want me to rework {ticket} with your line notes?',
+          'ask.returnNote': 'It goes back to Dev with a fresh set of fix rounds. Press Resume to start.',
+          'ask.returnOk': 'Yes, send it back',
+          'ask.avatarRemove': 'Remove my avatar?',
+          'ask.remove': 'Remove',
+          'ask.delete': 'Delete',
+          'ask.keepIt': 'Keep',
           'ask.stopTicket': 'Do you want me to stop working on {ticket}?',
           'ask.stopTask': 'Do you want me to stop my current task?',
           'ask.stopNote': 'I will end this turn and keep the work I have done so far. The queue stays as it is.',
@@ -3498,6 +3509,16 @@
         });
       }
 
+      // Hỏi lại bằng giọng agent ngồi ghế đó (avatar + tên), thay confirm() của trình duyệt.
+      function askAsSeat(seat, o) {
+        var card = document.getElementById('seat-card-' + seat);
+        var av = card ? card.querySelector('.seat-avatar') : null;
+        var agent = av && av.dataset.agent ? av.dataset.agent : '';
+        o.who = (agentLabel(agent) || String(seat).toUpperCase()) + ' · ' + (SEAT_LABELS[seat] || String(seat).toUpperCase());
+        o.avatarFrom = av;
+        return askOwner(o);
+      }
+
       function renderSeatAvatar(cardEl, agent) {
         var wrap = cardEl.querySelector('.seat-title-wrap');
         if (!wrap) return;
@@ -3524,7 +3545,7 @@
           btn.addEventListener('contextmenu', async function (ev) {
             if (!btn.dataset.agent || !agentAvatars[btn.dataset.agent]) return;
             ev.preventDefault();
-            if (!confirm(tx('seat.avatarRemove'))) return;
+            if (!(await askOwner({ who: agentLabel(btn.dataset.agent), avatarFrom: btn, text: tx('ask.avatarRemove'), ok: tx('ask.remove'), cancel: tx('ask.keepIt') }))) return;
             try { await postJson('/api/agent', { agent: btn.dataset.agent, avatar: '' }); } catch (err) { showFeedback(topFeedback, err.message, true); }
           });
           wrap.insertBefore(btn, wrap.firstChild);
@@ -4542,9 +4563,13 @@
             approveGoalBtn.className = 'btn btn-primary btn-approve-goal';
             approveGoalBtn.textContent = tx('goal.approveMerge');
             approveGoalBtn.addEventListener('click', async function () {
-              if (!confirm(tx('goal.confirmMerge', { n: g.n }))) {
-                return;
-              }
+              var approveYes = await askAsSeat('pm', {
+                text: tx('ask.merge', { n: g.n }),
+                note: tx('ask.mergeNote'),
+                ok: tx('ask.mergeOk'),
+                cancel: tx('ask.notYet'),
+              });
+              if (!approveYes) return;
               approveGoalBtn.disabled = true;
               try {
                 var res = await postJson('/api/goal/approve', { goal: 'G' + g.n });
@@ -5128,7 +5153,7 @@
       })();
 
       async function deleteNotes(body, question) {
-        if (!window.confirm(question)) return;
+        if (!(await askOwner({ who: tx('ask.team'), text: question, ok: tx('ask.delete'), cancel: tx('ask.keepIt') }))) return;
         try {
           var res = await postJson('/api/notes/delete', body);
           selectedNotes = {};
@@ -6811,7 +6836,7 @@
       if (diffReturnBtn) {
         diffReturnBtn.addEventListener('click', async function () {
           if (!diffTicket) return;
-          if (!confirm(tx('diff.confirmReturn', { ticket: diffTicket }))) return;
+          if (!(await askAsSeat('dev', { text: tx('ask.return', { ticket: diffTicket }), note: tx('ask.returnNote'), ok: tx('ask.returnOk'), cancel: tx('ask.notYet') }))) return;
           try {
             var res = await postJson('/api/tickets/' + encodeURIComponent(diffTicket) + '/return', {});
             if (res && res.error) showFeedback(topFeedback, res.error, true);
