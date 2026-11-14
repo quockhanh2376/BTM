@@ -3026,6 +3026,7 @@
           'energy.unavailable': 'Energy: unavailable',
           'energy.low': 'Low',
           'goals.title': 'Goals',
+          'cmd.nothingToResume': 'Nothing to resume: the session is not paused.',
           'chat.aria': 'Chat bubbles',
           'chat.en': 'Chat: EN',
           'chat.vi': 'Chat: VI',
@@ -5622,6 +5623,7 @@
           idleSelf: ['I am free, waiting for work.', 'Nothing on my plate right now.', 'Free here, ready when needed.', 'Idle for now!', 'Waiting for the next ticket.'],
           chit: ['Coffee break, anyone?', 'Anyone else love green tests?', 'Quiet day, huh?', 'Who wants to pair later?', 'Stretch break!', 'Fun fact: tests are my love language.'],
           chitAck: ['Count me in!', 'Haha, same!', 'Always!', 'Sounds good!', 'Sure, why not?', 'Ha, true!'],
+          resumeWords: ['go ahead', 'continue', 'resume', 'keep going', 'go on', 'carry on'],
           chitOwner: ['Anh Zon, hope your day is going great!', 'Anh Zon, remember to grab some water!', 'Anh Zon, the team is in good shape today!', 'Anh Zon, thanks for the clear tickets!', 'Anh Zon, we got this!', 'Anh Zon, have you had coffee yet?']
         },
         vi: {
@@ -5646,6 +5648,7 @@
           idleSelf: ['Em đang rảnh, chờ việc ạ.', 'Em chưa có việc anh ạ.', 'Em rảnh, cần gì gọi em nha.', 'Đang rảnh nè!', 'Em chờ ticket tiếp theo ạ.'],
           chit: ['Có ai đi cà phê không?', 'Thấy test xanh là vui ghê!', 'Hôm nay yên ắng ghê ta.', 'Lát ai pair code với mình không?', 'Giải lao vươn vai chút nào!', 'Chuyện vui: test pass là chân ái.'],
           chitAck: ['Cho mình theo với!', 'Haha, đúng vậy!', 'Luôn luôn!', 'Nghe được đó!', 'Ok luôn!', 'Chuẩn!'],
+          resumeWords: ['tiếp e', 'tiếp em', 'tiếp tục', 'làm tiếp', 'chạy tiếp', 'tiếp đi'],
           chitOwner: ['Anh Zon ơi, chúc anh một ngày thật vui!', 'Anh Zon nhớ uống nước nha!', 'Anh Zon ơi, team hôm nay sung lắm!', 'Cảm ơn anh Zon giao việc rõ ràng nha!', 'Anh Zon yên tâm, tụi em lo được!', 'Anh Zon uống cà phê chưa ạ?']
         }
       };
@@ -5660,6 +5663,11 @@
         return pool[i].replace(/\{(\w+)\}/g, function (m, k) {
           return vars && Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m;
         });
+      }
+      // Anh Zon gõ đúng "go ahead" / "tiếp e"… (cả câu, không thêm gì) trong Command = bấm Resume.
+      function isResumeWord(text) {
+        var t = String(text || '').toLowerCase().replace(/[\s.!,]+$/g, '').replace(/\s+/g, ' ').trim();
+        return CHAT_LINES.en.resumeWords.concat(CHAT_LINES.vi.resumeWords).indexOf(t) >= 0;
       }
       function chatStyleOf(agentId) {
         var h = 0;
@@ -6744,6 +6752,17 @@
 
           cmdSendBtn.disabled = true;
           try {
+            if (isResumeWord(text)) {
+              var rst = latestSnapshot && latestSnapshot.session ? latestSnapshot.session.status : null;
+              if (rst === 'needs_owner' || rst === 'stopped' || rst === 'out_of_turns') {
+                var rr = await postJson('/api/resume', {});
+                if (rr && rr.error) showFeedback(cmdFeedback, rr.error, true);
+                else { showFeedback(cmdFeedback, tx('fb.resumeSent'), false); cmdTextArea.value = ''; }
+              } else {
+                showFeedback(cmdFeedback, tx('cmd.nothingToResume'), true);
+              }
+              return;
+            }
             if (to === 'team') {
               var payload = { text: text };
               if (attachedImage && attachedImage.base64) {
