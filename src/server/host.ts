@@ -837,6 +837,14 @@ export function createHost(d: HostDeps): HostApi & {
     const abortController = new AbortController();
     currentAbortController = abortController;
 
+    // Phiên hết lượt: anh bấm Resume = đồng ý chạy thêm → mở phiên mới cho cùng goal (đủ lượt mới), phiên cũ giữ
+    // nguyên làm lịch sử. Giới hạn lượt chỉ chặn BTM tự chạy khi không có anh (anh Zon 2026-11-14).
+    let resumeId = target.id;
+    if (target.status === 'out_of_turns') {
+      resumeId = d.store.createSession(d.store.getSession(target.id)?.goals ?? [], activeProject);
+      d.store.setSessionStatus(resumeId, 'needs_owner');
+    }
+
     const resumeFn = d.resumeSession ?? resumeSession;
     try {
       mkdirSync(d.logDir, { recursive: true });
