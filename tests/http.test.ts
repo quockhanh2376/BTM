@@ -133,6 +133,20 @@ describe('HTTP Server & SSE', () => {
       const text = await res.text();
       expect(text).toContain('BTM Dashboard');
     });
+
+    // 2026-11-14: index.html tách ra web/app/{app.css,i18n.js,app.js}.
+    it('serves /app/*.js|css with the right type, no-store, nosniff; nothing outside web/app', async () => {
+      for (const [path, type] of [['/app/app.js', 'text/javascript'], ['/app/i18n.js', 'text/javascript'], ['/app/app.css', 'text/css']] as const) {
+        const r = await fetch(`${baseUrl}${path}`);
+        expect(r.status).toBe(200);
+        expect(r.headers.get('content-type')).toContain(type);
+        expect(r.headers.get('cache-control')).toBe('no-store');
+        expect(r.headers.get('x-content-type-options')).toBe('nosniff');
+      }
+      expect((await fetch(`${baseUrl}/app/nope.js`)).status).toBe(404);
+      expect((await fetch(`${baseUrl}/app/..%2Fpackage.js`)).status).not.toBe(200);
+      expect((await fetch(`${baseUrl}/app/app.json`)).status).not.toBe(200);
+    });
   });
 
   describe('GET /api/state', () => {

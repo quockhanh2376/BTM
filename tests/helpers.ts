@@ -1,6 +1,6 @@
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const AUTHOR = ['-c', 'user.name=test', '-c', 'user.email=test@btm.local'];
@@ -15,4 +15,10 @@ export function tmpRepo(files: Record<string, string>): string {
   execFileSync('git', ['add', '-A'], { cwd: dir });
   execFileSync('git', [...AUTHOR, 'commit', '-q', '--allow-empty', '-m', 'init'], { cwd: dir });
   return dir;
+}
+
+/** Mã dashboard đầy đủ cho test (2026-11-14: index.html tách ra web/app/*): khung trang + CSS + i18n + logic, đúng thứ tự tải. */
+export function readWeb(): string {
+  return ['web/index.html', 'web/app/app.css', 'web/app/i18n.js', 'web/app/app.js']
+    .map((f) => readFileSync(resolve(process.cwd(), f), 'utf-8')).join(String.fromCharCode(10));
 }

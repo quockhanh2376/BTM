@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { readWeb } from './helpers.ts';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 describe('Web Dashboard (web/index.html)', () => {
   const htmlPath = resolve(process.cwd(), 'web/index.html');
-  const html = readFileSync(htmlPath, 'utf-8');
+  const html = readWeb();
   // Đoạn JS trích từ trang gọi tr(): dựng tr thật từ bảng STRINGS của trang (Plan 5 Task 9).
   {
     const i18nSrc = html.slice(html.indexOf('var STRINGS = {'), html.indexOf('function applyI18n'));
@@ -1483,7 +1484,7 @@ describe('Web Dashboard (web/index.html)', () => {
 });
 
 describe('P5-T5: dashboard model/effort, user riêng, cảnh báo đội hình', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('có ô model + effort, lưu qua /api/agent, Codex chỉ 3 mức', () => {
     expect(html).toContain("postJson('/api/agent'");
     expect(html).toContain('var allowed = EFFORTS;');
@@ -1509,14 +1510,14 @@ describe('P5-T5: dashboard model/effort, user riêng, cảnh báo đội hình',
 
 describe('P5-T7: nhãn ngồi thay', () => {
   it('thẻ ghế hiện agent dự phòng đã ngồi thay', () => {
-    const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+    const html = readWeb();
     expect(html).toContain("if (cardData.substitute) toolParts.push(tx('seat.substitute', { agent: cardData.substitute }));");
   });
 });
 
 describe('P6-T5: chip Sắp hết', () => {
   it('chip có chữ (không chỉ màu), dùng textContent, hiện trên thẻ ghế và tài khoản', () => {
-    const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+    const html = readWeb();
     expect(html).toContain("chip.textContent = tx('energy.low') + (hhmm ? tx('energy.resets', { time: hhmm }) : '');");
     expect(html).toContain('var warnChip = energyWarnChip(eng);');
     expect(html).toContain('var accWarn = energyWarnChip(acc.energy);');
@@ -1524,7 +1525,7 @@ describe('P6-T5: chip Sắp hết', () => {
 });
 
 describe('P5-T9: UI tiếng Anh, bảng chuỗi', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   const i18nStart = html.indexOf('var STRINGS = {');
   const i18nEnd = html.indexOf('var LANG =');
   const tx = new Function('window', `${html.slice(i18nStart, html.indexOf('function applyI18n'))}; return tx;`)({ localStorage: { getItem: () => null } });
@@ -1561,13 +1562,13 @@ describe('P5-T9: UI tiếng Anh, bảng chuỗi', () => {
 
 describe('P6-T7: dòng trạng thái trên thẻ ghế', () => {
   it('ưu tiên agentStatus, không có thì dòng log cuối; chèn bằng textContent', () => {
-    const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+    const html = readWeb();
     expect(html).toContain("lastLineEl.textContent = cardData.agentStatus || cardData.lastLine || '—';");
   });
 });
 
 describe('P6-T3/T4: dashboard diff + câu hỏi', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('có khung diff, nút Diff trên ticket, ghi chú theo dòng mới, Return to Dev có xác nhận; câu hỏi có ô trả lời', () => {
     expect(html).toContain('id="diff-panel"');
     expect(html).toContain("diffBtn.textContent = tx('diff.open');");
@@ -1581,7 +1582,7 @@ describe('P6-T3/T4: dashboard diff + câu hỏi', () => {
 });
 
 describe('Inbox gọn + thứ tự dashboard (2026-11-12)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('thứ tự: Questions → Command → Accounts → ghế → Session goals → Inbox → Goals+Log → Diff', () => {
     const ids = ['id="questions-section"', 'class="card cmd-section"', 'id="accounts-container"', 'id="seats-container"', 'id="inbox-section"', 'class="board-and-log-layout"', 'id="diff-panel"'];
     const at = ids.map((s) => html.indexOf(s));
@@ -1597,7 +1598,7 @@ describe('Inbox gọn + thứ tự dashboard (2026-11-12)', () => {
 });
 
 describe('P7-T5: giao diện Accounts', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   const section = html.slice(html.indexOf('id="accounts-container"'), html.indexOf('</section>', html.indexOf('id="accounts-container"')));
   it('đủ 4 nút trong khu Accounts; thanh phiên không còn Refresh energy', () => {
     for (const id of ['acc-import-btn', 'acc-export-btn', 'refresh-energy-btn', 'acc-add-btn']) expect(section).toContain(`id="${id}"`);
@@ -1629,7 +1630,7 @@ describe('P7-T5: giao diện Accounts', () => {
 });
 
 describe('Accounts thu gọn bằng nút ▸/▾ (2026-11-13)', () => {
-  const html = readFileSync(resolve('web/index.html'), 'utf8');
+  const html = readWeb();
   it('mặc định thu gọn, chỉ giữ dòng tài khoản đang dùng; mở ra tự gập sau 3 phút', () => {
     expect(html).toContain('id="acc-details-toggle"');
     expect(html).toContain('aria-controls="accounts-list"');
@@ -1641,7 +1642,7 @@ describe('Accounts thu gọn bằng nút ▸/▾ (2026-11-13)', () => {
 });
 
 describe('Command trái, Session & queue phải (2026-11-13)', () => {
-  const html = readFileSync(resolve('web/index.html'), 'utf8');
+  const html = readWeb();
   it('cmd-section là lưới 2 cột: cmd-main rồi queue-container; màn hẹp xếp chồng', () => {
     const sec = html.slice(html.indexOf('<section class="card cmd-section">'), html.indexOf('</section>', html.indexOf('<section class="card cmd-section">')));
     expect(sec.indexOf('<div class="cmd-main">')).toBeGreaterThan(-1);
@@ -1652,7 +1653,7 @@ describe('Command trái, Session & queue phải (2026-11-13)', () => {
 });
 
 describe('Đồng hồ bấm giờ trên thẻ đang chạy (2026-11-13)', () => {
-  const html = readFileSync(resolve('web/index.html'), 'utf8');
+  const html = readWeb();
   it('mỗi thẻ có ô đồng hồ cạnh Last log; formatElapsed ra m:ss / h:mm:ss', () => {
     for (const k of ['pm', 'dev', 'qc', 'audit']) expect(html).toContain(`id="${k}-elapsed"`);
     const src = html.slice(html.indexOf('function formatElapsed'), html.indexOf('function tickSeatElapsed'));
@@ -1665,7 +1666,7 @@ describe('Đồng hồ bấm giờ trên thẻ đang chạy (2026-11-13)', () =>
 });
 
 describe('Ô trả lời câu hỏi (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('ảnh nằm trong khung trả lời; chỉ có ảnh vẫn gửi được', () => {
     expect(html).toContain("compose.className = 'cmd-composer q-compose'");
     expect(html).toContain('compose.appendChild(bar)');
@@ -1677,7 +1678,7 @@ describe('Ô trả lời câu hỏi (2026-11-14)', () => {
 });
 
 describe('Chat bubbles (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   const lib = new Function(
     'agentLabel',
     html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('var chatMode')) +
@@ -1789,7 +1790,7 @@ describe('Chat bubbles (2026-11-14)', () => {
 });
 
 describe('Một ô trả lời cho nhiều câu hỏi cùng ticket (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   const lib = new Function(html.slice(html.indexOf('function splitAnswers'), html.indexOf('function renderQuestions')) + 'return { splitAnswers, groupQuestions };')() as any;
   it('gom theo ticket + ghế; "1. … 2. …" đủ số câu thì tách, thiếu thì dùng chung', () => {
     const g = lib.groupQuestions([{ id: 1, ticket: 'A', seat: 'dev' }, { id: 2, ticket: 'B', seat: 'qc' }, { id: 3, ticket: 'A', seat: 'dev' }]);
@@ -1804,7 +1805,7 @@ describe('Một ô trả lời cho nhiều câu hỏi cùng ticket (2026-11-14)'
 });
 
 describe('Để PM trả lời + chặn tạo goal nhầm (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('nút gọi /api/questions/delegate; gửi Team khi còn câu hỏi thì hỏi lại trước', () => {
     expect(html).toContain('id="q-delegate"');
     expect(html).toContain("postJson('/api/questions/delegate', {})");
@@ -1815,7 +1816,7 @@ describe('Để PM trả lời + chặn tạo goal nhầm (2026-11-14)', () => {
 });
 
 describe('Không còn confirm() của trình duyệt (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('merge do PM hỏi; các hộp xác nhận khác cũng qua askOwner', () => {
     expect(html).toContain("var approveYes = await askAsSeat('pm', {");
     expect(html).toContain("'ask.merge': 'Anh Zon, G{n} is all done");
@@ -1825,7 +1826,7 @@ describe('Không còn confirm() của trình duyệt (2026-11-14)', () => {
 });
 
 describe('Thời gian goal (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('định dạng thời lượng và dòng ⏱ trên thẻ goal', () => {
     const f = new Function(html.slice(html.indexOf('function formatDuration'), html.indexOf('function renderGoals')) + 'return formatDuration;')() as (ms: number) => string;
     expect(f(3_725_000)).toBe('1h 02m');
@@ -1836,7 +1837,7 @@ describe('Thời gian goal (2026-11-14)', () => {
 });
 
 describe('Chat Auto: phân loại tin nhắn (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   const classify = new Function(
     html.slice(html.indexOf('var CHAT_LINES'), html.indexOf('var chatLastIdx')) +
       html.slice(html.indexOf('function classifyMessage'), html.indexOf('// Anh Zon gõ đúng "go ahead"')) + 'return classifyMessage;'
@@ -1861,7 +1862,7 @@ describe('Chat Auto: phân loại tin nhắn (2026-11-14)', () => {
 });
 
 describe('Stop: agent hỏi lại thân thiện (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('dùng <dialog> thay confirm(), mặc định là tiếp tục, chữ bằng textContent', () => {
     expect(html).toContain('<dialog id="ask-dialog"');
     expect(html).not.toContain("confirm(tx('confirm.stopCard'))");
@@ -1874,7 +1875,7 @@ describe('Stop: agent hỏi lại thân thiện (2026-11-14)', () => {
 });
 
 describe('Inbox / Goals / Log theo mẫu lần 2 (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('cột Tags riêng, icon từng chặng, lọc log chỉ lỗi', () => {
     expect(html).toContain("thTags.textContent = tx('goal.col.tags')");
     expect(html).toContain('tdTags.appendChild(diffBtn)');
@@ -1889,7 +1890,7 @@ describe('Inbox / Goals / Log theo mẫu lần 2 (2026-11-14)', () => {
 });
 
 describe('Tab Folder cạnh Goals (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('có tab Goals | Folder, chỉ GET /api/folders, giờ VN, cây file dựng bằng textContent', () => {
     expect(html).toContain('id="tab-goals"');
     expect(html).toContain('id="tab-folders"');
@@ -1910,7 +1911,7 @@ describe('Tab Folder cạnh Goals (2026-11-14)', () => {
 });
 
 describe('Khu Agents theo mẫu (2026-11-14)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('đếm ghế Live / Waiting / Idle và tiêu đề Agents (N)', () => {
     const src = html.slice(html.indexOf('function renderAgentCounts'), html.indexOf('(function () {', html.indexOf('function renderAgentCounts')));
     const els: Record<string, { textContent: string }> = { 'agents-count': { textContent: '' }, 'agents-live': { textContent: '' }, 'agents-waiting': { textContent: '' }, 'agents-idle': { textContent: '' } };
@@ -1924,7 +1925,7 @@ describe('Khu Agents theo mẫu (2026-11-14)', () => {
 });
 
 describe('Đốm sáng quanh thẻ ghế đang làm (2026-11-12)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('chỉ thẻ is-holder có hiệu ứng; luôn chạy kể cả reduced-motion (anh Zon chọn)', () => {
     expect(html).toContain('.seat-card.is-holder::before {');
     expect(html).toContain('animation: holder-glow 2.8s linear infinite;');
@@ -1934,7 +1935,7 @@ describe('Đốm sáng quanh thẻ ghế đang làm (2026-11-12)', () => {
 });
 
 describe('Gộp Session goals vào khung hàng đợi (2026-11-12)', () => {
-  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  const html = readWeb();
   it('không còn section Session goals; goal của phiên hiện "Goal G<n> · <tiêu đề>" trong cùng danh sách', () => {
     expect(html).not.toContain('goals-section');
     expect(html).not.toContain('id="goals-list"');
