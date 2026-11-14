@@ -7,6 +7,8 @@ import type { HostApi } from './http.ts';
 import { runSession, resumeSession, type SessionOutcome } from '../core/session.ts';
 import { pmAnswerQuestions, type DelegateResult } from '../core/delegate.ts';
 import { knowledgeFor, saveGoalDigest } from '../knowledge/digest.ts';
+import { createAskLane } from './ask-lane.ts';
+import { isIsolated } from '../isolation/trusted.ts';
 import { notify, type NotifyKind } from '../notify/notify.ts';
 import { directPrompt, askPrompt } from '../core/prompts.ts';
 import { git, commitAll } from '../git.ts';
@@ -90,8 +92,17 @@ export function createHost(d: HostDeps): HostApi & {
     });
   }
 
+  // Bước 3: làn hỏi chạy song song (cách ly); không cách ly thì làn hỏi cũng tính là bận.
+  const askLane = createAskLane({
+    cfg: d.cfg, store: d.store, runner: d.runner, logDir: d.logDir,
+    isolated: isIsolated(d.cfg),
+    hostBusy: () => isBusy || isStopping,
+  });
+  const askTimer = setInterval(() => { void askLane.tick(); }, 15_000);
+  askTimer.unref?.();
+
   function busy(): boolean {
-    if (isBusy || isStopping) {
+    if (isBusy || isStopping || (!isIsolated(d.cfg) && askLane.running())) {
       return true;
     }
     const lockPath = join(d.dataDir, 'btm.lock');
@@ -1062,7 +1073,8 @@ export function createHost(d: HostDeps): HostApi & {
     }
 
     const id = d.store.enqueue(to as Seat, trimmed);
-    void tick();
+    if (String(to).startsWith('ask-')) void askLane.tick();
+    else void tick();
     return { ok: true, id };
   }
 

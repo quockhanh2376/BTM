@@ -162,6 +162,10 @@ export interface Store {
   listHandoffFailures(sessionId: number): { task_id: string; reason: string; at: string }[];
   enqueue(to: Seat, text: string): number;
   nextQueued(): QueueItem | null;
+  /** Câu hỏi chỉ đọc đầu tiên đang chờ (to = "ask-<ghế>"). */
+  nextQueuedAsk(): QueueItem | null;
+  /** Agent đang có lượt chưa kết thúc (để làn hỏi không dùng chung worker với lượt đang chạy). */
+  openTurnAgents(): string[];
   setQueueStatus(id: number, s: QueueItem['status']): void;
   cancelQueued(): number;
   listQueue(limit: number): QueueItem[];
@@ -666,10 +670,11 @@ export function openStore(file: string): Store {
     VALUES (?, ?, 'queued', ?)
   `);
 
+  // Câu hỏi "ask-<ghế>" chạy ở làn riêng (ask-lane), làn lệnh thường bỏ qua chúng.
   const nextQueuedStmt = db.prepare(`
     SELECT id, "to", text, status, created_at
     FROM queue
-    WHERE status = 'queued'
+    WHERE status = 'queued' AND "to" NOT LIKE 'ask-%'
     ORDER BY id ASC
     LIMIT 1
   `);
@@ -1142,6 +1147,14 @@ export function openStore(file: string): Store {
       const now = new Date().toISOString();
       const info = enqueueStmt.run(to, text, now);
       return Number(info.lastInsertRowid);
+    },
+
+    nextQueuedAsk(): QueueItem | null {
+      return (db.prepare(`SELECT id, "to", text, status, created_at FROM queue WHERE status = 'queued' AND "to" LIKE 'ask-%' ORDER BY id ASC LIMIT 1`).get() as QueueItem | undefined) ?? null;
+    },
+
+    openTurnAgents(): string[] {
+      return (db.prepare('SELECT DISTINCT agent FROM turns WHERE ended_at IS NULL').all() as Array<{ agent: string }>).map((r) => r.agent);
     },
 
     nextQueued(): QueueItem | null {

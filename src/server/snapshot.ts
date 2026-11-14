@@ -1,4 +1,5 @@
 import { readRelease, type ReleaseInfo } from '../release/publish.ts';
+import { readAnswers, type AskAnswer } from './ask-lane.ts';
 import { existsSync, statSync, openSync, readSync, closeSync, readFileSync, lstatSync } from 'node:fs';
 import { agentAvatarVerKey, agentNameKey } from '../agents/names.ts';
 import { cleanStatus, isIsolated, readWorkerStatus, STATUS_FILE } from '../isolation/trusted.ts';
@@ -200,6 +201,8 @@ export interface Snapshot {
   version?: string;
   /** Thùng rác goal: số goal đang trong thùng rác. */
   trash?: number;
+  /** Bước 3: câu trả lời gần đây của team (hỏi / bàn kế hoạch), mới nhất trước. */
+  answers?: AskAnswer[];
 }
 
 const ANSI_REGEX = /(?:\x1B\]|\u009D)[\s\S]*?(?:\x07|\x1B\\|\u009C)|(?:\x1B\[|\u009B)[0-?]*[ -/]*[@-~]|[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]|\x1B[@-Z\\-_]/g;
@@ -597,6 +600,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       accounts,
       seatWarnings: resolveSeats(cfg, store).warnings,
       trash: project ? store.listArchivedGoals(project).length : 0,
+      answers: project ? readAnswers(store, project).slice(0, 10) : [],
       questions: openQuestions(store),
       sshHint,
       version: BTM_VERSION,
@@ -604,11 +608,17 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
   }
 
   let latestSessionRow = store.getLatestSession(undefined, project);
-  // Phiên chỉ của goal đã vào thùng rác: không coi là phiên hiện tại (lấy phiên mới nhất còn lại).
+  // Phiên chỉ của goal đã vào thùng rác, và phiên "Ask" (câu hỏi chạy song song, bước 3): không coi là phiên
+  // hiện tại (lấy phiên mới nhất còn lại).
   if (latestSessionRow && project) {
     const archived = new Set(store.listArchivedGoals(project).map((g) => g.n));
-    const isArchivedOnly = (id: number) => { const ns = store.sessionGoalNumbers(id); return ns.length > 0 && ns.every((x) => archived.has(x)); };
-    if (archived.size > 0 && isArchivedOnly(latestSessionRow.id)) {
+    const isArchivedOnly = (id: number) => {
+      const s = store.getSession(id);
+      if (s && s.goals.length === 1 && s.goals[0] === 'Ask') return true;
+      const ns = store.sessionGoalNumbers(id);
+      return ns.length > 0 && ns.every((x) => archived.has(x));
+    };
+    if (isArchivedOnly(latestSessionRow.id)) {
       const top = latestSessionRow.id;
       latestSessionRow = null;
       for (let id = top - 1; id > 0; id--) {
@@ -639,6 +649,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       accounts,
       seatWarnings: resolveSeats(cfg, store).warnings,
       trash: project ? store.listArchivedGoals(project).length : 0,
+      answers: project ? readAnswers(store, project).slice(0, 10) : [],
       questions: openQuestions(store),
       sshHint,
       version: BTM_VERSION,
@@ -661,6 +672,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
       accounts,
       seatWarnings: resolveSeats(cfg, store).warnings,
       trash: project ? store.listArchivedGoals(project).length : 0,
+      answers: project ? readAnswers(store, project).slice(0, 10) : [],
       questions: openQuestions(store),
       sshHint,
       version: BTM_VERSION,
@@ -786,6 +798,7 @@ export function buildSnapshot(store: Store, cfg: Config): Snapshot {
     accounts,
     seatWarnings: resolveSeats(cfg, store).warnings,
     trash: project ? store.listArchivedGoals(project).length : 0,
+    answers: project ? readAnswers(store, project).slice(0, 10) : [],
     questions: openQuestions(store),
     sshHint,
     version: BTM_VERSION,

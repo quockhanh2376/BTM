@@ -1484,6 +1484,14 @@
     }
     .pipeline-bar .pipeline-step.stage-active { background-color: #2563EB; border-color: #2563EB; color: #FFFFFF; }
     .goal-group-title { font-size: 15px; line-height: 1.5; }
+    .answers-box { margin-top: 12px; border-top: 1px solid var(--border-subtle); padding-top: 10px; }
+    .answers-box[hidden] { display: none; }
+    .answers-head { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .answers-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+    .answer-item { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--card-bg); }
+    .answer-item .answer-head { font-size: 12px; font-weight: 600; color: var(--accent); margin: 0; }
+    .answer-q { font-size: 12px; color: var(--text-muted); font-style: italic; margin: 2px 0 4px; overflow-wrap: anywhere; }
+    .answer-body { font-size: 13px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
     .goal-time { font-size: 12px; color: var(--text-muted); margin: 2px 0 8px; overflow-wrap: anywhere; }
     .goal-kb-link { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none; padding: 2px 8px; border-radius: 8px; }
     .goal-kb-link:hover { background: var(--badge-bg); }
@@ -2527,6 +2535,10 @@
       </div>
 
       <div id="cmd-feedback" class="action-feedback" style="display: none;"></div>
+      <div id="answers-box" class="answers-box" hidden>
+        <div class="answers-head" data-i18n="ans.title">Team answers</div>
+        <div id="answers-list" class="answers-list"></div>
+      </div>
       </div>
 
       <div class="queue-container">
@@ -3081,6 +3093,8 @@
           'energy.unavailable': 'Energy: unavailable',
           'energy.low': 'Low',
           'goals.title': 'Goals',
+          'ans.title': 'Team answers',
+          'ans.onBehalf': 'answering for {seat}',
           'goal.summary': 'Summary',
           'goal.summaryTip': 'Compressed history of this goal: the team answers your questions from it',
           'cmd.pmGuard': 'Should I plan this as a NEW goal? "{text}"',
@@ -4593,6 +4607,37 @@
         return h ? h + 'h ' + (mm < 10 ? '0' : '') + mm + 'm' : mm + 'm';
       }
 
+      // Bước 3: câu trả lời gần đây của team (chỉ đọc; trả lời song song khi team đang làm).
+      function renderAnswers(list, seats) {
+        var box = document.getElementById('answers-box');
+        var el = document.getElementById('answers-list');
+        if (!box || !el) return;
+        list = Array.isArray(list) ? list.slice(0, 5) : [];
+        box.hidden = list.length === 0;
+        var key = list.map(function (a) { return a.id; }).join(',');
+        if (el.getAttribute('data-key') === key) return;
+        el.setAttribute('data-key', key);
+        clearChildren(el);
+        list.forEach(function (a) {
+          var item = document.createElement('div');
+          item.className = 'answer-item';
+          var head = document.createElement('div');
+          head.className = 'answer-head';
+          head.textContent = agentLabel(a.agent) + ' · ' + (SEAT_LABELS[a.seat] || a.seat) + ' · ' + formatHHmm(a.at)
+            + (a.seat !== a.asked ? ' · ' + tx('ans.onBehalf', { seat: SEAT_LABELS[a.asked] || a.asked }) : '');
+          var q = document.createElement('div');
+          q.className = 'answer-q';
+          q.textContent = '“' + a.question + '”';
+          var body = document.createElement('div');
+          body.className = 'answer-body';
+          body.textContent = a.answer;
+          item.appendChild(head);
+          item.appendChild(q);
+          item.appendChild(body);
+          el.appendChild(item);
+        });
+      }
+
       function renderGoals(goals, seats) {
         var container = document.getElementById('goals-container');
         if (!container) return;
@@ -6093,6 +6138,10 @@
       function chatEvents(prev, next) {
         if (!prev || !next) return [];
         var ev = [];
+        // Bước 3: câu trả lời mới của team → bong bóng của người trả lời.
+        var seenAns = {};
+        (prev.answers || []).forEach(function (a) { seenAns[a.id] = true; });
+        (next.answers || []).forEach(function (a) { if (!seenAns[a.id]) ev.push({ type: 'answer', seat: a.seat, text: a.answer }); });
         var pt = chatTicketStates(prev);
         var nt = chatTicketStates(next);
         Object.keys(nt).forEach(function (id) {
@@ -6261,6 +6310,8 @@
               { clear: e.seat, target: 'owner', text: pickChatLine('answered', vars, L), delay: 0 },
               { target: e.seat, text: pickChatLine('answeredAck', vars, L), delay: 1500, allowRunning: true }
             ]);
+          } else if (e.type === 'answer') {
+            chatRun([{ target: e.seat, text: chatTrim(e.text, 120), delay: 0, allowRunning: true }]);
           } else if (e.type === 'error') {
             chatRun([{ clear: e.seat, target: e.seat, text: pickChatLine('error', vars, L), delay: 0 }]);
           }
@@ -6455,6 +6506,7 @@
 
         // Goals & Pipeline & Tickets
         renderGoals(state.goals, state.seats);
+        renderAnswers(state.answers, state.seats);
         setTrashCount(state.trash);
         var trashBox = document.getElementById('goals-trash');
         if (trashBox && !trashBox.hidden && trashBox.getAttribute('data-count') !== String(state.trash || 0)) {
