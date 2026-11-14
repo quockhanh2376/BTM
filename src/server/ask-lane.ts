@@ -30,6 +30,13 @@ export function readAnswers(store: Store, project: string): AskAnswer[] {
   try { return JSON.parse(store.getSetting(answersKey(project)) || '[]') as AskAnswer[]; } catch { return []; }
 }
 
+/** Lưu câu trả lời (mới nhất trước, giữ MAX_KEEP) – dùng cho làn hỏi và lệnh trực tiếp chỉ đọc / QC. */
+export function saveAnswer(store: Store, project: string, a: Omit<AskAnswer, 'answer' | 'at'>, out: { lastMessage?: string; output?: string }): void {
+  const list = readAnswers(store, project).filter((x) => x.id !== a.id);
+  list.unshift({ ...a, at: new Date().toISOString(), question: a.question.slice(0, 300), answer: cleanAnswer(out) });
+  store.setSetting(answersKey(project), JSON.stringify(list.slice(0, MAX_KEEP)));
+}
+
 function cleanAnswer(out: { lastMessage?: string; output?: string }): string {
   const raw = (out.lastMessage || '').trim() || String(out.output || '').trim().split(/\r?\n/).slice(-15).join('\n');
   return raw.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').trim().slice(0, 2000);
@@ -79,9 +86,7 @@ export function createAskLane(d: {
       ok = !out.timedOut && out.exitCode === 0;
       d.store.endTurn(turnId, ok ? 'ok' : (out.timedOut ? 'timeout' : 'error'), ok ? undefined : (out.timedOut ? 'timeout' : `exit_${out.exitCode}`));
       if (ok) {
-        const list = readAnswers(d.store, project);
-        list.unshift({ id: item.id, at: new Date().toISOString(), seat, asked, agent, question: item.text.slice(0, 300), answer: cleanAnswer(out) });
-        d.store.setSetting(answersKey(project), JSON.stringify(list.slice(0, MAX_KEEP)));
+        saveAnswer(d.store, project, { id: item.id, seat, asked, agent, question: item.text }, out);
       }
     } catch (err) {
       d.store.endTurn(turnId, 'error', err instanceof Error ? err.message : String(err));

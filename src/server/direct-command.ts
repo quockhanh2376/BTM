@@ -8,6 +8,7 @@ import { knowledgeFor } from '../knowledge/digest.ts';
 import { git, commitAll } from '../git.ts';
 import { snapshotTurn, guardStoredAgentTurn, restoreTicketFilesFromBase } from '../core/guard.ts';
 import { usableAccounts } from '../agents/accounts.ts';
+import { saveAnswer } from './ask-lane.ts';
 
 // Lệnh trực tiếp trong hàng đợi (Dev / QC / PM / Audit / "ask-<ghế>"), tách khỏi host.ts 2026-11-14
 // (docs/engineering-rules.md: một hàm chạy lượt dùng chung, mỗi nhánh chỉ giữ phần khác biệt). Không đổi hành vi.
@@ -98,6 +99,8 @@ async function runReadOnly(c: DirectCtx): Promise<DirectResult> {
   }
   c.store.endTurn(c.turnId, 'ok');
   c.store.setQueueStatus(c.item.id, 'done');
+  // Khung chat History: câu trả lời hiện ngay dưới câu hỏi (2026-11-14).
+  saveAnswer(c.store, c.project, { id: c.item.id, seat: c.turnSeat, asked: c.turnSeat, agent: c.agent, question: c.item.text }, r.output ?? {});
   return { result: 'done', ownSession: false };
 }
 
@@ -186,6 +189,7 @@ async function runDevOrQc(c: DirectCtx): Promise<DirectResult> {
     if (guardRes.headChanged || guardRes.treeDirty) return reject('qc_modified_repo');
     c.store.endTurn(c.turnId, 'ok', noteOf(guardRes));
     c.store.setQueueStatus(c.item.id, 'done');
+    saveAnswer(c.store, c.project, { id: c.item.id, seat: 'qc', asked: 'qc', agent: c.agent, question: c.item.text }, r.output ?? {});
     return { result: 'done', ownSession: false };
   }
   restoreTicketFilesFromBase(c.project, snapshot.preHead);
@@ -200,6 +204,7 @@ async function runDevOrQc(c: DirectCtx): Promise<DirectResult> {
   }
   c.store.endTurn(c.turnId, 'ok', noteOf(guardRes));
   c.store.setQueueStatus(c.item.id, 'done');
+  saveAnswer(c.store, c.project, { id: c.item.id, seat: 'dev', asked: 'dev', agent: c.agent, question: c.item.text }, r.output ?? {});
   return { result: 'done', ownSession: false };
 }
 

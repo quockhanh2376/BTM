@@ -227,6 +227,7 @@
           'hist.ask': 'Question',
           'hist.plan': 'Plan',
           'hist.cmd': 'Command',
+          'hist.owner': 'Zon',
           'queue.goal': 'Goal {goal}',
           'queue.empty': 'Nothing running or queued',
           'log.title': 'Log',
