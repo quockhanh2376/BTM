@@ -133,8 +133,15 @@ function timeKind(hour) {
 // Đơn vị: phút cho chit/check, ms cho thought.
 function chatMoodCfg(mood) {
   return mood === 'lively'
-    ? { chit: [1, 2], check: [3, 5], thoughtMs: [30000, 15000], chitWhileWork: true, third: 0.9 }
+    ? { chit: [0.5, 1], check: [3, 5], thoughtMs: [30000, 15000], chitWhileWork: true, third: 0.9 }
     : { chit: [5, 8], check: [8, 10], thoughtMs: [120000, 60000], chitWhileWork: false, third: 0.3 };
+}
+// Vui vẻ: 1–3 người (ngẫu nhiên, trong số người rảnh) cùng nói; người đầu gọi tên người thứ hai (hoặc anh Zon).
+function livelyTalkPlan(idle, rnd) {
+  rnd = rnd || Math.random;
+  var order = (idle || []).slice().sort(function () { return rnd() - 0.5; });
+  var n = Math.min(order.length, 1 + Math.floor(rnd() * 3));
+  return order.slice(0, n);
 }
 // Đang bàn kế hoạch / phản biện ([plan] gửi làn hỏi đáp, chưa xong) → tự bật lively.
 function chatDiscussing(snap) {

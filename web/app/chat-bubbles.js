@@ -224,6 +224,17 @@
           var runner = null;
           (chatSnap.seats || []).forEach(function (s) { if (!runner && s.status === 'running' && s.agent) runner = s; });
           var goal = (chatSnap.goals || [])[0];
+          // Vui vẻ (anh Zon 2026-11-14): phần lớn lượt dùng bộ câu vui, 1–3 người cùng nói; còn lại dùng các kiểu cũ.
+          if (moodNow() === 'lively' && idle.length >= 1 && Math.random() < 0.65) {
+            var who = livelyTalkPlan(idle);
+            var second = who[1] && (chatSnap.seats || []).filter(function (x) { return x.seat === who[1]; })[0];
+            var lv = { to: second ? agentLabel(second.agent) : (chatMode === 'vi' ? 'anh Zon' : 'Zon') };
+            var lt = [{ target: who[0], text: pickChatLine('livelyChit', lv, chatMode), delay: 0 }];
+            if (who[1]) lt.push({ target: who[1], text: pickChatLine('livelyAck', lv, chatMode), delay: 1800 });
+            if (who[2]) lt.push({ target: who[2], text: pickChatLine('livelyThird', lv, chatMode), delay: 3600 });
+            chatRun(lt);
+            return;
+          }
           // Hỏi thăm theo giờ VN / thời tiết (anh Zon 2026-11-14): người rảnh hỏi anh hoặc hỏi nhau.
           if (idle.length >= 1 && Math.random() < 0.4) {
             var speaker = idle[Math.floor(Math.random() * idle.length)];
@@ -261,7 +272,7 @@
           }
         }
       }
-      setInterval(chatTick, 30000);
+      setInterval(chatTick, 10000); // Vui vẻ tán gẫu 30 s–1 phút: kiểm mỗi 10 s cho đúng nhịp
       // Anh gửi Command: bong bóng của anh ngay, người nhận (không đang chạy) đáp lệch nhau.
       function chatOwnerSays(text, to) {
         if (chatMode === 'off') return;
