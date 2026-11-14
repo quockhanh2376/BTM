@@ -1474,6 +1474,17 @@
     }
     .pipeline-bar .pipeline-step.stage-active { background-color: #2563EB; border-color: #2563EB; color: #FFFFFF; }
     .goal-group-title { font-size: 15px; line-height: 1.5; }
+    /* Hộp thoại agent hỏi lại (Stop) */
+    .ask-dialog { border: 1px solid var(--border); border-radius: 16px; padding: 20px; width: min(420px, calc(100vw - 32px)); background: var(--card-bg); color: var(--text); box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+    .ask-dialog::backdrop { background: rgba(2, 6, 23, .55); }
+    .ask-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .ask-avatar { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: var(--inuse-bg); color: var(--inuse-text); font-weight: 800; font-size: 18px; flex-shrink: 0; }
+    .ask-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .ask-who { font-weight: 700; font-size: 15px; }
+    .ask-bubble { margin: 0 0 8px; padding: 12px 14px; border-radius: 4px 14px 14px 14px; background: var(--badge-bg); font-size: 15px; font-weight: 600; line-height: 1.45; }
+    .ask-note { margin: 0 0 16px; font-size: 13px; color: var(--text-muted); line-height: 1.45; }
+    .ask-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .ask-actions .btn { min-height: 36px; padding: 6px 16px; border-radius: 10px; font-weight: 600; }
     /* Mẫu anh Zon (2026-11-14, lần 2): nút đầu khối có viền, chấm xanh trước số note, icon từng chặng, cột Tags, lọc log */
     .sec-head .btn.btn-tool { min-height: 36px; padding: 6px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); font-weight: 600; }
     .sec-head .btn.btn-tool.sec-primary { background: #2563EB; border-color: #2563EB; color: #FFFFFF; }
@@ -2824,6 +2835,19 @@
       </div>
     </section>
 
+    <dialog id="ask-dialog" class="ask-dialog" aria-labelledby="ask-who" aria-describedby="ask-text">
+      <div class="ask-head">
+        <span id="ask-avatar" class="ask-avatar" aria-hidden="true"></span>
+        <span id="ask-who" class="ask-who"></span>
+      </div>
+      <p id="ask-text" class="ask-bubble"></p>
+      <p id="ask-note" class="ask-note"></p>
+      <div class="ask-actions">
+        <button id="ask-cancel" type="button" class="btn btn-secondary"></button>
+        <button id="ask-ok" type="button" class="btn btn-danger"></button>
+      </div>
+    </dialog>
+
     <!-- Bảng goal & ticket & Nhật ký -->
     <div class="board-and-log-layout">
       <!-- Bảng goal & ticket -->
@@ -2914,6 +2938,16 @@
           'head.owner': 'Owner',
           'confirm.stop': 'Stop everything? The running agent will be killed and the queue cleared.',
           'confirm.stopCard': 'Stop this card? Its running turn will be killed; the queue is kept.',
+          'ask.stopTicket': 'Do you want me to stop working on {ticket}?',
+          'ask.stopTask': 'Do you want me to stop my current task?',
+          'ask.stopNote': 'I will end this turn and keep the work I have done so far. The queue stays as it is.',
+          'ask.keep': 'Keep working',
+          'ask.yesStop': 'Yes, stop',
+          'ask.team': 'Team',
+          'ask.stopAll': 'Do you want us to stop everything?',
+          'ask.stopAllNote': 'The running turn ends and the queue is cleared. You can start again any time.',
+          'ask.keepAll': 'Keep going',
+          'ask.yesStopAll': 'Stop everything',
           'seat.stopFor': 'Stop {seat}',
           'seat.avatarFor': 'Avatar of {agent}: click to choose an image, right-click to remove',
           'seat.avatarRemove': 'Remove this avatar?',
@@ -3351,6 +3385,44 @@
       }
 
       // Vòng tròn avatar trước tên trên thẻ ghế: bấm để chọn ảnh, chuột phải để bỏ ảnh.
+      // Agent hỏi lại anh trước khi dừng (anh Zon 2026-11-14): giọng thân thiện, nút mặc định là "tiếp tục".
+      function askOwner(o) {
+        var dlg = document.getElementById('ask-dialog');
+        if (!dlg || typeof dlg.showModal !== 'function') return Promise.resolve(window.confirm(o.text));
+        var av = document.getElementById('ask-avatar');
+        clearChildren(av);
+        if (o.avatarFrom) {
+          var src = o.avatarFrom.querySelector('img');
+          if (src) { var im = document.createElement('img'); im.alt = ''; im.src = src.src; av.appendChild(im); }
+          else av.textContent = (o.who || '?').charAt(0);
+        } else {
+          av.textContent = (o.who || '?').charAt(0);
+        }
+        document.getElementById('ask-who').textContent = o.who;
+        document.getElementById('ask-text').textContent = o.text;
+        document.getElementById('ask-note').textContent = o.note || '';
+        var ok = document.getElementById('ask-ok');
+        var cancel = document.getElementById('ask-cancel');
+        ok.textContent = o.ok;
+        cancel.textContent = o.cancel;
+        return new Promise(function (resolve) {
+          function done(v) {
+            ok.removeEventListener('click', onOk);
+            cancel.removeEventListener('click', onCancel);
+            dlg.removeEventListener('cancel', onCancel);
+            if (dlg.open) dlg.close();
+            resolve(v);
+          }
+          function onOk() { done(true); }
+          function onCancel(e) { if (e) e.preventDefault(); done(false); }
+          ok.addEventListener('click', onOk);
+          cancel.addEventListener('click', onCancel);
+          dlg.addEventListener('cancel', onCancel);
+          dlg.showModal();
+          cancel.focus();
+        });
+      }
+
       function renderSeatAvatar(cardEl, agent) {
         var wrap = cardEl.querySelector('.seat-title-wrap');
         if (!wrap) return;
@@ -5073,7 +5145,20 @@
           cardStop.textContent = tx('btn.stop');
           cardStop.setAttribute('aria-label', tx('seat.stopFor', { seat: seatKey.toUpperCase() }));
           cardStop.addEventListener('click', async function () {
-            if (!confirm(tx('confirm.stopCard'))) return;
+            var avBtn = cardEl.querySelector('.seat-avatar');
+            var who = agentLabel((avBtn && avBtn.dataset.agent) || '') || seatKey.toUpperCase();
+            var onEl = document.getElementById(seatKey + '-ontask');
+            var tm = onEl ? /[A-Z][A-Z0-9]*-\d+/.exec(onEl.textContent) : null;
+            var ticket = tm ? tm[0] : '';
+            var yes = await askOwner({
+              who: who + ' · ' + (SEAT_LABELS[seatKey] || seatKey.toUpperCase()),
+              avatarFrom: avBtn,
+              text: ticket ? tx('ask.stopTicket', { ticket: ticket }) : tx('ask.stopTask'),
+              note: tx('ask.stopNote'),
+              ok: tx('ask.yesStop'),
+              cancel: tx('ask.keep'),
+            });
+            if (!yes) return;
             cardStop.disabled = true;
             try {
               var res = await postJson('/api/stop', { seat: seatKey });
@@ -6170,9 +6255,14 @@
 
       if (stopBtn) {
         stopBtn.addEventListener('click', async function () {
-          if (!confirm(tx('confirm.stop'))) {
-            return;
-          }
+          var yesAll = await askOwner({
+            who: tx('ask.team'),
+            text: tx('ask.stopAll'),
+            note: tx('ask.stopAllNote'),
+            ok: tx('ask.yesStopAll'),
+            cancel: tx('ask.keepAll'),
+          });
+          if (!yesAll) return;
           stopBtn.disabled = true;
           try {
             var res = await postJson('/api/stop', {});
