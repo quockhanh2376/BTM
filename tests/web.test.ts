@@ -1666,8 +1666,31 @@ describe('Ô trả lời câu hỏi (2026-11-14)', () => {
   it('ảnh nằm trong khung trả lời; chỉ có ảnh vẫn gửi được', () => {
     expect(html).toContain("compose.className = 'cmd-composer q-compose'");
     expect(html).toContain('compose.appendChild(bar)');
+    expect(html).toContain("iconFrom('#cmd-send-btn svg', btn, tx('q.answer'))");
+    expect(html).toContain("iconFrom('#attach-image-label svg', attach, tx('q.attach'))");
     expect(html).toContain("area.value.trim() || (qImages[q.id] ? tx('q.seeImage') : '')");
     expect(html).toContain("'q.seeImage': 'See attached image.'");
+  });
+});
+
+describe('Tab Folder cạnh Goals (2026-11-14)', () => {
+  const html = readFileSync(resolve(process.cwd(), 'web/index.html'), 'utf-8');
+  it('có tab Goals | Folder, chỉ GET /api/folders, giờ VN, cây file dựng bằng textContent', () => {
+    expect(html).toContain('id="tab-goals"');
+    expect(html).toContain('id="tab-folders"');
+    expect(html).toContain('id="folders-container"');
+    expect(html).toContain("fetch('/api/folders', { cache: 'no-store' })");
+    const fn = html.slice(html.indexOf('function buildFileTree'), html.indexOf('async function loadFolders'));
+    expect(fn).toContain('textContent');
+    expect(fn).not.toContain('innerHTML');
+    const src = html.slice(html.indexOf('function formatDateTimeVN'), html.indexOf('function buildFileTree'));
+    const f = new Function(src + 'return formatDateTimeVN;')() as (iso: string) => string;
+    expect(f('2026-11-13T18:42:00Z')).toBe('14/11, 01:42');
+    const t = new Function(html.slice(html.indexOf('function buildFileTree'), html.indexOf('function renderFileTree')) + 'return buildFileTree;')() as (f: string[]) => any;
+    const tree = t(['a.js', 'public/js/x.js', 'public/i.html']);
+    expect(tree.files).toEqual(['a.js']);
+    expect(tree.dirs.public.count).toBe(2);
+    expect(tree.dirs.public.dirs.js.files).toEqual(['x.js']);
   });
 });
 

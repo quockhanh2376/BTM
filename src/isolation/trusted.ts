@@ -29,7 +29,7 @@ function runWorker(cfg: Config, agentId: string, cwd: string, argv: string[], ex
 
 // git của worker: bỏ ~/.gitconfig + config hệ thống (agent sửa được home của mình); đọc checkout tin cậy (user khác
 // sở hữu) cần safe.directory; không hook, không fsmonitor, không ký.
-const W_GIT = ['env', 'GIT_CONFIG_GLOBAL=/dev/null', 'GIT_CONFIG_NOSYSTEM=1', 'git', '-c', 'safe.directory=*',
+export const W_GIT = ['env', 'GIT_CONFIG_GLOBAL=/dev/null', 'GIT_CONFIG_NOSYSTEM=1', 'git', '-c', 'safe.directory=*',
   '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'commit.gpgSign=false'];
 
 export function isIsolated(cfg: Config): boolean {
