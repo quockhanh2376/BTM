@@ -9,14 +9,16 @@ Anh Zon có key Z.ai gói Max. Muốn có một người dự phòng luôn sẵn
 - MB là thành viên thứ 5: ID `mb` (user Linux `btm-mb`), tên hiển thị **"Boss"** (anh đổi được), dùng CLI Claude Code trỏ tới Z.ai.
 - **Boss = worker** (anh Zon 2026-11-14): không có thêm quyền. Code của Boss vẫn qua gate, QC, audit; Boss không ra lệnh cho agent khác (PM điều phối, anh quyết). Trên thẻ chỉ thêm nhãn "Backup · mọi ghế".
 - Thẻ mọi agent hiện ID mờ cạnh tên (ví dụ "Finn · elon") để đối chiếu với log.
-- Ngồi được mọi ghế; đứng cuối danh sách `seats_backup` của mọi ghế.
+- Ngồi được mọi ghế, **bất cứ lúc nào** (anh Zon 2026-11-14): anh gán Boss làm người chính cho Dev hoặc QC (hay PM, Audit) trên dashboard như agent khác, không cần chờ ai hết quota.
+- Ngoài ra Boss đứng cuối danh sách `seats_backup` của mọi ghế: ghế nào hết quota mà chưa ai thay thì Boss vào.
+- Luật cũ vẫn giữ: ai code ticket thì không QC chính ticket đó (`coder_cannot_qc_same_task`). Boss vừa Dev vừa QC thì ticket Boss code phải do người khác QC.
 - Chọn model mặc định + đổi model trên dashboard như các agent khác.
 - Key mã hoá trong DB; agent không bao giờ thấy key thật.
 
 ## Không làm (lần này)
 - Audit lần 2 sau Bruno (làm sau, cần đổi luồng audit).
 - Thêm key thứ hai, hoặc key cho Gemini/OpenAI.
-- Tự đổi sang MB khi chưa hết quota (MB chỉ vào khi người chính hết quota / mất đăng nhập, như dự phòng hiện nay).
+- BTM tự chọn Boss thay người chính khi người chính vẫn còn quota (chỉ anh gán, hoặc dự phòng khi hết quota).
 
 ## Cách chạy một lượt MB
 1. Phiên chọn người cho ghế như hiện nay (`pickSeatAgent`): người chính hết Energy → dự phòng theo thứ tự → tới MB.
