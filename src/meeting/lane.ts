@@ -14,8 +14,8 @@ import { skillsFor } from '../skills/lane.ts';
 import { fetchGithubMaterial } from './github.ts';
 import { extractDoc, joinDocs, materialForPrompt, DOCS_MAX, type DocText, type PdfToText } from './docs.ts';
 import {
-  conclusionPrompt, materialFile, meetingFile, meetingPrompt, nextStep, parseConclusion, parsePoints, renderMeetingMd, speakersOf,
-  verifyEvidence, MEETING_KEEP, TOPIC_MAX, type Meeting, type MeetingTurn, type Speaker,
+  conclusionPrompt, decisionsFile, materialFile, meetingFile, meetingPrompt, nextStep, parseConclusion, parsePoints, parseVote, renderMeetingMd, speakersOf,
+  verifyEvidence, voteOptions, votePrompt, votersOf, voteTally, MEETING_KEEP, TOPIC_MAX, type Meeting, type MeetingTurn, type Speaker,
 } from './core.ts';
 
 export const meetingsKey = (project: string) => `meetings:${project}`;
@@ -153,18 +153,22 @@ export function createMeetingLane(d: MeetingLaneDeps) {
     for (const m of readMeetings(d.store, project)) if (m.status === 'running') save(project, { ...m, status: 'paused' });
   }
 
-  async function start(topicRaw: string, quick: boolean): Promise<Result> {
+  async function start(topicRaw: string, quick: boolean, optionsRaw?: string[]): Promise<Result> {
     const project = d.store.getActiveProject();
     if (!project) return { ok: false, status: 400, error: 'No active project' };
     const topic = String(topicRaw || '').trim().slice(0, TOPIC_MAX);
     if (!topic) return { ok: false, status: 400, error: 'Empty topic' };
     if (active(project)) return { ok: false, status: 409, error: 'A meeting is already open' };
     const st = mbStatus(d.store);
-    const speakers = speakersOf(d.cfg, effectiveSeats(d.cfg, d.store, project) as Record<string, string>, st.set && st.enabled);
+    // Biểu quyết (anh Zon 2026-11-14): có 2–5 phương án → mỗi ghế một phiếu.
+    const options = optionsRaw ? voteOptions(optionsRaw) : [];
+    if (optionsRaw && options.length < 2) return { ok: false, status: 400, error: 'A vote needs 2 to 5 different options' };
+    const seatsNow = effectiveSeats(d.cfg, d.store, project) as Record<string, string>;
+    const speakers = options.length ? votersOf(d.cfg, seatsNow, st.set && st.enabled) : speakersOf(d.cfg, seatsNow, st.set && st.enabled);
     if (!speakers.length) return { ok: false, status: 400, error: 'No agents on any seat' };
     const id = readMeetings(d.store, project).reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
     const docs = takeStagedDocs(project, id);
-    const m: Meeting = { id, topic, quick, status: 'running', createdAt: new Date().toISOString(), speakers, turns: [], ownerNotes: [], ...(docs.length ? { docs } : {}) };
+    const m: Meeting = { id, topic, quick: options.length ? true : quick, status: 'running', createdAt: new Date().toISOString(), speakers, turns: [], ownerNotes: [], ...(docs.length ? { docs } : {}), ...(options.length ? { vote: { options } } : {}) };
     save(project, m);
     void (async () => {
       // Link repo GitHub công khai trong vấn đề → Core tải tài liệu (agent không có mạng).
@@ -218,6 +222,48 @@ export function createMeetingLane(d: MeetingLaneDeps) {
     save(project, next);
     void tick();
     return { ok: true, id: m.id };
+  }
+
+  /** Anh chốt phương án của cuộc biểu quyết (có thể khác đa số). Ghi sổ quyết định của project – PM đọc khi lập kế hoạch. */
+  function decide(option: string): Result {
+    const project = d.store.getActiveProject();
+    if (!project) return { ok: false, status: 400, error: 'No active project' };
+    const m = readMeetings(d.store, project).find((x) => x.vote && x.status !== 'running');
+    if (!m || !m.vote) return { ok: false, status: 400, error: 'No finished vote' };
+    const picked = m.vote.options.find((o) => o === option);
+    if (!picked) return { ok: false, status: 400, error: 'Unknown option' };
+    const tally = voteTally(m);
+    const decided: Meeting = { ...m, status: m.status === 'paused' ? 'closed' : m.status, endedAt: m.endedAt ?? new Date().toISOString(), decision: { option: picked, at: new Date().toISOString(), overrode: tally.winner !== null && tally.winner !== picked } };
+    save(project, decided);
+    saveMd(project, decided);
+    try {
+      const key = readProjectKey(project);
+      const file = decisionsFile(dataDir, key);
+      mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+      let prev = '';
+      try { prev = readFileSync(file, 'utf8'); } catch { /* chưa có sổ */ }
+      const lines = prev.split(/\r?\n/).filter((l) => l.startsWith('- ')).filter((l) => !l.startsWith(`- [${key} M${m.id}] `));
+      lines.push(`- [${key} M${m.id}] ${m.topic.replace(/\s+/g, ' ').slice(0, 200)} → ${picked}${decided.decision!.overrode ? ' (anh Zon phủ quyết đa số)' : ''}`);
+      writeFileSync(file, lines.slice(-50).join('\n') + '\n', { mode: 0o600 });
+    } catch { /* ghi sổ lỗi không làm hỏng việc chốt */ }
+    return { ok: true, id: m.id };
+  }
+
+  /** Xoá hẳn (anh Zon 2026-11-14, họp nháp lúc dev BTM): cuộc họp đã kết thúc tạo trước `before`, kèm biên bản + tài liệu. */
+  function purgeBefore(before: string): number {
+    const project = d.store.getActiveProject();
+    if (!project) return 0;
+    const all = readMeetings(d.store, project);
+    const t = Date.parse(before);
+    const gone = all.filter((m) => m.status !== 'running' && m.status !== 'paused' && Date.parse(m.createdAt) < t);
+    if (!gone.length) return 0;
+    d.store.setSetting(meetingsKey(project), JSON.stringify(all.filter((m) => !gone.includes(m))));
+    try {
+      const key = readProjectKey(project);
+      for (const m of gone) for (const f of [meetingFile(dataDir, key, m.id), materialFile(dataDir, key, m.id)]) rmSync(f, { force: true });
+    } catch { /* thiếu file: bỏ qua */ }
+    d.onChange?.();
+    return gone.length;
   }
 
   function close(): Result {
@@ -303,6 +349,24 @@ export function createMeetingLane(d: MeetingLaneDeps) {
         // Skill anh bật cho ghế của người nói (ghế đầu tiên; Boss không có ghế → không có skill).
         const seatOf = (['pm', 'dev', 'qc', 'audit'] as const).find((s) => speaker.seats.includes(s));
         const skills = seatOf ? skillsFor(d.store, dataDir, project, seatOf) : '';
+        if (m.vote) {
+          const vctx = { material: materialForPrompt(material(project, m), m.topic), knowledge: buildProjectMap(d.store, project, 2500), name: nameOf(speaker.agent) };
+          const vres = await runAgent(project, m, speaker, votePrompt(m, speaker, vctx) + (skills ? `\n\n${skills}` : ''), `V-${speaker.seats[0]}`);
+          if (vres.aborted) return;
+          const v = vres.text ? parseVote(vres.text, m.vote.options) : null;
+          if (!v) { skip(vres.reason ?? 'invalid vote'); return; }
+          const vc = {
+            repo: project,
+            material: material(project, m),
+            hasTicket: (id: string) => d.store.listTickets(project).some((t) => t.id === id),
+            hasGoal: (n: number) => Boolean(d.store.getGoal(project, n)),
+          };
+          const ev = v.evidence ?? { type: 'general' as const, ref: '' };
+          const vt: MeetingTurn = { round: 1, agent: speaker.agent, seats: speaker.seats, at: now(), vote: v.vote, points: [{ text: v.reason, evidence: ev, verified: v.evidence ? verifyEvidence(ev, vc) : null }] };
+          const curV = fresh();
+          if (curV && curV.status === 'running') save(project, { ...curV, turns: [...curV.turns, vt] });
+          return;
+        }
         const prompt = meetingPrompt(m, speaker, round, { material: materialForPrompt(material(project, m), m.topic), knowledge: buildProjectMap(d.store, project, 2500), name: nameOf(speaker.agent) }) + (skills ? `\n\n${skills}` : '');
         const res = await runAgent(project, m, speaker, prompt, `R${round}`);
         if (res.aborted) return; // Stop / Close: không ghi lượt, Resume sẽ chạy lại người này
@@ -353,5 +417,5 @@ export function createMeetingLane(d: MeetingLaneDeps) {
   }
 
   recover();
-  return { start, stop, resume, close, tick, addDoc, removeDoc, listDocs, running: () => inFlight };
+  return { start, stop, resume, close, decide, purgeBefore, tick, addDoc, removeDoc, listDocs, running: () => inFlight };
 }

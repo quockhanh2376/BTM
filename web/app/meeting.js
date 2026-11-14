@@ -7,13 +7,17 @@ function meetItems(m) {
   var out = [{ kind: 'meet-head', id: 'M' + m.id, status: m.status, at: m.createdAt, text: m.topic, source: m.source || '', note: m.materialNote || '', quick: !!m.quick, docs: m.docs || [] }];
   var mid = [];
   (m.turns || []).forEach(function (t) {
-    mid.push({ kind: 'meet-turn', id: 'M' + m.id + '-' + t.round + '-' + t.agent, status: t.skipped ? 'skip' : 'ok', at: t.at, round: t.round, agent: t.agent, seats: t.seats || [], points: t.points || [], skipped: t.skipped || '' });
+    mid.push({ kind: 'meet-turn', id: 'M' + m.id + '-' + t.round + '-' + t.agent + '-' + (t.seats || [])[0], status: t.skipped ? 'skip' : 'ok', at: t.at, round: t.round, agent: t.agent, seats: t.seats || [], points: t.points || [], skipped: t.skipped || '', vote: t.vote || '' });
   });
   (m.ownerNotes || []).forEach(function (n, i) {
     mid.push({ kind: 'meet-note', id: 'M' + m.id + '-note-' + i, status: 'ok', at: n.at, text: n.text });
   });
   mid.sort(function (a, b) { return Date.parse(a.at) - Date.parse(b.at); });
   out = out.concat(mid);
+  // Biểu quyết (anh Zon 2026-11-14): kết quả đếm phiếu khi đã bỏ xong; quyết định của anh nếu đã chốt.
+  if (m.vote && m.status !== 'running') {
+    out.push({ kind: 'meet-vote', id: 'M' + m.id + '-vote-' + (m.decision ? m.decision.option : ''), status: 'ok', at: m.endedAt || (m.decision && m.decision.at) || m.createdAt, tally: meetVoteTally(m), decision: m.decision || null });
+  }
   if (m.conclusion) out.push({ kind: 'meet-end', id: 'M' + m.id + '-end', status: 'ok', at: m.conclusion.at, by: m.conclusion.by, c: m.conclusion });
   else if (m.conclusionSkipped) out.push({ kind: 'meet-end', id: 'M' + m.id + '-end', status: 'skip', at: m.endedAt || '', by: '', skipped: m.conclusionSkipped });
   return out;
@@ -44,6 +48,18 @@ function withAvatar(head, agent, label, avatars) {
   return head;
 }
 
+// Đếm phiếu (thuần, test được; cùng luật với voteTally ở server): theo thứ tự phương án, hoà → winner null.
+function meetVoteTally(m) {
+  var options = (m && m.vote && m.vote.options) || [];
+  var counts = options.map(function (o) {
+    var seats = (m.turns || []).filter(function (t) { return !t.skipped && t.vote === o; }).map(function (t) { return (t.seats || [])[0]; });
+    return { option: o, n: seats.length, seats: seats };
+  });
+  var max = Math.max.apply(null, [0].concat(counts.map(function (c) { return c.n; })));
+  var top = counts.filter(function (c) { return c.n === max && max > 0; });
+  return { counts: counts, total: counts.reduce(function (a, c) { return a + c.n; }, 0), winner: top.length === 1 ? top[0].option : null };
+}
+
 // Nhãn dẫn chứng: true = Core kiểm thấy, false = không thấy, null = kiến thức chung.
 function meetEvidenceMark(v) {
   return v === true ? '✓' : '⚠';
@@ -71,6 +87,37 @@ function btmMeeting(d) {
       li.className = 'msg msg-owner';
       li.appendChild(withAvatar(el('div', 'msg-head', tx('hist.owner') + ' · ' + formatHHmm(it.at)), 'owner', 'Zon', avatars));
       li.appendChild(el('div', 'msg-body', it.text));
+      return;
+    }
+    if (it.kind === 'meet-vote') {
+      li.className = 'msg msg-team meet-end meet-vote-result';
+      li.appendChild(el('div', 'msg-head', tx('vote.result', { total: it.tally.total })));
+      var max = Math.max.apply(null, [1].concat(it.tally.counts.map(function (c) { return c.n; })));
+      it.tally.counts.forEach(function (c) {
+        var row = el('div', 'vote-row' + (it.tally.winner === c.option ? ' vote-win' : ''));
+        row.appendChild(el('span', 'vote-opt', c.option));
+        var bar = el('span', 'vote-bar');
+        var fill = el('span', 'vote-fill');
+        fill.style.width = Math.round((c.n / max) * 100) + '%';
+        bar.appendChild(fill);
+        row.appendChild(bar);
+        row.appendChild(el('span', 'vote-n', String(c.n) + (c.seats.length ? ' · ' + c.seats.map(function (s) { return String(s).toUpperCase(); }).join(', ') : '')));
+        li.appendChild(row);
+      });
+      li.appendChild(el('div', 'meet-label', it.tally.winner ? tx('vote.majority', { option: it.tally.winner }) : tx('vote.tie')));
+      if (it.decision) li.appendChild(el('div', 'vote-decided', tx(it.decision.overrode ? 'vote.decidedOverride' : 'vote.decided', { option: it.decision.option })));
+      return;
+    }
+    if (it.kind === 'meet-turn' && it.vote) {
+      li.className = 'msg msg-team meet-turn' + (it.skipped ? ' meet-skipped' : '');
+      li.appendChild(withAvatar(el('div', 'msg-head', agentLabel(it.agent) + ' · ' + String(it.seats[0] || '').toUpperCase() + ' · ' + tx('vote.ballot') + ' · ' + formatHHmm(it.at)), it.agent, agentLabel(it.agent), avatars));
+      li.appendChild(el('div', 'msg-body vote-choice', '🗳 ' + it.vote));
+      var vp = it.points[0];
+      if (vp) {
+        li.appendChild(el('div', 'msg-body', vp.text));
+        var vev = vp.evidence || {};
+        if (vev.ref || vev.quote) li.appendChild(el('div', 'meet-evidence ' + (vp.verified === true ? 'ev-ok' : 'ev-warn'), meetEvidenceMark(vp.verified) + ' ' + tx(vp.verified === true ? 'meet.verified' : (vp.verified === false ? 'meet.unverified' : 'meet.general')) + ' · ' + (vev.type || '') + ' ' + (vev.ref || '') + (vev.quote ? ' — “' + vev.quote + '”' : '')));
+      }
       return;
     }
     if (it.kind === 'meet-turn') {
@@ -119,14 +166,14 @@ function btmMeeting(d) {
   function paint(state) {
     if (!bar) return;
     var m = state && state.meeting;
-    var key = m ? [m.id, m.status, (m.turns || []).length, !!m.conclusion].join('|') : '';
+    var key = m ? [m.id, m.status, (m.turns || []).length, !!m.conclusion, m.decision ? m.decision.option : ''].join('|') : '';
     if (key === lastKey) return;
     lastKey = key;
     while (bar.firstChild) bar.removeChild(bar.firstChild);
     bar.hidden = !m;
     loadDocs(); // mở cuộc họp xong thì khu chờ tài liệu được dọn
     if (!m) return;
-    var total = m.speakers.length * (m.quick ? 1 : 2) + 1;
+    var total = m.vote ? m.speakers.length : m.speakers.length * (m.quick ? 1 : 2) + 1; // biểu quyết: mỗi ghế một lượt, không kết luận
     bar.appendChild(el('span', 'meet-bar-status', tx('meet.bar', { id: m.id, status: tx(MEET_STATUS[m.status] || 'meet.status.closed'), done: (m.turns || []).length + (m.conclusion ? 1 : 0), total: total })));
     var btn = function (key, cls, fn) { var b = el('button', 'btn btn-sm ' + cls, tx(key)); b.type = 'button'; b.addEventListener('click', fn); bar.appendChild(b); return b; };
     if (m.status === 'running') {
@@ -149,6 +196,15 @@ function btmMeeting(d) {
       a.setAttribute('download', 'meeting-M' + m.id + '.' + f[0]);
       bar.appendChild(a);
     });
+    // Biểu quyết đã bỏ xong: anh chốt (phương án đa số đứng đầu, nút chính). Chốt rồi vẫn đổi được.
+    if (m.vote && m.status !== 'running') {
+      var vt = meetVoteTally(m);
+      var order = m.vote.options.slice().sort(function (a, b) { return (b === vt.winner) - (a === vt.winner); });
+      order.forEach(function (o) {
+        var chosen = m.decision && m.decision.option === o;
+        btn(chosen ? 'vote.chosen' : 'vote.choose', o === vt.winner && !m.decision ? 'btn-primary' : 'btn-secondary', function () { act('decide', { option: o }); }).textContent = tx(chosen ? 'vote.chosen' : 'vote.choose', { option: o });
+      });
+    }
     if (m.status === 'done' && m.conclusion && m.conclusion.recommendation) {
       btn('meet.makeGoal', 'btn-primary', function () {
         // Điền sẵn Command gửi PM; anh sửa rồi mới gửi.

@@ -83,6 +83,8 @@ export function pmTicketPrompt(
     standards?: string[];
     /** Skill đang bật cho ghế PM ở project này (đã qua cổng bảo mật), dạng khối chữ. */
     skills?: string;
+    /** Sổ quyết định anh Zon đã chốt qua biểu quyết (2026-11-14). */
+    decisions?: string;
   }
 ): string {
   const cleanTitle = g.title.replace(/\r?\n/g, ' ').trim();
@@ -100,6 +102,10 @@ export function pmTicketPrompt(
   ];
 
   if (opts?.skills?.trim()) lines.push(opts.skills.trim());
+
+  if (opts?.decisions?.trim()) {
+    lines.push(`Quyết định anh Zon đã chốt (bắt buộc làm theo; ticket liên quan phải đúng các quyết định này):\n${opts.decisions.trim()}`);
+  }
 
   if (opts?.standards?.length) {
     lines.push(`Chuẩn bắt buộc của anh Zon cho mọi project – ticket nào đụng tới phần liên quan thì acceptance PHẢI có mục kiểm tương ứng:\n${opts.standards.map((s) => `- ${s}`).join('\n')}`);

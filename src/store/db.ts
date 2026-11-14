@@ -672,6 +672,10 @@ export function openStore(file: string): Store {
       return Number(info.changes);
     },
 
+    purgeQueueBefore(before: string): number {
+      return db.prepare(`DELETE FROM queue WHERE created_at < ? AND status IN ('done', 'cancelled')`).run(before).changes;
+    },
+
     listQueue(limit: number): QueueItem[] {
       const rows = listQueueStmt.all(limit) as Array<{
         id: number;

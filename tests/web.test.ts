@@ -2088,7 +2088,7 @@ describe('Họp tranh luận trên dashboard (2026-11-14)', () => {
     };
     const items = lib.meetItems(m);
     expect(items.map((x: any) => x.kind)).toEqual(['meet-head', 'meet-turn', 'meet-note', 'meet-turn', 'meet-end']);
-    expect(items.map((x: any) => x.id)).toEqual(['M3', 'M3-1-elon', 'M3-note-0', 'M3-2-jenny', 'M3-end']);
+    expect(items.map((x: any) => x.id)).toEqual(['M3', 'M3-1-elon-pm', 'M3-note-0', 'M3-2-jenny-dev', 'M3-end']);
     expect(items[3].status).toBe('skip');
     expect([lib.meetEvidenceMark(true), lib.meetEvidenceMark(false), lib.meetEvidenceMark(null)]).toEqual(['✓', '⚠', '⚠']);
   });

@@ -947,7 +947,7 @@
       var meetingUi = btmMeeting({ agentLabel: agentLabel, formatHHmm: formatHHmm, postJson: postJson, showFeedback: showFeedback, feedbackEl: topFeedback });
       // Goals + khung History: web/app/goals.js (nạp trước file này).
       var goalsUi = btmGoals({
-        renderMeetItem: meetingUi.renderMeetItem,
+        renderMeetItem: meetingUi.renderMeetItem, askOwner: askOwner,
         formatStatus: formatStatus, SEAT_LABELS: SEAT_LABELS, agentLabel: agentLabel, clearChildren: clearChildren, formatHHmm: formatHHmm,
         askAsSeat: askAsSeat, showFeedback: showFeedback, openDiff: openDiff, postJson: postJson, topFeedback: topFeedback,
         TASK_TAB_KEYS: TASK_TAB_KEYS, goalTabSelections: goalTabSelections, PIPELINE_STAGES: PIPELINE_STAGES, resolveActiveTab: resolveActiveTab,
@@ -966,6 +966,8 @@
         setDisplay(attachImageGroup, to === 'team' || to === 'auto', 'flex');
         var quickWrap = document.getElementById('meet-quick-wrap');
         if (quickWrap) quickWrap.hidden = to !== 'meeting';
+        var voteWrap = document.getElementById('vote-options-wrap');
+        if (voteWrap) voteWrap.hidden = to !== 'vote';
         var docsWrap = document.getElementById('meet-docs-wrap');
         if (docsWrap) docsWrap.hidden = to !== 'meeting';
       }
@@ -997,7 +999,7 @@
           seatKeys = ['pm', 'dev', 'qc'];
         }
 
-        var options = [{ value: 'auto', label: tx('cmd.auto') }, { value: 'team', label: tx('cmd.team') }, { value: 'meeting', label: tx('cmd.meeting') }];
+        var options = [{ value: 'auto', label: tx('cmd.auto') }, { value: 'team', label: tx('cmd.team') }, { value: 'meeting', label: tx('cmd.meeting') }, { value: 'vote', label: tx('cmd.vote') }];
         seatKeys.forEach(function (sk) {
           options.push({ value: sk, label: formatSeatLabel(sk) });
         });
@@ -1685,6 +1687,16 @@
               return;
             }
             // Họp tranh luận (2026-11-14): vấn đề bất kỳ → cả team lần lượt phân tích, phản biện có dẫn chứng.
+            // Biểu quyết (anh Zon 2026-11-14): câu hỏi + 2–5 phương án; mỗi ghế một phiếu; anh chốt.
+            if (to === 'vote') {
+              var optInput = document.getElementById('vote-options');
+              var opts = String((optInput && optInput.value) || '').split(/[,;\n]/).map(function (x) { return x.trim(); }).filter(Boolean);
+              if (opts.length < 2) { showFeedback(cmdFeedback, tx('vote.needOptions'), true); return; }
+              var vr = await postJson('/api/meeting', { action: 'start', topic: text, options: opts });
+              if (vr && vr.error) showFeedback(cmdFeedback, vr.error, true);
+              else { showFeedback(cmdFeedback, tx('vote.started'), false); cmdTextArea.value = ''; if (optInput) optInput.value = ''; }
+              return;
+            }
             if (to === 'meeting') {
               var quickBox = document.getElementById('meet-quick');
               var mr = await postJson('/api/meeting', { action: 'start', topic: text, quick: !!(quickBox && quickBox.checked) });
