@@ -143,13 +143,15 @@ describe('P7-T4: API tài khoản', () => {
       { email: 'c@x.io', refresh_token: AGY_RT, agent: 'jenny' },
     ];
     const dry = await (await post('/api/accounts/import', { file, dryRun: true })).json();
-    expect(dry.new).toEqual(['jacky/firstperson2']);
+    // Một member dùng nhiều công cụ (2026-11-14): ghi rõ agent thì tài khoản agy vào Worker nào cũng được.
+    expect(dry.new).toEqual(['jacky/firstperson2', 'jenny/c']);
     expect(dry.conflicts).toEqual(['jacky/default']);
-    expect(dry.rejected.map((x: any) => x.reason)).toEqual(['name taken by another account', 'email missing or invalid', 'not an agy Worker']);
+    expect(dry.rejected.map((x: any) => x.reason)).toEqual(['name taken by another account', 'email missing or invalid']);
     expect(JSON.stringify(dry)).not.toContain(AGY_RT);
     const real = await (await post('/api/accounts/import', { file })).json();
-    expect(real.imported).toEqual(['jacky/firstperson2']);
-    expect(store.getAccount('jacky', 'firstperson2')).toMatchObject({ email: 'first.Person2016@example.com', active: false });
+    expect(real.imported).toEqual(['jacky/firstperson2', 'jenny/c']);
+    expect(store.getAccount('jacky', 'firstperson2')).toMatchObject({ email: 'first.Person2016@example.com', active: false, tool: null });
+    expect(store.getAccount('jenny', 'c')).toMatchObject({ tool: 'antigravity-cli' });
     const w = execCalls.find((c) => c.args.includes('btm-jacky-firstperson2') && c.input);
     expect(JSON.parse(JSON.parse(w!.input!)['.gemini/antigravity-cli/antigravity-oauth-token']).token.refresh_token).toBe(AGY_RT);
     // export: file token agy đọc được → {email, refresh_token}
@@ -159,6 +161,8 @@ describe('P7-T4: API tài khoản', () => {
       { email: 'old@x.io', refresh_token: AGY_RT },
       { email: 'other@x.io', refresh_token: AGY_RT },
       { email: 'first.Person2016@example.com', refresh_token: AGY_RT },
+      // tài khoản agy của Worker không phải agy: xuất kèm `agent` để nhập lại đúng chỗ
+      { email: 'c@x.io', refresh_token: AGY_RT, agent: 'jenny' },
     ]);
   });
 
@@ -177,13 +181,14 @@ describe('P7-T4: API tài khoản', () => {
       ],
     };
     const dry = await (await post('/api/accounts/import', { file, dryRun: true })).json();
-    expect(dry.new).toEqual(['jenny/c']);
+    expect(dry.new).toEqual(['jenny/c', 'jacky/e']);
     expect(dry.conflicts).toEqual(['jacky/b']);
-    expect(dry.rejected.map((x: any) => x.reason)).toEqual(['files not allowed for this tool', 'tool mismatch (antigravity-cli)', 'unknown worker on this machine', 'bad entry', 'duplicate in file']);
+    expect(dry.rejected.map((x: any) => x.reason)).toEqual(['files not allowed for this tool', 'unknown worker on this machine', 'bad entry', 'duplicate in file']);
     expect(execCalls).toHaveLength(0);
     const real = await (await post('/api/accounts/import', { file })).json();
-    expect(real.imported).toEqual(['jenny/c']);
-    expect(store.getAccount('jenny', 'c')).toMatchObject({ active: false, label: 'cli' });
+    expect(real.imported).toEqual(['jenny/c', 'jacky/e']);
+    expect(store.getAccount('jenny', 'c')).toMatchObject({ active: false, label: 'cli', tool: null });
+    expect(store.getAccount('jacky', 'e')).toMatchObject({ active: false, tool: 'codex-cli' }); // Worker agy có thêm tài khoản Codex
     expect(execCalls.some((c) => c.args.includes('btm-jacky-b'))).toBe(false);
     expect((await post('/api/accounts/import', { file: { version: 2, accounts: [] } })).status).toBe(400);
     busy = true;

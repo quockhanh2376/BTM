@@ -81,7 +81,7 @@ async function runReadOnly(c: DirectCtx): Promise<DirectResult> {
   const prompt = c.askSeat
     ? askPrompt(c.askSeat, c.item.text, knowledgeFor(c.store, c.cfg, c.project, c.item.text))
     : directPrompt(c.item.to, c.item.text);
-  const r = await runOnce(c, c.turnSeat === 'audit' ? 'audit' : 'qc', prompt, usableAccounts(c.cfg, c.store, c.agent)[0]?.key);
+  const r = await runOnce(c, c.turnSeat === 'audit' ? 'audit' : 'qc', prompt, usableAccounts(c.cfg, c.store, c.agent, new Date(), { readOnly: true })[0]?.key);
   if (r.kind === 'error' || r.kind === 'abort') {
     c.store.endTurn(c.turnId, 'error', r.reason);
     c.store.setQueueStatus(c.item.id, r.kind === 'abort' ? 'cancelled' : 'done');
@@ -132,7 +132,7 @@ async function runDevOrQc(c: DirectCtx): Promise<DirectResult> {
   let gateFailedReason: string | null = null;
   let account: string | undefined;
   if (c.agent) {
-    const candidates = usableAccounts(c.cfg, c.store, c.agent);
+    const candidates = usableAccounts(c.cfg, c.store, c.agent, new Date(), { readOnly: seat === 'qc' });
     if (candidates.length === 0) gateFailedReason = `usage_limited:${c.agent}`;
     for (const cand of candidates) {
       if (c.monitor) {

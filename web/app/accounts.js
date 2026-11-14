@@ -233,6 +233,8 @@
         return tx(ACC_STATUS[a.status] || 'acc.st.free');
       }
 
+      var TOOL_LABELS = { 'claude-code': 'Claude', 'codex-cli': 'Codex', 'antigravity-cli': 'Antigravity' };
+      function toolLabel(t) { return TOOL_LABELS[t] || String(t || ''); }
       function buildAccountItems(worker, items, sshTarget, primary) {
         var box = document.createElement('div');
         box.className = 'acc-items';
@@ -251,6 +253,16 @@
             email.textContent = a.email;
             email.title = a.email;
             line.appendChild(email);
+          }
+
+          // Một member dùng nhiều công cụ (anh Zon 2026-11-14): tài khoản khác công cụ chính của Worker có nhãn công cụ.
+          var accTool = a.tool || worker.tool;
+          if (accTool !== worker.tool) {
+            var toolTag = document.createElement('span');
+            toolTag.className = 'acc-tool-tag';
+            toolTag.textContent = toolLabel(accTool);
+            toolTag.title = tx('acc.toolTip', { tool: toolLabel(accTool) });
+            line.appendChild(toolTag);
           }
 
           var badge = document.createElement('span');
@@ -281,7 +293,7 @@
             ctrl.appendChild(b);
           });
 
-          if (worker.tool !== 'antigravity-cli') {
+          if (accTool !== 'antigravity-cli') {
             var signIn = document.createElement('button');
             signIn.type = 'button';
             signIn.className = 'btn btn-secondary btn-xs';
@@ -304,7 +316,7 @@
           copy.className = 'btn btn-secondary btn-xs';
           copy.textContent = tx('acc.copy');
           copy.setAttribute('aria-label', tx('acc.copyLoginItem', { key: a.key }));
-          var cmd = getLoginCommand(worker.tool, sshTarget, a.user);
+          var cmd = getLoginCommand(accTool, sshTarget, a.user);
           copy.addEventListener('click', function () { copyLoginCommand(cmd, null, copy); });
           ctrl.appendChild(copy);
 
@@ -317,6 +329,7 @@
       // Add Account
       var accAddPanel = document.getElementById('acc-add-panel');
       var accAddWorker = document.getElementById('acc-add-worker');
+      var accAddTool = document.getElementById('acc-add-tool');
       var accAddAgy = document.getElementById('acc-add-agy');
       var accAddJson = document.getElementById('acc-add-json');
       var accLogin = document.getElementById('acc-login');
@@ -326,8 +339,11 @@
         var w = lastAccounts.find(function (x) { return x.agent === agent; });
         return w ? w.tool : '';
       }
-      function syncAddForm() {
-        accAddAgy.hidden = workerTool(accAddWorker.value) !== 'antigravity-cli';
+      // Ô Công cụ mặc định theo Worker; đổi sang công cụ khác thì tài khoản mới dùng công cụ đó (Finn thêm tài khoản Antigravity).
+      function syncAddForm(resetTool) {
+        if (resetTool !== false && accAddTool) accAddTool.value = workerTool(accAddWorker.value) || 'claude-code';
+        var t = accAddTool ? accAddTool.value : workerTool(accAddWorker.value);
+        accAddAgy.hidden = t !== 'antigravity-cli';
       }
       document.getElementById('acc-add-btn').addEventListener('click', function () {
         clearChildren(accAddWorker);
@@ -342,7 +358,8 @@
         accLogin.hidden = true;
         syncAddForm();
       });
-      accAddWorker.addEventListener('change', syncAddForm);
+      accAddWorker.addEventListener('change', function () { syncAddForm(true); });
+      if (accAddTool) accAddTool.addEventListener('change', function () { syncAddForm(false); });
       document.getElementById('acc-add-cancel').addEventListener('click', function () {
         accAddPanel.hidden = true;
         if (accLoginTimer) { clearInterval(accLoginTimer); accLoginTimer = null; }
@@ -394,6 +411,7 @@
 
       document.getElementById('acc-add-create').addEventListener('click', async function () {
         var body = { agent: accAddWorker.value, slug: document.getElementById('acc-add-slug').value.trim() };
+        if (accAddTool && accAddTool.value && accAddTool.value !== workerTool(accAddWorker.value)) body.tool = accAddTool.value;
         if (!accAddAgy.hidden) {
           try { body.agy = JSON.parse(accAddJson.value); } catch (e) { showFeedback(topFeedback, tx('acc.badJson'), true); return; }
         }

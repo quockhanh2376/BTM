@@ -296,7 +296,7 @@ export function createMeetingLane(d: MeetingLaneDeps) {
       const logFile = join(d.logDir, `turn-${turnId}.log`);
       d.store.setTurnLog(turnId, logFile);
       const out = await d.runner('qc', speaker.agent, prompt, project, logFile, {
-        account: usableAccounts(d.cfg, d.store, speaker.agent)[0]?.key,
+        account: usableAccounts(d.cfg, d.store, speaker.agent, new Date(), { readOnly: true })[0]?.key,
         noImport: true,
         signal,
       });

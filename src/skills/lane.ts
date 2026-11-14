@@ -314,7 +314,7 @@ export function createSkillsLane(d: SkillsLaneDeps) {
       const logFile = join(d.logDir, `turn-${turnId}.log`);
       d.store.setTurnLog(turnId, logFile);
       const out = await d.runner('audit', agent, reviewPrompt(skill, skillText(dataDir, skill.id), nameOf(agent)), project, logFile, {
-        account: usableAccounts(d.cfg, d.store, agent)[0]?.key,
+        account: usableAccounts(d.cfg, d.store, agent, new Date(), { readOnly: true })[0]?.key,
         noImport: true,
       });
       const review = !out.timedOut && out.exitCode === 0 ? parseReview(`${out.output || ''}\n${out.lastMessage || ''}`) : null;

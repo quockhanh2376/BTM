@@ -2,7 +2,7 @@ import type { ServerResponse } from 'node:http';
 import { z } from 'zod';
 import type { Config, Tool } from '../config.ts';
 import type { AccountLabel, Store } from '../store/db.ts';
-import { accountKey, validateSlug } from '../agents/accounts.ts';
+import { accountKey, toolOfAccount, validateSlug } from '../agents/accounts.ts';
 import { addWorkerUser, agyFilesFromJson, emailFromTokens, exportTokens, importTokens, TOKEN_FILES, type AdminExec } from '../isolation/account-admin.ts';
 import { loginState, sendLoginCode, startLogin, type SpawnFn } from '../agents/login-flow.ts';
 import { isIsolated } from '../isolation/trusted.ts';
@@ -55,7 +55,7 @@ function agyShortToEntry(cfg: Config, store: Store, raw: { email: string; refres
   const agy = Object.keys(cfg.agents).filter((id) => cfg.agents[id]!.tool === 'antigravity-cli');
   const agent = raw.agent ?? (agy.length === 1 ? agy[0]! : null);
   if (!agent) return { reason: agy.length ? 'several agy Workers – add "agent" to the entry' : 'no agy Worker on this machine' };
-  if (cfg.agents[agent]?.tool !== 'antigravity-cli') return { reason: 'not an agy Worker' };
+  if (!cfg.agents[agent]) return { reason: 'unknown worker on this machine' };
   let files: Record<string, string>;
   try {
     files = agyFilesFromJson(raw);
@@ -66,6 +66,8 @@ function agyShortToEntry(cfg: Config, store: Store, raw: { email: string; refres
   if (!same && store.getAccount(agent, slugFromEmail(raw.email))) return { reason: 'name taken by another account' };
   return { entry: { agent, slug: same ? same.slug : slugFromEmail(raw.email), tool: 'antigravity-cli', email: raw.email, files } };
 }
+
+const toolIfOther = (cfg: Config, agent: string, tool: Tool): Tool | null => (cfg.agents[agent]?.tool === tool ? null : tool);
 
 type Planned = { key: string; agent: string; slug: string; tool: Tool; email: string | null; label: AccountLabel; files: Record<string, string> };
 
@@ -91,7 +93,8 @@ function planImport(cfg: Config, store: Store, file: unknown) {
     const name = /^[a-z0-9-]{1,40}$/.test(`${agent}`) && /^[a-z0-9]{1,12}$/.test(slug) ? `${agent}/${slug}` : `#${i + 1}`;
     const worker = cfg.agents[agent];
     if (!worker) return rejected.push({ entry: name, reason: 'unknown worker on this machine' });
-    if (worker.tool !== tool) return rejected.push({ entry: name, reason: `tool mismatch (${worker.tool})` });
+    if (!Object.hasOwn(TOKEN_FILES, tool)) return rejected.push({ entry: name, reason: `unknown tool (${tool})` });
+    if (worker.provider === 'zai') return rejected.push({ entry: name, reason: 'Boss uses an API key, it has no login accounts' });
     if (slug !== 'default') {
       const bad = validateSlug(cfg, agent, slug);
       if (bad) return rejected.push({ entry: name, reason: bad });
@@ -137,7 +140,7 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
   if (pathname === '/api/accounts/export') {
     if (!isIsolated(cfg)) return send(res, 409, { error: 'isolation required' }), true;
     const accounts = store.listAccounts().filter((a) => cfg.agents[a.agent]).map((a) => {
-      const tool = cfg.agents[a.agent]!.tool;
+      const tool = toolOfAccount(cfg, store, a.agent, a.slug);
       const key = accountKey(a.agent, a.slug);
       const files = exportTokens(cfg, key, tool, ctx.exec);
       if (tool === 'antigravity-cli') {
@@ -145,7 +148,7 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
         try {
           const t = JSON.parse(files[TOKEN_FILES['antigravity-cli'][0]!] ?? '');
           const email = a.email ?? t.id_token_email;
-          if (typeof email === 'string' && typeof t.token?.refresh_token === 'string') return { email, refresh_token: t.token.refresh_token };
+          if (typeof email === 'string' && typeof t.token?.refresh_token === 'string') return cfg.agents[a.agent]!.tool === 'antigravity-cli' ? { email, refresh_token: t.token.refresh_token } : { email, refresh_token: t.token.refresh_token, agent: a.agent };
         } catch {
           /* giữ mục đầy đủ */
         }
@@ -186,7 +189,7 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
         importTokens(cfg, x.key, x.tool, x.files, ctx.exec);
         const email = x.email ?? emailFromTokens(x.tool, x.files);
         if (store.getAccount(x.agent, x.slug)) store.updateAccount(x.agent, x.slug, { email, label: x.label });
-        else store.addAccount(x.agent, x.slug, { email, label: x.label, active: false });
+        else store.addAccount(x.agent, x.slug, { email, label: x.label, active: false, tool: toolIfOther(cfg, x.agent, x.tool) });
         done.push(`${x.agent}/${x.slug}`);
       } catch (err) {
         failed.push({ entry: `${x.agent}/${x.slug}`, reason: (err as Error).message });
@@ -201,6 +204,8 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
       .object({
         agent: z.string().max(40),
         slug: z.string().max(40),
+        /** Công cụ của tài khoản (mặc định: công cụ của Worker). Anh Zon 2026-11-14: một member dùng nhiều công cụ. */
+        tool: z.enum(['claude-code', 'codex-cli', 'antigravity-cli']).optional(),
         agy: z.object({ email: z.string().max(256), refresh_token: z.string().max(4096) }).optional(),
       })
       .safeParse(body);
@@ -211,7 +216,7 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
     const bad = validateSlug(cfg, agent, slug);
     if (bad) return send(res, 400, { error: bad }), true;
     if (store.getAccount(agent, slug)) return send(res, 409, { error: 'Account exists' }), true;
-    const tool = cfg.agents[agent]!.tool;
+    const tool: Tool = p.data.tool ?? cfg.agents[agent]!.tool;
     const key = accountKey(agent, slug);
     let files: Record<string, string> | null = null;
     if (tool === 'antigravity-cli') {
@@ -225,7 +230,7 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
       addWorkerUser(cfg, key, ctx.exec);
       if (files) {
         importTokens(cfg, key, tool, files, ctx.exec);
-        store.addAccount(agent, slug, { email: emailFromTokens(tool, files), active: true });
+        store.addAccount(agent, slug, { email: emailFromTokens(tool, files), active: true, tool: toolIfOther(cfg, agent, tool) });
         return send(res, 200, { key, loginId: null }), true;
       }
     } catch (err) {
@@ -238,7 +243,7 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
     } catch (err) {
       return send(res, 409, { error: (err as Error).message }), true;
     }
-    store.addAccount(agent, slug, { email: null, active: false });
+    store.addAccount(agent, slug, { email: null, active: false, tool: toolIfOther(cfg, agent, tool) });
     send(res, 200, { key, loginId: login.id });
     return true;
   }
@@ -250,7 +255,7 @@ export function handleAccountsPost(pathname: string, body: unknown, ctx: Account
     if (ctx.busy()) return send(res, 409, { error: 'Session running' }), true;
     const acc = findAccount(cfg, store, reloginM[1]!);
     if (!acc) return send(res, 404, { error: 'No such account' }), true;
-    const tool = cfg.agents[acc.agent]!.tool;
+    const tool = toolOfAccount(cfg, store, acc.agent, acc.slug);
     if (tool === 'antigravity-cli') return send(res, 400, { error: 'agy: add the account again from JSON or sign in over ssh' }), true;
     try {
       const login = startLogin(cfg, reloginM[1]!, tool, ctx.spawn, () => store.updateAccount(acc.agent, acc.slug, { active: true }));
