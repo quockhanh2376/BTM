@@ -2136,3 +2136,21 @@ describe('Skills trong Settings (2026-11-14)', () => {
     expect(c.slice(1)).toEqual([{ who: 'mb', ok: true, summary: 'ok', count: 0 }, { who: 'elon', ok: false, summary: 'bad', count: 1 }]);
   });
 });
+
+describe('Find skills trên dashboard (2026-11-14)', () => {
+  const html = readWeb();
+  it('một ô nhận từ khoá / owner/repo@skill / link GitHub; gợi ý từ khoá theo project; kết quả có lượt cài + mức tin', () => {
+    const lib = new Function(html.slice(html.indexOf('function skillsInputKind'), html.indexOf('function btmSkills')) + 'return { skillsInputKind, skillKeywordHints };')() as any;
+    expect(lib.skillsInputKind('code review')).toBe('keyword');
+    expect(lib.skillsInputKind('react')).toBe('keyword');
+    expect(lib.skillsInputKind('vercel-labs/skills@find-skills')).toBe('repo');
+    expect(lib.skillsInputKind('acme/skills')).toBe('repo');
+    expect(lib.skillsInputKind('https://github.com/acme/skills')).toBe('repo');
+    expect(lib.skillKeywordHints({ exts: ['js', 'html', 'css'], hasTests: true })).toEqual(['frontend design', 'javascript', 'testing', 'code review', 'security review', 'debugging']);
+    expect(lib.skillKeywordHints(null)).toEqual(['code review', 'security review', 'debugging']);
+    expect(html).toContain("postJson('/api/skills', { action: 'search', query: q })");
+    expect(html).toContain("action: 'search-import'");
+    expect(html).toContain('id="skills-hints"');
+    expect(html).toContain("if (/^https?:/i.test(q) || q.indexOf('@') >= 0) throw err;");
+  });
+});

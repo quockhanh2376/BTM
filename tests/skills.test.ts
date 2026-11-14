@@ -185,3 +185,70 @@ describe('Skill – vào prompt của PM / Dev / QC / Audit (2026-11-14)', () =>
     }
   });
 });
+
+describe('Skill – Find skills: tìm theo từ khoá trên skills.sh (2026-11-14)', () => {
+  function lane(fake: typeof fetch) {
+    const repo = tmpRepo({ 'team/project.yaml': 'key: GT\n' });
+    const store = openStore(':memory:');
+    store.setActiveProject(repo);
+    const base = loadConfig('btm.config.yaml');
+    const dataDir = mkdtempSync(join(tmpdir(), 'btm-find-'));
+    const cfg = { ...base, host: { ...base.host, data_dir: dataDir } } as Config;
+    const runner = vi.fn(async () => ({ exitCode: 0, timedOut: false, output: '', lastMessage: SAFE }));
+    return { store, l: createSkillsLane({ cfg, store, runner: runner as any, logDir: join(dataDir, 'logs'), isolated: true, hostBusy: () => true, fetchFn: fake }) };
+  }
+  const calls: string[] = [];
+  const fake = (async (url: string) => {
+    calls.push(url);
+    let body = '';
+    if (url.startsWith('https://skills.sh/api/search')) {
+      body = JSON.stringify({ skills: [
+        { source: 'acme/skills', skillId: 'tidy', name: 'tidy', installs: 891165 },
+        { source: 'acme/skills', skillId: 'mid', name: 'mid', installs: 250 },
+        { source: 'new/one', skillId: 'fresh', name: 'fresh', installs: 12 },
+        { source: 'https://evil.example/x', skillId: 'bad', name: 'bad', installs: 5 },
+        { source: 'acme/skills', skillId: '../../etc', name: 'trick', installs: 5 },
+      ] });
+    } else if (url.includes('/repos/acme/skills/git/trees/')) {
+      body = JSON.stringify({ tree: [{ path: 'skills/tidy/SKILL.md', type: 'blob' }, { path: '.hidden/tidy/SKILL.md', type: 'blob' }, { path: 'skills/other/SKILL.md', type: 'blob' }] });
+    } else if (url.endsWith('acme/skills/HEAD/skills/tidy/SKILL.md')) {
+      body = GOOD;
+    }
+    return { ok: Boolean(body), text: async () => body } as any;
+  }) as unknown as typeof fetch;
+
+  it('tìm: chỉ gửi từ khoá; lọc nguồn / tên lạ; gắn mức tin theo lượt cài; quá ngắn → 400; skills.sh lỗi → 502', async () => {
+    const { l } = lane(fake);
+    const r = await l.search('  code   review ');
+    expect(r).toMatchObject({ ok: true });
+    expect((r as any).found).toEqual([
+      { source: 'acme/skills', skillId: 'tidy', name: 'tidy', installs: 891165, trust: 'ok' },
+      { source: 'acme/skills', skillId: 'mid', name: 'mid', installs: 250, trust: 'caution' },
+      { source: 'new/one', skillId: 'fresh', name: 'fresh', installs: 12, trust: 'risky' },
+    ]);
+    expect(calls[0]).toBe('https://skills.sh/api/search?q=code%20review&limit=20');
+    expect(await l.search('x')).toMatchObject({ ok: false, status: 400 });
+    const down = lane((async () => ({ ok: false, text: async () => '' })) as any);
+    expect(await down.l.search('react')).toMatchObject({ ok: false, status: 502 });
+  });
+
+  it('nhập kết quả đã chọn: tải đúng SKILL.md theo tên thư mục → khu chờ; không thấy / tham chiếu sai → báo lỗi từng mục', async () => {
+    const { l, store } = lane(fake);
+    const r = await l.importFound([{ source: 'acme/skills', skillId: 'tidy' }, { source: 'acme/skills', skillId: 'missing' }, { source: 'bad source', skillId: 'x' }]);
+    expect(r.added.map((s) => s.source)).toEqual(['https://github.com/acme/skills · skills/tidy/SKILL.md']);
+    expect(r.failed).toEqual([{ path: 'acme/skills@missing', error: 'SKILL.md not found in the repository' }, { path: 'bad source@x', error: 'Invalid skill reference' }]);
+    expect(readSkills(store)[0]).toMatchObject({ name: 'tidy-code', status: 'checking', on: false });
+  });
+
+  it('dạng viết tắt owner/repo và owner/repo@skill; từ khoá không phải repo', async () => {
+    const { repoRef } = await import('../src/skills/lane.ts');
+    expect(repoRef('vercel-labs/skills@find-skills')).toEqual({ owner: 'vercel-labs', repo: 'skills', url: 'https://github.com/vercel-labs/skills', skill: 'find-skills' });
+    expect(repoRef('acme/skills')).toMatchObject({ owner: 'acme', repo: 'skills' });
+    expect(repoRef('https://github.com/acme/skills')).toMatchObject({ url: 'https://github.com/acme/skills' });
+    expect(repoRef('code review')).toBeNull();
+    expect(repoRef('react')).toBeNull();
+    const { l } = lane(fake);
+    expect(await l.listGithub('acme/skills@tidy')).toMatchObject({ ok: true, candidates: [{ path: 'skills/tidy/SKILL.md', name: 'tidy-code' }] });
+    expect(await l.listGithub('acme/skills@nope')).toMatchObject({ ok: false, status: 404 });
+  });
+});
