@@ -1241,42 +1241,50 @@
         return h ? h + 'h ' + (mm < 10 ? '0' : '') + mm + 'm' : mm + 'm';
       }
 
-      // Lịch sử chung: dựng danh sách mục (thuần, test được). kind: goal | ask | cmd. Mới nhất trước.
+      // Khung chat History (anh Zon 2026-11-14): một khung cuộn, cũ trên – mới dưới; anh hỏi canh trái, người trả
+      // lời canh phải. Mục (thuần, test được): { kind: 'ask' | 'reply' | 'goal', … } theo thứ tự thời gian.
       function buildHistory(state) {
         var out = [];
-        var s = state && state.session;
-        var goalsAll = (state && state.goals) || [];
-        if (s && (s.goals || []).length) {
-          (s.goals || []).forEach(function (g) {
-            var text = String(g);
-            if (text === 'Direct command' || text === 'Ask') return;
-            if (/^\d+$/.test(text)) {
-              var found = goalsAll.filter(function (x) { return String(x.n) === text; })[0];
-              text = 'G' + text + (found && found.title ? ' · ' + found.title : '');
-            }
-            out.push({ kind: 'goal', text: text, status: s.status });
-          });
-        }
         var answers = {};
         ((state && state.answers) || []).forEach(function (a) { answers[a.id] = a; });
-        ((state && state.queue) || []).forEach(function (q) {
+        var queue = ((state && state.queue) || []).slice().sort(function (x, y) { return x.id - y.id; });
+        queue.forEach(function (q) {
           var ask = String(q.to).indexOf('ask-') === 0;
+          var raw = String(q.text || '');
           out.push({
-            kind: ask ? 'ask' : 'cmd',
+            kind: 'ask',
             id: q.id,
             seat: ask ? String(q.to).slice(4) : q.to,
-            text: String(q.text || '').replace(/^\[plan\]\s*/i, ''),
-            plan: /^\[plan\]/i.test(String(q.text || '')),
+            text: raw.replace(/^\[plan\]\s*/i, ''),
+            plan: /^\[plan\]/i.test(raw),
             status: q.status,
-            at: q.created_at,
-            answer: ask ? answers[q.id] || null : null
+            at: q.created_at
           });
+          var a = answers[q.id];
+          if (a) out.push({ kind: 'reply', id: q.id, seat: a.seat, asked: a.asked, agent: a.agent, text: a.answer, at: a.at });
+        });
+        var s = state && state.session;
+        var goalsAll = (state && state.goals) || [];
+        ((s && s.goals) || []).forEach(function (g) {
+          var text = String(g);
+          if (text === 'Direct command' || text === 'Ask') return;
+          if (/^\d+$/.test(text)) {
+            var found = goalsAll.filter(function (x) { return String(x.n) === text; })[0];
+            text = 'G' + text + (found && found.title ? ' · ' + found.title : '');
+          }
+          out.push({ kind: 'goal', text: text, status: s.status });
         });
         return out;
       }
+      var HIST_ICON = { done: '✓', cancelled: '✕', running: '⏳', queued: '⏳' };
       function renderHistory(el, state) {
         var items = buildHistory(state);
+        var key = JSON.stringify(items.map(function (i) { return [i.kind, i.id, i.status, i.at]; }));
+        if (el.getAttribute('data-key') === key) return;
+        var nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+        el.setAttribute('data-key', key);
         clearChildren(el);
+        el.classList.add('chat-log');
         if (!items.length) {
           var e = document.createElement('li');
           e.className = 'empty-placeholder';
@@ -1285,44 +1293,36 @@
           return;
         }
         var seatAgent = {};
-        ((state && state.seats) || []).forEach(function (s) { seatAgent[s.seat] = s.agent; });
+        ((state && state.seats) || []).forEach(function (x) { seatAgent[x.seat] = x.agent; });
+        var who = function (seat, agent) { return agentLabel(agent || seatAgent[seat]) || String(seat).toUpperCase(); };
         items.forEach(function (it) {
           var li = document.createElement('li');
-          li.className = 'hist-item hist-' + it.kind;
-          var top = document.createElement('div');
-          top.className = 'hist-top';
-          var chip = document.createElement('span');
-          chip.className = 'hist-chip';
-          chip.textContent = tx(it.kind === 'goal' ? 'hist.goal' : it.kind === 'ask' ? (it.plan ? 'hist.plan' : 'hist.ask') : 'hist.cmd');
-          top.appendChild(chip);
-          var who = document.createElement('span');
-          who.className = 'hist-who';
-          who.textContent = it.kind === 'goal' ? '' : '→ ' + (agentLabel(seatAgent[it.seat]) || String(it.seat).toUpperCase()) + (it.at ? ' · ' + formatHHmm(it.at) : '');
-          top.appendChild(who);
-          var st = document.createElement('span');
-          st.className = 'badge hist-status';
-          st.textContent = formatStatus(it.status);
-          top.appendChild(st);
-          li.appendChild(top);
-          var text = document.createElement('div');
-          text.className = 'hist-text';
-          text.textContent = it.text;
-          li.appendChild(text);
-          if (it.answer) {
-            var ans = document.createElement('div');
-            ans.className = 'hist-answer';
-            var ah = document.createElement('div');
-            ah.className = 'hist-answer-who';
-            ah.textContent = agentLabel(it.answer.agent) + ' · ' + formatHHmm(it.answer.at) + (it.answer.seat !== it.answer.asked ? ' · ' + tx('ans.onBehalf', { seat: SEAT_LABELS[it.answer.asked] || it.answer.asked }) : '');
-            var ab = document.createElement('div');
-            ab.className = 'hist-answer-body';
-            ab.textContent = it.answer.answer;
-            ans.appendChild(ah);
-            ans.appendChild(ab);
-            li.appendChild(ans);
+          if (it.kind === 'goal') {
+            li.className = 'msg-divider';
+            li.textContent = tx('hist.goal') + ' · ' + (it.text.length > 70 ? it.text.slice(0, 69) + '…' : it.text) + ' · ' + formatStatus(it.status);
+            li.title = it.text;
+            el.appendChild(li);
+            return;
           }
+          li.className = 'msg ' + (it.kind === 'ask' ? 'msg-owner' : 'msg-team');
+          var head = document.createElement('div');
+          head.className = 'msg-head';
+          if (it.kind === 'ask') {
+            head.textContent = tx('hist.owner') + ' → ' + who(it.seat) + ' · ' + formatHHmm(it.at)
+              + (it.plan ? ' · ' + tx('hist.plan') : '') + ' ' + (HIST_ICON[it.status] || '');
+            head.title = formatStatus(it.status);
+          } else {
+            head.textContent = who(it.seat, it.agent) + ' · ' + (SEAT_LABELS[it.seat] || it.seat) + ' · ' + formatHHmm(it.at)
+              + (it.seat !== it.asked ? ' · ' + tx('ans.onBehalf', { seat: SEAT_LABELS[it.asked] || it.asked }) : '');
+          }
+          var body = document.createElement('div');
+          body.className = 'msg-body';
+          body.textContent = it.text;
+          li.appendChild(head);
+          li.appendChild(body);
           el.appendChild(li);
         });
+        if (nearBottom || !el.getAttribute('data-scrolled')) { el.scrollTop = el.scrollHeight; el.setAttribute('data-scrolled', '1'); }
       }
 
       // (đã gộp vào lịch sử chung) câu trả lời gần đây của team.
