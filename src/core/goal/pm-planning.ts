@@ -1,4 +1,5 @@
 // Lượt PM lập ticket cho goal (tách khỏi processGoal 2026-11-14, không đổi hành vi).
+import { lessonsForPrompt } from '../../knowledge/lessons.ts';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadTickets, type Ticket, TicketError } from '../../ticket/ticket.ts';
@@ -52,6 +53,7 @@ export async function runPmPlanning(ctx: GoalCtx): Promise<SessionOutcome | null
       notes: promptNotes,
       hasOpenspec,
       docsTicket: Boolean(d.cfg.release?.docs_ticket),
+      lessons: lessonsForPrompt(d.cfg.host.data_dir, key),
     });
     const pmSnapshot = snapshotTurn(d.repo, goal.branch, baseBranch, d.store, 'pm');
     if (pmSnapshot.protectedBranchMoved) {

@@ -2032,6 +2032,44 @@
         });
       })();
 
+      // Bài học (anh Zon 2026-11-14): mở ra thì nạp file; Save ghi cả hai ô.
+      (function () {
+        var tb = document.getElementById('lessons-toggle');
+        var box = document.getElementById('lessons-box');
+        var own = document.getElementById('lessons-project');
+        var shared = document.getElementById('lessons-shared');
+        var save = document.getElementById('lessons-save');
+        var fb = document.getElementById('lessons-feedback');
+        if (!tb || !box || !own || !shared || !save || !fb) return;
+        tb.addEventListener('click', async function () {
+          box.hidden = !box.hidden;
+          tb.setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
+          if (box.hidden) return;
+          fb.textContent = '';
+          try {
+            var r = await fetch('/api/lessons');
+            var b = r.ok ? await r.json() : { project: '', shared: '' };
+            own.value = b.project || '';
+            shared.value = b.shared || '';
+            if (!own.value && !shared.value) fb.textContent = tx('lessons.empty');
+          } catch (e) {
+            fb.textContent = tx('history.cannotLoad');
+          }
+        });
+        save.addEventListener('click', async function () {
+          save.disabled = true;
+          try {
+            await postJson('/api/lessons', { scope: 'project', text: own.value });
+            await postJson('/api/lessons', { scope: 'shared', text: shared.value });
+            fb.textContent = tx('lessons.saved');
+          } catch (e) {
+            fb.textContent = e.message;
+          } finally {
+            save.disabled = false;
+          }
+        });
+      })();
+
       // Tab Folder: web/app/folders.js (nạp trước file này).
       btmFolders({ clearChildren: clearChildren, agentLabel: agentLabel });
 
@@ -2549,7 +2587,7 @@
         if (!input || !panel || !list) return; // panel: khung Results (luôn hiện)
         var timer = null;
         var seq = 0;
-        var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log' };
+        var KIND_KEY = { goal: 'search.kind.goal', ticket: 'search.kind.ticket', qa: 'search.kind.qa', history: 'search.kind.history', log: 'search.kind.log', lesson: 'search.kind.lesson' };
         // Ô Results luôn hiện (anh Zon 2026-11-14); trống → dòng hướng dẫn.
         function hide() { seq++; clearChildren(list); count.textContent = ''; list.appendChild(line('empty-placeholder', tx('search.hint'))); }
         function line(cls, text) { var d = document.createElement('div'); d.className = cls; d.textContent = text; return d; }

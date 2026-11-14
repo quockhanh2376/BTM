@@ -2431,3 +2431,12 @@
 .history-log { max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 11px; background: var(--bg-secondary, rgba(0,0,0,.05)); padding: 8px; border-radius: 6px; margin: 4px 0 8px; }
 .history-log[hidden] { display: none; }
 
+/* Bài học (anh Zon 2026-11-14) */
+.lessons-box { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.lessons-box[hidden] { display: none; }
+.lessons-label { font-size: 12px; font-weight: 600; }
+.lessons-text { width: 100%; box-sizing: border-box; font: 12px/1.5 ui-monospace, monospace; resize: vertical; }
+.lessons-actions { display: flex; align-items: center; gap: 8px; }
+.lessons-feedback { font-size: 12px; }
+.goals-trash-bar { display: flex; gap: 6px; }
+

@@ -7,7 +7,7 @@ import type { HostApi } from './http.ts';
 import { runSession, resumeSession, type SessionOutcome } from '../core/session.ts';
 import { pmAnswerQuestions, type DelegateResult } from '../core/delegate.ts';
 import { saveGoalDigest } from '../knowledge/digest.ts';
-import { createAskLane } from './ask-lane.ts';
+import { createAskLane, LESSONS_TO } from './ask-lane.ts';
 import { runDirectCommand } from './direct-command.ts';
 import { isIsolated } from '../isolation/trusted.ts';
 import { notify, type NotifyKind } from '../notify/notify.ts';
@@ -797,7 +797,14 @@ export function createHost(d: HostDeps): HostApi & {
     const fn = d.approveGoal ?? approveGoalFn;
     const res = fn(d.store, activeProject, d.cfg, n);
     if (res.ok) {
-      void pushRelease(activeProject, n).finally(() => saveGoalDigest(d.store, d.cfg, activeProject, n));
+      void pushRelease(activeProject, n).finally(() => {
+        saveGoalDigest(d.store, d.cfg, activeProject, n);
+        // Bài học (2026-11-14): một lượt PM chỉ đọc trong làn hỏi đáp; lỗi không ảnh hưởng release.
+        try {
+          d.store.enqueue(LESSONS_TO as Seat, `G${n}`);
+          void askLane.tick();
+        } catch {}
+      });
     }
     return res;
   }

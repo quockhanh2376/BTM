@@ -4,10 +4,25 @@ import type { ServerResponse } from 'node:http';
 import type { ServerOpts, SendJson } from '../http.ts';
 import { z } from 'zod';
 import { approveGoal, type ApproveGoalResult } from '../../ticket/goal.ts';
+import { projectLessonsFile, readLessons, sharedLessonsFile, writeLessons, LESSONS_EDIT_MAX } from '../../knowledge/lessons.ts';
 import { archiveGoalAction, restoreGoalAction, purgeGoalAction } from '../goal-trash.ts';
 import { buildGoalDigest, saveGoalDigest } from '../../knowledge/digest.ts';
 
 export async function handleGoalsGet(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
+  // Bài học (2026-11-14): file của project + file chung.
+  if (method === 'GET' && pathname === '/api/lessons') {
+    const project = o.store.getActiveProject();
+    if (!project) {
+      sendJson(res, 404, { error: 'No active project' });
+      return true;
+    }
+    sendJson(res, 200, {
+      project: readLessons(projectLessonsFile(o.cfg.host.data_dir, project) ?? ''),
+      shared: readLessons(sharedLessonsFile(o.cfg.host.data_dir)),
+    });
+    return true;
+  }
+
   // Thùng rác goal: danh sách goal đã vào thùng rác.
   if (method === 'GET' && pathname === '/api/goals/trash') {
     const project = o.store.getActiveProject();
@@ -36,6 +51,28 @@ export async function handleGoalsGet(method: string | undefined, pathname: strin
 }
 
 export async function handleGoalsPost(method: string | undefined, pathname: string, body: unknown, o: ServerOpts, res: ServerResponse, sendJson: SendJson): Promise<boolean> {
+  // Anh Zon sửa bài học (2026-11-14).
+  if (pathname === '/api/lessons') {
+    const parsed = z.object({ scope: z.enum(['project', 'shared']), text: z.string().max(LESSONS_EDIT_MAX) }).safeParse(body);
+    if (!parsed.success) {
+      sendJson(res, 400, { error: 'Invalid lessons' });
+      return true;
+    }
+    const project = o.store.getActiveProject();
+    if (!project) {
+      sendJson(res, 404, { error: 'No active project' });
+      return true;
+    }
+    const file = parsed.data.scope === 'shared' ? sharedLessonsFile(o.cfg.host.data_dir) : projectLessonsFile(o.cfg.host.data_dir, project);
+    if (!file) {
+      sendJson(res, 400, { error: 'Project has no key (team/project.yaml)' });
+      return true;
+    }
+    writeLessons(file, parsed.data.text.replace(/\r\n/g, '\n'));
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
   if (pathname === '/api/goal/approve') {
     const GoalApproveSchema = z.object({
       goal: z.string().regex(/^G?(\d+)$/i, { message: 'Invalid goal format, expected G<n>' }),

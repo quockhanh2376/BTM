@@ -1593,6 +1593,22 @@ describe('HTTP Server & SSE', () => {
       expect(tr.totals).toMatchObject({ turns: 0, returns: 0 });
       expect((await fetch(`${baseUrl}/api/turns/12345/log`)).status).toBe(404);
     });
+
+    it('GET/POST /api/lessons: lưu rồi đọc lại; scope sai → 400', async () => {
+      const keep = cfg.host.data_dir;
+      cfg.host.data_dir = mkdtempSync(join(tmpdir(), 'btm-http-lessons-'));
+      try {
+        store.setActiveProject(tmpRepo({ 'team/project.yaml': 'key: XL\n' }));
+        const post = (b: unknown) => fetch(`${baseUrl}/api/lessons`, { method: 'POST', headers: { 'x-btm': '1', 'content-type': 'application/json' }, body: JSON.stringify(b) });
+        expect((await post({ scope: 'project', text: '- [X G1] a' })).status).toBe(200);
+        expect((await post({ scope: 'shared', text: '- [X G1] b' })).status).toBe(200);
+        expect((await post({ scope: 'other', text: 'x' })).status).toBe(400);
+        const got = await (await fetch(`${baseUrl}/api/lessons`)).json();
+        expect(got).toEqual({ project: '- [X G1] a\n', shared: '- [X G1] b\n' });
+      } finally {
+        cfg.host.data_dir = keep;
+      }
+    });
   });
 
   it('Plan 9 Task 2: GET /api/system trả JSON đủ khoá', async () => {

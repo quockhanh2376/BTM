@@ -17,6 +17,12 @@
         queue.forEach(function (q) {
           var ask = String(q.to).indexOf('ask-') === 0;
           var raw = String(q.text || '');
+          // Bài học sau goal (2026-11-14): việc của PM, không phải câu anh hỏi.
+          if (q.to === 'ask-lessons') {
+            var la = answers[q.id];
+            if (la) out.push({ kind: 'reply', id: q.id, seat: la.seat, asked: la.asked, agent: la.agent, text: tx('lessons.title', { goal: raw }) + '\n' + la.answer, at: la.at });
+            return;
+          }
           out.push({
             kind: 'ask',
             id: q.id,
@@ -35,7 +41,7 @@
         var goalsAll = (state && state.goals) || [];
         ((s && s.goals) || []).forEach(function (g) {
           var text = String(g);
-          if (text === 'Direct command' || text === 'Ask') return;
+          if (text === 'Direct command' || text === 'Ask' || text === 'Lessons') return;
           if (/^\d+$/.test(text)) {
             var found = goalsAll.filter(function (x) { return String(x.n) === text; })[0];
             text = 'G' + text + (found && found.title ? ' · ' + found.title : '');
