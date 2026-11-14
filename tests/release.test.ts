@@ -41,20 +41,37 @@ describe('release publish (decision 0006)', () => {
     expect(info?.error).toBe('deploy_key_missing');
   });
 
-  it('gắn tag v<version> vào main rồi push main + tag bằng deploy key, không force', async () => {
+  it('commit phát hành = main bỏ team/, gắn tag, ls-remote rồi push commit đó + tag bằng deploy key, không force', async () => {
     const { repo, cfg, store, n } = setup();
     const calls: string[][] = [];
     const info = await publishGoal(store, repo, cfg, n, async (_r, args) => { calls.push(args); return ''; });
     expect(info).toMatchObject({ ok: true, tag: 'v1.2.3', target: 'someone/GameTest-BTM', url: 'https://github.com/someone/GameTest-BTM/tree/v1.2.3' });
-    const main = execFileSync('git', ['rev-parse', 'main'], { cwd: repo }).toString().trim();
-    expect(execFileSync('git', ['rev-parse', 'v1.2.3^{commit}'], { cwd: repo }).toString().trim()).toBe(main);
-    const args = calls[0]!;
+    const rel = execFileSync('git', ['rev-parse', 'v1.2.3^{commit}'], { cwd: repo }).toString().trim();
+    const files = execFileSync('git', ['ls-tree', '-r', '--name-only', rel], { cwd: repo }).toString();
+    expect(files).toContain('package.json');
+    expect(files).not.toContain('team/');
+    expect(calls[0]).toContain('ls-remote');
+    const args = calls[1]!;
     expect(args).toContain('git@github.com:someone/GameTest-BTM.git');
-    expect(args).toContain('refs/heads/main:refs/heads/main');
+    expect(args).toContain(`${rel}:refs/heads/main`);
     expect(args).toContain('refs/tags/v1.2.3:refs/tags/v1.2.3');
     expect(args.join(' ')).not.toMatch(/--force|\+refs/);
     expect(args.find((a) => a.startsWith('core.sshCommand='))).toMatch(/IdentitiesOnly=yes.*StrictHostKeyChecking=yes/);
     expect(readRelease(store, repo, n)?.ok).toBe(true);
+  });
+
+  it('GitHub đã có main → commit phát hành nối tiếp commit đó (push fast-forward); commit lạ thì không push', async () => {
+    const { repo, cfg, store, n } = setup();
+    const remote = execFileSync('git', ['rev-parse', 'main'], { cwd: repo }).toString().trim();
+    const info = await publishGoal(store, repo, cfg, n, async (_r, args) => (args.includes('ls-remote') ? `${remote}	refs/heads/main
+` : ''));
+    expect(info?.ok).toBe(true);
+    const parent = execFileSync('git', ['rev-parse', 'v1.2.3^{commit}^'], { cwd: repo }).toString().trim();
+    expect(parent).toBe(remote);
+    const t2 = setup();
+    const bad = await publishGoal(t2.store, t2.repo, t2.cfg, t2.n, async (_r, args) => (args.includes('ls-remote') ? `${'a'.repeat(40)}	refs/heads/main
+` : ''));
+    expect(bad?.error).toBe('remote_main_unknown');
   });
 
   it('push lỗi thì lưu lỗi ngắn để dashboard hiện Push lại; push lại dùng tag cũ', async () => {
